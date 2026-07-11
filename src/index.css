@@ -165,28 +165,28 @@
   justify-content: center;
   pointer-events: none;
 }
-/* A small translucent pill instead of plain text directly on the lace
-   texture - the border is busy enough that plain text (even with a white
-   halo) was getting lost in it; a soft "badge" lifts it just enough to
-   read as an intentional call-to-action rather than blending away. */
+/* A thin, transparent-background outline instead of a filled pill - a solid
+   or blurred white fill read as too heavy a UI element against the lace
+   texture; a fine grey border gives it just enough definition to notice
+   without sitting on top of the artwork as an opaque shape. */
 .scroll-cue-pill {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  padding: 8px 18px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.62);
-  backdrop-filter: blur(4px);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.1);
+  padding: 6px 16px;
+  border-radius: 14px;
+  background: transparent;
+  border: 1px solid rgba(90, 87, 79, 0.4);
 }
 .scroll-cue {
   font-family: Arial, sans-serif;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 1.3px;
+  letter-spacing: 1.2px;
   color: #4a453c;
   margin: 0;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
 .scroll-chevron {
   animation: bounce 1.6s infinite;
@@ -210,22 +210,22 @@
    treatment (like .submit-btn) instead of an opaque white card that would
    sit awkwardly on top of the photo. */
 .form-card .waze-row {
-  margin-top: 16px;
+  margin-top: 8px;
   padding: 0;
 }
 .form-card .waze-btn {
   background: rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(3px);
   border-color: rgba(60, 58, 52, 0.28);
-  padding: 9px 6px;
+  padding: 6px 5px;
   border-radius: 6px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-  font-size: 9.5px;
-  gap: 5px;
+  font-size: 9px;
+  gap: 3px;
 }
 .form-card .waze-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 .waze-btn {
   flex: 1;
@@ -272,7 +272,7 @@
   background-repeat: no-repeat;
   background-position: top center;
   background-color: #d3d2ce;
-  padding: 44% 26% 24px;
+  padding: 41% 26% 24px;
   display: flex;
   justify-content: center;
 }
@@ -280,7 +280,7 @@
 .form-card {
   width: 100%;
   max-width: 200px;
-  padding: 8px 0 0;
+  padding: 4px 0 0;
 }
 
 .rsvp-title {
@@ -288,11 +288,11 @@
   font-size: 20px;
   letter-spacing: 4px;
   color: #2f2d28;
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
 }
 .field {
-  margin-bottom: 7px;
+  margin-bottom: 4px;
 }
 .field label {
   display: block;
@@ -301,25 +301,22 @@
   letter-spacing: 1.2px;
   text-transform: uppercase;
   color: #2b2924;
-  margin: 0 0 3px;
+  margin: 0 0 1px;
+  line-height: 1.1;
   text-align: center;
   text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 1px rgba(255, 255, 255, 0.9);
 }
 /* Uppercase + wide Latin-style letter-spacing doesn't read well in Hebrew
    (no letter-casing, and wide tracking makes the word look broken apart), so
    RTL labels get their own treatment - the same elegant serif as the rest of
-   the invitation, a lighter weight than before so it doesn't read as shouty. */
+   the invitation, a lighter weight than before so it doesn't read as shouty.
+   Right-aligned to match the RTL reading direction, sitting snug above its
+   field instead of centered/floating. */
 [dir="rtl"] .field label {
   text-transform: none;
   letter-spacing: 0.3px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
-}
-/* Only the two text-input fields (name/phone) get a right-aligned label
-   sitting snug above the input - the attendance/guest-count fields keep
-   their centered label since the controls beneath them (radio row, stepper)
-   are themselves centered as a group, not left/right aligned. */
-[dir="rtl"] .field:has(input) label {
   text-align: right;
   padding-inline-end: 2px;
 }
@@ -328,7 +325,7 @@
 .form-card textarea {
   display: block;
   width: 100%;
-  padding: 5px 4px;
+  padding: 2px 4px;
   font-size: 16px;
   font-weight: 500;
   text-align: center;
@@ -339,6 +336,7 @@
   color: #2b2924;
   font-family: inherit;
   resize: none;
+  line-height: 1.2;
 }
 .form-card input[type="text"]:focus,
 .form-card input[type="tel"]:focus,
@@ -367,10 +365,10 @@
 }
 .date-line {
   text-align: center;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   color: #2b2924;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   letter-spacing: 0.5px;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
@@ -408,16 +406,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 20px;
-  padding: 2px 0;
+  gap: 16px;
+  padding: 0;
 }
 .stepper button {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   border: 1px solid rgba(60, 58, 52, 0.55);
   background: rgba(255, 255, 255, 0.35);
   border-radius: 50%;
-  font-size: 16px;
+  font-size: 14px;
   color: #2b2924;
   cursor: pointer;
   font-family: Arial, sans-serif;
@@ -431,18 +429,18 @@
   background: rgba(93, 90, 83, 0.1);
 }
 .stepper span {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 600;
   color: #2b2924;
-  min-width: 30px;
+  min-width: 22px;
   text-align: center;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
 .submit-btn {
   display: block;
   width: 100%;
-  margin-top: 8px;
-  padding: 12px;
+  margin-top: 6px;
+  padding: 9px;
   font-size: 13px;
   letter-spacing: 2px;
   background: rgba(255, 255, 255, 0.3);
