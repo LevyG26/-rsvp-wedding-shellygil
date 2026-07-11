@@ -5,6 +5,7 @@ import inviteHe from '../assets/invite-card-he.jpg';
 import inviteFr from '../assets/invite-card-fr.jpg';
 import rsvpBackground from '../assets/rsvp-background.jpg';
 import { buildCalendarLink } from '../utils/calendarLink';
+import { EVENT_CALENDAR_START, EVENT_CALENDAR_END, EVENT_TIME_ZONE } from '../eventDetails';
 
 interface Props {
   lang: Language;
@@ -18,16 +19,13 @@ export function InviteScreen({ lang, linkedPhone }: Props) {
   const encodedAddress = encodeURIComponent(t.venue);
   const wazeUrl = `https://waze.com/ul?q=${encodedAddress}&navigate=yes`;
 
-  const eventStart = import.meta.env.VITE_EVENT_CALENDAR_START || '20270101T170000';
-  const eventEnd = import.meta.env.VITE_EVENT_CALENDAR_END || '20270101T220000';
-  const eventTimeZone = import.meta.env.VITE_EVENT_TIME_ZONE || 'Asia/Jerusalem';
   const calendarLink = buildCalendarLink({
     title: `${t.names} - ${t.subtitle}`,
     location: t.venue,
     description: t.venueName,
-    startCompact: eventStart,
-    endCompact: eventEnd,
-    timeZone: eventTimeZone,
+    startCompact: EVENT_CALENDAR_START,
+    endCompact: EVENT_CALENDAR_END,
+    timeZone: EVENT_TIME_ZONE,
   });
 
   return (

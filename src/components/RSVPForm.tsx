@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import thankYouImage from '../assets/rings-transparent.png';
 import { isValidPhoneNumber } from '../utils/phoneNumbers';
 import { CalendarLink } from '../utils/calendarLink';
+import { EVENT_START_ISO } from '../eventDetails';
 
 interface Props {
   lang: Language;
@@ -37,7 +38,7 @@ function formatDateLine(lang: Language, iso: string) {
 
 export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
   const t = translations[lang];
-  const weddingDate = import.meta.env.VITE_EVENT_START_ISO || '2027-01-01T17:00:00';
+  const weddingDate = EVENT_START_ISO;
   const dateLine = formatDateLine(lang, weddingDate);
 
   const [fullName, setFullName] = useState('');
@@ -140,6 +141,8 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
       <p className="rsvp-title">{t.rsvpTitle}</p>
 
       <form onSubmit={handleSubmit}>
+        {dateLine && <p className="date-line">{dateLine}</p>}
+
         {/* Name */}
         <div className="field">
           <label htmlFor="rsvp-full-name">{t.fullName}</label>
@@ -158,8 +161,6 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
             </p>
           )}
         </div>
-
-        {dateLine && <p className="date-line">{dateLine}</p>}
 
         {!linkedPhone && (
           <div className="field">

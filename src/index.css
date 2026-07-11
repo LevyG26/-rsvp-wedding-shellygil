@@ -296,27 +296,28 @@
 }
 .field label {
   display: block;
-  font-size: 13px;
-  font-weight: 600;
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: 1.2px;
   text-transform: uppercase;
   color: #2b2924;
   margin: 0 0 1px;
-  line-height: 1.1;
+  line-height: 1.2;
   text-align: center;
   text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 1px rgba(255, 255, 255, 0.9);
 }
-/* Uppercase + wide Latin-style letter-spacing doesn't read well in Hebrew
-   (no letter-casing, and wide tracking makes the word look broken apart), so
-   RTL labels get their own treatment - the same elegant serif as the rest of
-   the invitation, a lighter weight than before so it doesn't read as shouty.
-   Right-aligned to match the RTL reading direction, sitting snug above its
-   field instead of centered/floating. */
+/* Uppercase Latin-style tracking doesn't read well in Hebrew, so RTL labels
+   drop text-transform/letter-spacing - but keep the same plain, clear
+   sans-serif as the scroll-cue text (rather than the elegant serif used for
+   the invitation's decorative wording), since these are functional form
+   labels that need to read instantly, not ornamental text. Right-aligned to
+   match the RTL reading direction, sitting snug above its field. */
 [dir="rtl"] .field label {
   text-transform: none;
-  letter-spacing: 0.3px;
-  font-size: 14px;
-  font-weight: 500;
+  letter-spacing: 0.2px;
+  font-size: 12.5px;
+  font-weight: 700;
   text-align: right;
   padding-inline-end: 2px;
 }
@@ -363,44 +364,64 @@
   text-align: center;
   margin: 4px 0 0;
 }
+/* Sits first, above the name field, so guests see when/where before being
+   asked anything - styled like a small plain-sans-serif badge (same family
+   as the scroll-cue and field labels) so it reads clearly at a glance rather
+   than blending into the decorative serif used elsewhere on the page. */
 .date-line {
   text-align: center;
-  font-size: 14px;
-  font-weight: 500;
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
   color: #2b2924;
-  margin: 0 0 4px;
-  letter-spacing: 0.5px;
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid rgba(60, 58, 52, 0.25);
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
-/* Two-column grid (circle | label) instead of stacked flex rows, so both
-   radio circles land in the same column and line up vertically - before,
-   each option centered its own circle+text as a unit, so the circle drifted
-   left/right depending on how long that option's label happened to be. */
+/* A pair of pill buttons instead of small circular radio dots + text - the
+   native radio input is hidden (still present for real form semantics/
+   keyboard support, the wrapping <label> toggles it on click same as
+   before), and the whole label becomes the clickable "button", filling in
+   solid when selected. Reads faster than a tiny checkbox and feels more like
+   a deliberate choice. */
 .radio-row {
-  display: grid;
-  grid-template-columns: auto auto;
+  display: flex;
   justify-content: center;
-  row-gap: 6px;
-  column-gap: 10px;
+  gap: 10px;
 }
 .radio-option {
-  display: contents;
-  font-size: 15px;
-  font-weight: 400;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
   color: #2b2924;
   cursor: pointer;
+  padding: 8px 20px;
+  border: 1.5px solid rgba(60, 58, 52, 0.45);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .radio-option span {
-  padding: 2px 4px;
+  padding: 0;
 }
 .radio-option input {
-  width: 16px;
-  height: 16px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
   margin: 0;
-  accent-color: #2b2924;
+  opacity: 0;
+  pointer-events: none;
 }
 .radio-option.selected {
-  font-weight: 700;
+  background: #2b2924;
+  border-color: #2b2924;
+  color: #f5f4f0;
 }
 .stepper {
   display: flex;
