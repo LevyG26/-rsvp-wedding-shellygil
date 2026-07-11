@@ -5,12 +5,13 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import thankYouImage from '../assets/rings-transparent.png';
 import { isValidPhoneNumber } from '../utils/phoneNumbers';
+import { CalendarLink } from '../utils/calendarLink';
 
 interface Props {
   lang: Language;
   linkedPhone?: string;
   wazeUrl?: string;
-  googleCalendarUrl?: string;
+  calendarLink?: CalendarLink;
 }
 
 const FULL_NAME_PATTERN = /^[\p{L}\p{M}\s]*$/u;
@@ -34,7 +35,7 @@ function formatDateLine(lang: Language, iso: string) {
   return `${datePart} · ${timePart}`;
 }
 
-export function RSVPForm({ lang, linkedPhone, wazeUrl, googleCalendarUrl }: Props) {
+export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
   const t = translations[lang];
   const weddingDate = import.meta.env.VITE_EVENT_START_ISO || '2027-01-01T17:00:00';
   const dateLine = formatDateLine(lang, weddingDate);
@@ -240,7 +241,7 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, googleCalendarUrl }: Prop
         </button>
       </form>
 
-      {(wazeUrl || googleCalendarUrl) && (
+      {(wazeUrl || calendarLink) && (
         <div className="waze-row">
           {wazeUrl && (
             <a className="waze-btn" href={wazeUrl} target="_blank" rel="noopener noreferrer">
@@ -251,8 +252,14 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, googleCalendarUrl }: Prop
               <span>{t.navigation}</span>
             </a>
           )}
-          {googleCalendarUrl && (
-            <a className="waze-btn" href={googleCalendarUrl} target="_blank" rel="noopener noreferrer">
+          {calendarLink && (
+            <a
+              className="waze-btn"
+              href={calendarLink.href}
+              download={calendarLink.isDownload ? calendarLink.fileName : undefined}
+              target={calendarLink.isDownload ? undefined : '_blank'}
+              rel={calendarLink.isDownload ? undefined : 'noopener noreferrer'}
+            >
               <svg viewBox="0 0 24 24" fill="none" stroke="#5c594f" strokeWidth={2}>
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <path d="M16 2v4M8 2v4M3 10h18" />

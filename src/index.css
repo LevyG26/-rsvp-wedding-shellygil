@@ -149,20 +149,32 @@
   cursor: default;
 }
 
-.transition-strip {
-  background: #f4f3ef;
-  padding: 14px 0 18px;
+/* Overlaid directly on the bottom of the invitation image (the "first page")
+   instead of sitting in its own boxed strip below it - so it reads as part
+   of the invitation itself rather than a separate, visually disconnected UI
+   element with a flat white background. */
+.invite-card-wrap {
+  position: relative;
+}
+.scroll-cue-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 3.5%;
   text-align: center;
+  pointer-events: none;
 }
 .scroll-cue {
   font-family: Arial, sans-serif;
   font-size: 10.5px;
-  letter-spacing: 1px;
-  color: #6b6862;
-  margin: 0 0 8px;
+  letter-spacing: 1.5px;
+  color: #5c594f;
+  margin: 0 0 4px;
+  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.85), 0 0 6px rgba(255, 255, 255, 0.6);
 }
 .scroll-chevron {
   animation: bounce 1.6s infinite;
+  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.85));
 }
 @keyframes bounce {
   0%,
@@ -189,7 +201,16 @@
 .form-card .waze-btn {
   background: rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(3px);
-  border-color: rgba(60, 58, 52, 0.35);
+  border-color: rgba(60, 58, 52, 0.28);
+  padding: 9px 6px;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  font-size: 9.5px;
+  gap: 5px;
+}
+.form-card .waze-btn svg {
+  width: 16px;
+  height: 16px;
 }
 .waze-btn {
   flex: 1;
@@ -251,8 +272,8 @@
 .field label {
   display: block;
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
   text-transform: uppercase;
   color: #2b2924;
   margin: 0 0 3px;
@@ -260,13 +281,14 @@
   text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 1px rgba(255, 255, 255, 0.9);
 }
 /* Uppercase + wide Latin-style letter-spacing doesn't read well in Hebrew
-   (no letter-casing, and wide tracking makes the word look broken apart),
-   so RTL labels get their own, more prominent treatment instead. */
+   (no letter-casing, and wide tracking makes the word look broken apart), so
+   RTL labels get their own treatment - the same elegant serif as the rest of
+   the invitation, a lighter weight than before so it doesn't read as shouty. */
 [dir="rtl"] .field label {
   text-transform: none;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .form-card input[type="text"],
 .form-card input[type="tel"],
@@ -313,7 +335,7 @@
 .date-line {
   text-align: center;
   font-size: 15px;
-  font-weight: bold;
+  font-weight: 500;
   color: #2b2924;
   margin: 0 0 8px;
   letter-spacing: 0.5px;

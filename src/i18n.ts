@@ -3,11 +3,11 @@ export type Language = "en" | "he" | "fr";
 export const translations = {
   en: {
     // Sensitive public event details: replace names, date, venue, and notes before publishing.
-    names: "Bride & Groom",
+    names: "Shelly & Gil",
     subtitle: "are getting married",
     date: "Wedding date",
-    venueName: "Wedding venue",
-    venue: "Wedding venue address",
+    venueName: "Ronit Farm",
+    venue: "Ronit Farm",
     rsvpTitle: "RSVP",
     fullName: "Full Name",
     fullNameLettersOnly: "Please enter letters and spaces only.",
@@ -177,11 +177,11 @@ export const translations = {
   },
   he: {
     // Sensitive public event details: replace names, date, venue, and notes before publishing.
-    names: "החתן והכלה",
+    names: "שלי וגיל",
     subtitle: "מתחתנים",
     date: "תאריך החתונה",
-    venueName: "מקום האירוע",
-    venue: "כתובת מקום האירוע",
+    venueName: "חוות רונית",
+    venue: "חוות רונית",
     rsvpTitle: "אישור הגעה",
     fullName: "שם מלא",
     fullNameLettersOnly: "יש להזין אותיות ורווחים בלבד.",
@@ -352,11 +352,11 @@ export const translations = {
   },
   fr: {
     // Sensitive public event details: replace names, date, venue, and notes before publishing.
-    names: "Les mariés",
+    names: "Shelly & Gil",
     subtitle: "se marient",
     date: "Date du mariage",
-    venueName: "Lieu de l'événement",
-    venue: "Adresse du lieu",
+    venueName: "Ronit Farm",
+    venue: "Ronit Farm",
     rsvpTitle: "Confirmation de présence",
     fullName: "Nom complet",
     fullNameLettersOnly: "Veuillez saisir uniquement des lettres et des espaces.",
