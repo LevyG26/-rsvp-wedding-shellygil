@@ -9,6 +9,8 @@ import { isValidPhoneNumber } from '../utils/phoneNumbers';
 interface Props {
   lang: Language;
   linkedPhone?: string;
+  wazeUrl?: string;
+  googleCalendarUrl?: string;
 }
 
 const FULL_NAME_PATTERN = /^[\p{L}\p{M}\s]*$/u;
@@ -32,7 +34,7 @@ function formatDateLine(lang: Language, iso: string) {
   return `${datePart} · ${timePart}`;
 }
 
-export function RSVPForm({ lang, linkedPhone }: Props) {
+export function RSVPForm({ lang, linkedPhone, wazeUrl, googleCalendarUrl }: Props) {
   const t = translations[lang];
   const weddingDate = import.meta.env.VITE_EVENT_START_ISO || '2027-01-01T17:00:00';
   const dateLine = formatDateLine(lang, weddingDate);
@@ -237,6 +239,29 @@ export function RSVPForm({ lang, linkedPhone }: Props) {
           {isSubmitting ? '…' : t.submit}
         </button>
       </form>
+
+      {(wazeUrl || googleCalendarUrl) && (
+        <div className="waze-row">
+          {wazeUrl && (
+            <a className="waze-btn" href={wazeUrl} target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#5c594f" strokeWidth={2}>
+                <path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z" />
+                <circle cx="12" cy="10" r="2.5" />
+              </svg>
+              <span>{t.navigation}</span>
+            </a>
+          )}
+          {googleCalendarUrl && (
+            <a className="waze-btn" href={googleCalendarUrl} target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#5c594f" strokeWidth={2}>
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+              <span>{t.addToCalendar}</span>
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }

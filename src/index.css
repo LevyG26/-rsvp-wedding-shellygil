@@ -29,6 +29,21 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
 }
 
+/* On real phones there's no reason to inset the invitation inside a card -
+   using the full screen width means the text baked into the invite images
+   renders as large as possible, instead of being shrunk by the surrounding
+   padding/frame that only makes sense as a desktop "phone mockup" affect. */
+@media (max-width: 480px) {
+  .site-backdrop {
+    padding: 0;
+  }
+  .phone {
+    max-width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
 [dir="rtl"] .form-card,
 [dir="rtl"] .rsvp-title {
   font-family: "Frank Ruhl Libre", "Times New Roman", serif;
@@ -39,25 +54,28 @@
 }
 
 .music-btn {
-  position: absolute;
-  z-index: 10;
-  bottom: 14px;
-  left: 14px;
-  width: 32px;
-  height: 32px;
+  /* Fixed (not absolute) so it stays visible in the same spot on screen no
+     matter how far the guest has scrolled through the invitation. */
+  position: fixed;
+  z-index: 50;
+  bottom: 18px;
+  left: 18px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: 1px solid rgba(120, 117, 108, 0.25);
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(3px);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(92, 89, 79, 0.75);
+  color: rgba(92, 89, 79, 0.85);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
 }
 .music-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
 }
 .music-btn .icon-playing {
   display: none;
@@ -160,6 +178,19 @@
   gap: 12px;
   padding: 0 22px;
 }
+/* Placed below the RSVP submit button, over the same textured background
+   image as the rest of the form - so the buttons get a translucent/blurred
+   treatment (like .submit-btn) instead of an opaque white card that would
+   sit awkwardly on top of the photo. */
+.form-card .waze-row {
+  margin-top: 16px;
+  padding: 0;
+}
+.form-card .waze-btn {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(3px);
+  border-color: rgba(60, 58, 52, 0.35);
+}
 .waze-btn {
   flex: 1;
   display: flex;
@@ -191,11 +222,11 @@
 }
 
 .rsvp-wrap {
-  background-size: 100% auto;
+  background-size: 118% auto;
   background-repeat: no-repeat;
   background-position: top center;
   background-color: #d3d2ce;
-  padding: 44% 26% 12px;
+  padding: 44% 26% 24px;
   display: flex;
   justify-content: center;
 }
@@ -227,6 +258,15 @@
   margin: 0 0 3px;
   text-align: center;
   text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 1px rgba(255, 255, 255, 0.9);
+}
+/* Uppercase + wide Latin-style letter-spacing doesn't read well in Hebrew
+   (no letter-casing, and wide tracking makes the word look broken apart),
+   so RTL labels get their own, more prominent treatment instead. */
+[dir="rtl"] .field label {
+  text-transform: none;
+  letter-spacing: 0.5px;
+  font-size: 15px;
+  font-weight: 700;
 }
 .form-card input[type="text"],
 .form-card input[type="tel"],
@@ -279,20 +319,25 @@
   letter-spacing: 0.5px;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
+/* Two-column grid (circle | label) instead of stacked flex rows, so both
+   radio circles land in the same column and line up vertically - before,
+   each option centered its own circle+text as a unit, so the circle drifted
+   left/right depending on how long that option's label happened to be. */
 .radio-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  row-gap: 6px;
+  column-gap: 10px;
 }
 .radio-option {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  display: contents;
   font-size: 15px;
   font-weight: 400;
   color: #2b2924;
   cursor: pointer;
+}
+.radio-option span {
   padding: 2px 4px;
 }
 .radio-option input {
@@ -331,9 +376,10 @@
   background: rgba(93, 90, 83, 0.1);
 }
 .stepper span {
-  font-size: 17px;
+  font-size: 24px;
+  font-weight: 700;
   color: #2b2924;
-  min-width: 20px;
+  min-width: 30px;
   text-align: center;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
