@@ -365,27 +365,46 @@
   margin: 4px 0 0;
 }
 /* Sits first, above the name field, so guests see when/where before being
-   asked anything - styled like a small plain-sans-serif badge (same family
-   as the scroll-cue and field labels) so it reads clearly at a glance rather
-   than blending into the decorative serif used elsewhere on the page. */
+   asked anything. Date and time are two separate lines now instead of one
+   run-on string - the date reads as a plain caption, the time gets its own
+   small bordered badge (same family as the scroll-cue pill) since it's the
+   single most important number on the page. */
 .date-line {
-  text-align: center;
-  font-family: Arial, sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  color: #2b2924;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
   margin: 0 0 8px;
-  padding-bottom: 6px;
-  letter-spacing: 0.3px;
-  border-bottom: 1px solid rgba(60, 58, 52, 0.25);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(60, 58, 52, 0.22);
+}
+.date-line-date {
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.4px;
+  color: #4a453c;
+  margin: 0;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
-/* A pair of pill buttons instead of small circular radio dots + text - the
-   native radio input is hidden (still present for real form semantics/
-   keyboard support, the wrapping <label> toggles it on click same as
-   before), and the whole label becomes the clickable "button", filling in
-   solid when selected. Reads faster than a tiny checkbox and feels more like
-   a deliberate choice. */
+.date-line-time {
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #2b2924;
+  margin: 0;
+  padding: 3px 14px;
+  border: 1px solid rgba(60, 58, 52, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.4);
+}
+/* A pair of small rectangular buttons - same family as .submit-btn and
+   .waze-btn (translucent background, thin border, uppercase small-caps
+   letter-spacing) rather than a rounded pill or a tiny circular radio dot,
+   so all the "tap this" controls on the page share one consistent look. The
+   native radio input is hidden but still present for real form semantics
+   and keyboard support - the wrapping <label> toggles it same as before. */
 .radio-row {
   display: flex;
   justify-content: center;
@@ -393,18 +412,23 @@
 }
 .radio-option {
   position: relative;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: Arial, sans-serif;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
   color: #2b2924;
   cursor: pointer;
-  padding: 8px 20px;
-  border: 1.5px solid rgba(60, 58, 52, 0.45);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
+  padding: 10px 6px;
+  border: 1px solid rgba(60, 58, 52, 0.5);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(3px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .radio-option span {
@@ -422,6 +446,7 @@
   background: #2b2924;
   border-color: #2b2924;
   color: #f5f4f0;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
 }
 .stepper {
   display: flex;

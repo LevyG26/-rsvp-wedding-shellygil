@@ -18,9 +18,14 @@ interface Props {
 const FULL_NAME_PATTERN = /^[\p{L}\p{M}\s]*$/u;
 const MAX_GUESTS = 20;
 
-function formatDateLine(lang: Language, iso: string) {
+interface DateLineParts {
+  datePart: string;
+  timePart: string;
+}
+
+function formatDateLine(lang: Language, iso: string): DateLineParts | null {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return null;
   const locale = lang === 'fr' ? 'fr-FR' : lang === 'en' ? 'en-US' : 'he-IL';
   const datePart = new Intl.DateTimeFormat(locale, {
     weekday: 'long',
@@ -33,7 +38,7 @@ function formatDateLine(lang: Language, iso: string) {
     minute: '2-digit',
     hour12: false,
   }).format(date);
-  return `${datePart} · ${timePart}`;
+  return { datePart, timePart };
 }
 
 export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
@@ -141,7 +146,12 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
       <p className="rsvp-title">{t.rsvpTitle}</p>
 
       <form onSubmit={handleSubmit}>
-        {dateLine && <p className="date-line">{dateLine}</p>}
+        {dateLine && (
+          <div className="date-line">
+            <p className="date-line-date">{dateLine.datePart}</p>
+            <p className="date-line-time">{dateLine.timePart}</p>
+          </div>
+        )}
 
         {/* Name */}
         <div className="field">
