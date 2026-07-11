@@ -214,12 +214,7 @@
   padding: 0;
 }
 .form-card .waze-btn {
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(3px);
-  border-color: rgba(60, 58, 52, 0.28);
   padding: 6px 5px;
-  border-radius: 6px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   font-size: 9px;
   gap: 3px;
 }
@@ -365,72 +360,62 @@
   margin: 4px 0 0;
 }
 /* Sits first, above the name field, so guests see when/where before being
-   asked anything. Date and time are two separate lines now instead of one
-   run-on string - the date reads as a plain caption, the time gets its own
-   small bordered badge (same family as the scroll-cue pill) since it's the
-   single most important number on the page. */
+   asked anything. Date and time are one plain line again, single consistent
+   style - no special box around just the time, since having only one part
+   framed while the other wasn't read as an inconsistency, not emphasis. */
 .date-line {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
+  text-align: center;
   margin: 0 0 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(60, 58, 52, 0.22);
 }
-.date-line-date {
+.date-line-date,
+.date-line-time {
   font-family: Arial, sans-serif;
-  font-size: 11px;
-  font-weight: 400;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0.4px;
-  color: #4a453c;
+  color: #2b2924;
   margin: 0;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
-.date-line-time {
+/* A shared look for every rectangular "tap this" control on the page -
+   submit, navigate, add-to-calendar, and the attendance choice - so they all
+   read as one consistent family: translucent, thin border, small uppercase
+   label. Kept as one combined rule instead of four near-duplicate ones that
+   drift apart every time one gets tweaked; each control still sets its own
+   font-size/padding below where it genuinely needs to differ. */
+.submit-btn,
+.waze-btn,
+.radio-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: Arial, sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 1px;
   color: #2b2924;
-  margin: 0;
-  padding: 3px 14px;
-  border: 1px solid rgba(60, 58, 52, 0.35);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  border: 1px solid rgba(60, 58, 52, 0.32);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(3px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-/* A pair of small rectangular buttons - same family as .submit-btn and
-   .waze-btn (translucent background, thin border, uppercase small-caps
-   letter-spacing) rather than a rounded pill or a tiny circular radio dot,
-   so all the "tap this" controls on the page share one consistent look. The
-   native radio input is hidden but still present for real form semantics
-   and keyboard support - the wrapping <label> toggles it same as before. */
+/* The radio pair spans the full card width edge-to-edge (flex:1 each), same
+   as the nav/calendar row and the submit button below it - a fixed narrower
+   width made this row look inset compared to everything else on the page. */
 .radio-row {
   display: flex;
-  justify-content: center;
   gap: 10px;
 }
 .radio-option {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 92px;
-  box-sizing: border-box;
-  font-family: Arial, sans-serif;
+  flex: 1;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: #2b2924;
-  cursor: pointer;
   padding: 9px 4px;
-  border: 1px solid rgba(60, 58, 52, 0.28);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(3px);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .radio-option span {
   padding: 0;
@@ -484,18 +469,12 @@
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
 .submit-btn {
-  display: block;
   width: 100%;
   margin-top: 6px;
   padding: 9px;
   font-size: 13px;
   letter-spacing: 2px;
-  background: rgba(255, 255, 255, 0.3);
-  color: #2b2924;
-  border: 1px solid rgba(60, 58, 52, 0.5);
-  cursor: pointer;
   text-transform: uppercase;
-  backdrop-filter: blur(3px);
   font-family: inherit;
 }
 .submit-btn:disabled {
