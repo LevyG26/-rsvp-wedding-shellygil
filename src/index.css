@@ -98,7 +98,7 @@
 .cover-lang {
   position: absolute;
   left: 50%;
-  bottom: 5%;
+  bottom: 11%;
   transform: translateX(-50%);
   display: flex;
   gap: 0;
