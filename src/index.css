@@ -161,20 +161,35 @@
   left: 0;
   right: 0;
   bottom: 3.5%;
-  text-align: center;
+  display: flex;
+  justify-content: center;
   pointer-events: none;
+}
+/* A small translucent pill instead of plain text directly on the lace
+   texture - the border is busy enough that plain text (even with a white
+   halo) was getting lost in it; a soft "badge" lifts it just enough to
+   read as an intentional call-to-action rather than blending away. */
+.scroll-cue-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.1);
 }
 .scroll-cue {
   font-family: Arial, sans-serif;
-  font-size: 10.5px;
-  letter-spacing: 1.5px;
-  color: #5c594f;
-  margin: 0 0 4px;
-  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.85), 0 0 6px rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.3px;
+  color: #4a453c;
+  margin: 0;
 }
 .scroll-chevron {
   animation: bounce 1.6s infinite;
-  filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.85));
 }
 @keyframes bounce {
   0%,
@@ -242,8 +257,18 @@
   flex-shrink: 0;
 }
 
+/* The oval lace frame baked into rsvp-background.jpg sits at a fixed
+   position within the image (roughly 26%-73% horizontally, starting ~44%
+   from the top) - the padding below is deliberately matched to that, so the
+   form content lands inside the oval opening instead of overlapping the
+   ornate crown/border artwork. Scaling the background up (as tried
+   previously, to make the image feel bigger) throws this alignment off,
+   since the padding box stays fixed while the oval's on-screen position
+   shifts - that's what pushed the title under the crown and let content
+   spill past the frame. Keeping this at 100% is what keeps everything
+   registered inside the oval. */
 .rsvp-wrap {
-  background-size: 126% auto;
+  background-size: 100% auto;
   background-repeat: no-repeat;
   background-position: top center;
   background-color: #d3d2ce;
@@ -289,6 +314,14 @@
   letter-spacing: 0.3px;
   font-size: 15px;
   font-weight: 500;
+}
+/* Only the two text-input fields (name/phone) get a right-aligned label
+   sitting snug above the input - the attendance/guest-count fields keep
+   their centered label since the controls beneath them (radio row, stepper)
+   are themselves centered as a group, not left/right aligned. */
+[dir="rtl"] .field:has(input) label {
+  text-align: right;
+  padding-inline-end: 2px;
 }
 .form-card input[type="text"],
 .form-card input[type="tel"],

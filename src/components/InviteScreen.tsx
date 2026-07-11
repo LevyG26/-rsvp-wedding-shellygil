@@ -37,19 +37,21 @@ export function InviteScreen({ lang, linkedPhone }: Props) {
       <div className="invite-card-wrap">
         <img className="card-img" src={cardImage} alt={`${t.names} — ${t.venueName}, ${t.venue}`} />
         <div className="scroll-cue-overlay">
-          <p className="scroll-cue">{t.scrollCue}</p>
-          <svg
-            className="scroll-chevron"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#6b6862"
-            strokeWidth={2}
-            style={{ display: 'block', margin: '0 auto' }}
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
+          <div className="scroll-cue-pill">
+            <p className="scroll-cue">{t.scrollCue}</p>
+            <svg
+              className="scroll-chevron"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#4a453c"
+              strokeWidth={2}
+              style={{ display: 'block' }}
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </div>
         </div>
       </div>
 
