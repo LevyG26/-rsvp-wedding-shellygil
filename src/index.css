@@ -412,10 +412,10 @@
 }
 .radio-option {
   position: relative;
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 88px;
   font-family: Arial, sans-serif;
   font-size: 11px;
   font-weight: 700;
@@ -423,9 +423,9 @@
   text-transform: uppercase;
   color: #2b2924;
   cursor: pointer;
-  padding: 10px 6px;
+  padding: 10px 10px;
   border: 1px solid rgba(60, 58, 52, 0.5);
-  border-radius: 8px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.3);
   backdrop-filter: blur(3px);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
