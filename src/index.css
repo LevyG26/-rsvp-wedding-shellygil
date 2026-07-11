@@ -1,0 +1,424 @@
+@import url("https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400;500;700;900&family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Frank Ruhl Libre", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Frank Ruhl Libre", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Guest-facing invitation site — matches the approved mockup pixel-for-pixel */
+/* ---------------------------------------------------------------------- */
+
+.site-backdrop {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 12px;
+  background: #e8e8e5;
+}
+
+.phone {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  background: #f4f3ef;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+}
+
+[dir="rtl"] .form-card,
+[dir="rtl"] .rsvp-title {
+  font-family: "Frank Ruhl Libre", "Times New Roman", serif;
+}
+[dir="ltr"] .form-card,
+[dir="ltr"] .rsvp-title {
+  font-family: "Playfair Display", Georgia, serif;
+}
+
+.music-btn {
+  position: absolute;
+  z-index: 10;
+  bottom: 14px;
+  left: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 117, 108, 0.25);
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(3px);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(92, 89, 79, 0.75);
+}
+.music-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.music-btn .icon-playing {
+  display: none;
+}
+.music-btn.playing .icon-muted {
+  display: none;
+}
+.music-btn.playing .icon-playing {
+  display: block;
+}
+
+.card-img {
+  width: 100%;
+  display: block;
+}
+
+.cover-wrap {
+  position: relative;
+}
+.cover-lang {
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0;
+}
+.cover-lang a {
+  font-family: Georgia, serif;
+  letter-spacing: 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border: 1px solid rgba(120, 117, 108, 0.55);
+  background: rgba(255, 255, 255, 0.55);
+  color: #5c594f;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+.cover-lang a:first-child {
+  border-radius: 3px 0 0 3px;
+  border-inline-end: none;
+}
+.cover-lang a:last-child {
+  border-radius: 0 3px 3px 0;
+}
+
+.invite-lang {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 0 2px;
+  background: #f4f3ef;
+  font-family: Arial, sans-serif;
+}
+.invite-lang a {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #9a978d;
+  cursor: pointer;
+  text-decoration: none;
+}
+.invite-lang a.active {
+  color: #5c594f;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.invite-lang .sep {
+  color: #c7c4ba;
+  cursor: default;
+}
+
+.transition-strip {
+  background: #f4f3ef;
+  padding: 14px 0 18px;
+  text-align: center;
+}
+.scroll-cue {
+  font-family: Arial, sans-serif;
+  font-size: 10.5px;
+  letter-spacing: 1px;
+  color: #6b6862;
+  margin: 0 0 8px;
+}
+.scroll-chevron {
+  animation: bounce 1.6s infinite;
+}
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(4px);
+  }
+}
+.waze-row {
+  display: flex;
+  gap: 12px;
+  padding: 0 22px;
+}
+.waze-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: Arial, sans-serif;
+  font-size: 10.5px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #5c594f;
+  border: 1px solid #c9c6bc;
+  padding: 14px 8px;
+  border-radius: 8px;
+  text-decoration: none;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.waze-btn:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+.waze-btn svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.rsvp-wrap {
+  background-size: 100% auto;
+  background-repeat: no-repeat;
+  background-position: top center;
+  background-color: #d3d2ce;
+  padding: 44% 26% 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.form-card {
+  width: 100%;
+  max-width: 200px;
+  padding: 8px 0 0;
+}
+
+.rsvp-title {
+  text-align: center;
+  font-size: 20px;
+  letter-spacing: 4px;
+  color: #2f2d28;
+  margin: 0 0 10px;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
+}
+.field {
+  margin-bottom: 7px;
+}
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #2b2924;
+  margin: 0 0 3px;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 1px rgba(255, 255, 255, 0.9);
+}
+.form-card input[type="text"],
+.form-card input[type="tel"],
+.form-card textarea {
+  display: block;
+  width: 100%;
+  padding: 5px 4px;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+  border: none;
+  outline: none;
+  border-bottom: 1.5px solid rgba(60, 58, 52, 0.55);
+  background: transparent;
+  color: #2b2924;
+  font-family: inherit;
+  resize: none;
+}
+.form-card input[type="text"]:focus,
+.form-card input[type="tel"]:focus,
+.form-card textarea:focus {
+  border-bottom-color: #2b2924;
+}
+.form-card input.has-error,
+.form-card textarea.has-error {
+  border-bottom-color: #b3453f;
+}
+.helper-text {
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  color: #6b6862;
+  text-align: center;
+  margin: 4px 0 0;
+  line-height: 1.5;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+}
+.error-text {
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  color: #b3453f;
+  text-align: center;
+  margin: 4px 0 0;
+}
+.date-line {
+  text-align: center;
+  font-size: 15px;
+  font-weight: bold;
+  color: #2b2924;
+  margin: 0 0 8px;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+}
+.radio-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.radio-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 400;
+  color: #2b2924;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.radio-option input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #2b2924;
+}
+.radio-option.selected {
+  font-weight: 700;
+}
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 2px 0;
+}
+.stepper button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(60, 58, 52, 0.55);
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  font-size: 16px;
+  color: #2b2924;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  line-height: 1;
+}
+.stepper button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.stepper button:active:not(:disabled) {
+  background: rgba(93, 90, 83, 0.1);
+}
+.stepper span {
+  font-size: 17px;
+  color: #2b2924;
+  min-width: 20px;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+}
+.submit-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  background: rgba(255, 255, 255, 0.3);
+  color: #2b2924;
+  border: 1px solid rgba(60, 58, 52, 0.5);
+  cursor: pointer;
+  text-transform: uppercase;
+  backdrop-filter: blur(3px);
+  font-family: inherit;
+}
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.photos-link {
+  display: block;
+  text-align: center;
+  margin-top: 16px;
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #6b6862;
+  text-decoration: none;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+}
+.photos-link:hover {
+  color: #2b2924;
+}
+.thankyou-card {
+  text-align: center;
+  padding: 20px 0;
+}
+.thankyou-card img {
+  max-width: 160px;
+  margin: 16px auto 0;
+  display: block;
+}
+
+.wedding-silk-background {
+  background-color: #f8f9fa;
+  background-image:
+    radial-gradient(130% 110% at 100% 100%, rgba(169, 188, 199, 0.62) 0%, rgba(169, 188, 199, 0.34) 34%, rgba(169, 188, 199, 0.14) 56%, rgba(169, 188, 199, 0) 80%), radial-gradient(98% 82% at 0% 100%, rgba(169, 188, 199, 0.48) 0%, rgba(169, 188, 199, 0.22) 38%, rgba(169, 188, 199, 0) 74%), radial-gradient(92% 72% at 100% 0%, rgba(187, 203, 214, 0.3) 0%, rgba(187, 203, 214, 0.12) 46%, rgba(187, 203, 214, 0) 78%), linear-gradient(160deg, #ffffff 0%, #f8f9fa 40%, #e4edf3 72%, #f2f7fa 100%);
+  box-shadow: inset 0 0 160px rgba(139, 160, 176, 0.18);
+}
+
+.wedding-silk-background::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.34) 0px, rgba(255, 255, 255, 0.34) 1px, rgba(255, 255, 255, 0) 1px, rgba(255, 255, 255, 0) 11px), repeating-linear-gradient(-65deg, rgba(108, 128, 142, 0.18) 0px, rgba(108, 128, 142, 0.18) 1px, rgba(108, 128, 142, 0) 1px, rgba(108, 128, 142, 0) 13px);
+  mix-blend-mode: soft-light;
+  opacity: 0.88;
+}
+
+.wedding-silk-background::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(38% 34% at 16% 14%, rgba(169, 188, 199, 0.42) 0%, rgba(169, 188, 199, 0.16) 56%, rgba(169, 188, 199, 0) 100%), radial-gradient(42% 36% at 86% 84%, rgba(169, 188, 199, 0.38) 0%, rgba(169, 188, 199, 0.14) 58%, rgba(169, 188, 199, 0) 100%);
+  filter: blur(6px);
+  opacity: 0.9;
+}
+
+.wedding-foliage-shadow {
+  opacity: 0.36;
+  filter: blur(1px);
+  mix-blend-mode: multiply;
+  background-image: radial-gradient(500px 280px at 10% 16%, rgba(76, 102, 97, 0.24) 0%, rgba(76, 102, 97, 0.12) 36%, rgba(76, 102, 97, 0) 72%), radial-gradient(420px 230px at 86% 82%, rgba(76, 102, 97, 0.2) 0%, rgba(76, 102, 97, 0.1) 35%, rgba(76, 102, 97, 0) 72%), radial-gradient(320px 180px at 92% 18%, rgba(76, 102, 97, 0.16) 0%, rgba(76, 102, 97, 0.06) 42%, rgba(76, 102, 97, 0) 76%), linear-gradient(108deg, rgba(76, 102, 97, 0.12) 0%, rgba(76, 102, 97, 0) 36%);
+}
+
+.wedding-paper-grain {
+  opacity: 0.34;
+  mix-blend-mode: multiply;
+  background-image: radial-gradient(circle at 1px 1px, rgba(64, 79, 92, 0.16) 0.75px, transparent 0.95px), radial-gradient(circle at 3px 4px, rgba(255, 255, 255, 0.34) 0.65px, transparent 0.85px), radial-gradient(circle at 5px 2px, rgba(64, 79, 92, 0.1) 0.55px, transparent 0.75px);
+  background-size:
+    4px 4px,
+    6px 6px,
+    8px 8px;
+}

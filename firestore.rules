@@ -1,0 +1,178 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} { allow read, write: if false; }
+
+    // Admin allowlist: paste in the Firebase Auth UID(s) of the account(s)
+    // you created in Authentication > Users (Project settings, not a secret -
+    // it's just an identifier). Add a comma-separated entry per admin.
+    // Example: return request.auth != null && request.auth.uid in [
+    //   'AbCdEf123456...',
+    //   'GhIjKl789012...'
+    // ];
+    function isAdmin() {
+      return request.auth != null && request.auth.uid in [
+        'dE3U6LujIjhUrv2jJkzFE2wRwfA3'
+      ];
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidLinkedPhone(phone) {
+      return phone is string &&
+             phone.size() >= 7 &&
+             phone.size() <= 20 &&
+             phone.matches('^[0-9]{7,20}$');
+    }
+
+    function incoming() { return request.resource.data; }
+
+    function isValidGuestSnapshotField(value) {
+      return value is string && value.size() > 0 && value.size() <= 120;
+    }
+
+    function isValidRSVP(data) {
+      return data.keys().hasAll(['fullName', 'isAttending', 'guestsCount', 'createdAt']) &&
+             (data.keys().size() == 4 || data.keys().size() == 5 || data.keys().size() == 6 || data.keys().size() == 7) &&
+             data.fullName is string && data.fullName.size() <= 100 &&
+             data.isAttending is bool &&
+             data.guestsCount is int && data.guestsCount >= 1 && data.guestsCount <= 10 &&
+             data.createdAt == request.time &&
+             (!('lang' in data) || (data.lang is string && data.lang.size() <= 10)) &&
+             (!('note' in data) || (data.note is string && data.note.size() <= 500)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20 && data.phone.matches('^[0-9+()\\-\\s]{7,20}$')));
+    }
+
+    match /rsvps/{rsvpId} {
+      // Only signed-in admins (see isAdmin() above) can read the guest list -
+      // this is what actually protects guest privacy, independent of the
+      // admin login screen in the app.
+      allow read: if isAdmin();
+      // Anyone can submit an RSVP - this must stay public for guests.
+      allow create: if isValidId(rsvpId) && isValidRSVP(incoming());
+      // Dashboard updates (group assignment, guest count) are admin-only.
+      allow update: if isAdmin() &&
+                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount']) &&
+                       (!incoming().diff(resource.data).affectedKeys().hasAny(['group']) ||
+                         (incoming().group is string && incoming().group.size() <= 60)) &&
+                       (!incoming().diff(resource.data).affectedKeys().hasAny(['guestsCount']) ||
+                         (incoming().guestsCount is int &&
+                           incoming().guestsCount >= 1 &&
+                           incoming().guestsCount <= 10));
+      // Deletes are admin-only.
+      allow delete: if isAdmin();
+    }
+
+    function isValidInviteLinkVisit(data, phoneId) {
+      return data.keys().hasAll(['phone', 'lang', 'openedAt']) &&
+             data.keys().hasOnly(['phone', 'lang', 'openedAt', 'guestName', 'guestGroup']) &&
+             data.phone == phoneId &&
+             isValidLinkedPhone(data.phone) &&
+             data.lang is string &&
+             data.lang.size() <= 10 &&
+             data.openedAt == request.time &&
+             (!('guestName' in data) || isValidGuestSnapshotField(data.guestName)) &&
+             (!('guestGroup' in data) || isValidGuestSnapshotField(data.guestGroup));
+    }
+
+    function hasBaseListGuestName(phoneId) {
+      return ('name' in get(/databases/$(database)/documents/baseList/$(phoneId)).data &&
+              get(/databases/$(database)/documents/baseList/$(phoneId)).data.name is string &&
+              get(/databases/$(database)/documents/baseList/$(phoneId)).data.name.size() > 0) ||
+             ('Name' in get(/databases/$(database)/documents/baseList/$(phoneId)).data &&
+              get(/databases/$(database)/documents/baseList/$(phoneId)).data.Name is string &&
+              get(/databases/$(database)/documents/baseList/$(phoneId)).data.Name.size() > 0);
+    }
+
+    function matchesBaseListGuestName(data, phoneId) {
+      return ('name' in get(/databases/$(database)/documents/baseList/$(phoneId)).data &&
+              data.guestName == get(/databases/$(database)/documents/baseList/$(phoneId)).data.name) ||
+             ('Name' in get(/databases/$(database)/documents/baseList/$(phoneId)).data &&
+              data.guestName == get(/databases/$(database)/documents/baseList/$(phoneId)).data.Name);
+    }
+
+    function hasBaseListGuestGroup(phoneId) {
+      return ('group' in get(/databases/$(database)/documents/baseList/$(phoneId)).data &&
+              get(/databases/$(database)/documents/baseList/$(phoneId)).data.group is string &&
+              get(/databases/$(database)/documents/baseList/$(phoneId)).data.group.size() > 0) ||
+             ('Group' in get(/databases/$(database)/documents/baseList/$(phoneId)).data &&
+              get(/databases/$(database)/documents/baseList/$(phoneId)).data.Group is string &&
+              get(/databases/$(database)/documents/baseList/$(phoneId)).data.Group.size() > 0);
+    }
+
+    function matchesBaseListGuestGroup(data, phoneId) {
+      return 'guestGroup' in data &&
+             (('group' in get(/databases/$(database)/documents/baseList/$(phoneId)).data &&
+               data.guestGroup == get(/databases/$(database)/documents/baseList/$(phoneId)).data.group) ||
+              ('Group' in get(/databases/$(database)/documents/baseList/$(phoneId)).data &&
+               data.guestGroup == get(/databases/$(database)/documents/baseList/$(phoneId)).data.Group));
+    }
+
+    function matchesBaseListGuestSnapshot(data, phoneId) {
+      return exists(/databases/$(database)/documents/baseList/$(phoneId)) &&
+             hasBaseListGuestName(phoneId) &&
+             matchesBaseListGuestName(data, phoneId) &&
+             ((hasBaseListGuestGroup(phoneId) && matchesBaseListGuestGroup(data, phoneId)) ||
+              (!hasBaseListGuestGroup(phoneId) && !('guestGroup' in data)));
+    }
+
+    function isValidInviteLinkVisitGuestSnapshotUpdate(data, oldData, phoneId) {
+      return data.diff(oldData).affectedKeys().hasOnly(['guestName', 'guestGroup']) &&
+             data.keys().hasAll(['phone', 'lang', 'openedAt', 'guestName']) &&
+             data.keys().hasOnly(['phone', 'lang', 'openedAt', 'guestName', 'guestGroup']) &&
+             data.phone == oldData.phone &&
+             data.phone == phoneId &&
+             data.lang == oldData.lang &&
+             data.openedAt == oldData.openedAt &&
+             isValidLinkedPhone(data.phone) &&
+             isValidGuestSnapshotField(data.guestName) &&
+             (!('guestGroup' in data) || isValidGuestSnapshotField(data.guestGroup)) &&
+             matchesBaseListGuestSnapshot(data, phoneId);
+    }
+
+    match /inviteLinkVisits/{phoneId} {
+      // Only admins can list who opened their invite link (contains guest names/phones).
+      allow read: if isAdmin();
+      // Recording that a guest opened their personal invite link must stay public
+      // (it happens before the guest is authenticated in any way).
+      allow create: if isValidId(phoneId) && isValidInviteLinkVisit(incoming(), phoneId);
+      allow update: if isValidId(phoneId) &&
+                    (isValidInviteLinkVisit(incoming(), phoneId) ||
+                     (isAdmin() && isValidInviteLinkVisitGuestSnapshotUpdate(incoming(), resource.data, phoneId)));
+      allow delete: if isAdmin() && isValidId(phoneId) && isValidLinkedPhone(phoneId);
+    }
+
+    match /baseList/{phoneId} {
+      allow get: if isValidLinkedPhone(phoneId);
+      allow list, create, update, delete: if false;
+    }
+
+    // Full invite roster (side/category/name/count/known response), imported
+    // from the couple's master guest-list spreadsheet and/or maintained
+    // directly in the dashboard. Contains guest PII, so it's admin-only
+    // for both reads and writes.
+    function isValidGuestRosterEntry(data) {
+      return data.keys().hasAll(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt']) &&
+             data.keys().hasOnly(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt']) &&
+             data.side is string && data.side.size() <= 60 &&
+             data.category is string && data.category.size() <= 60 &&
+             data.firstName is string && data.firstName.size() <= 60 &&
+             data.lastName is string && data.lastName.size() <= 60 &&
+             (data.firstName.size() > 0 || data.lastName.size() > 0) &&
+             data.invitedCount is int && data.invitedCount >= 1 && data.invitedCount <= 30 &&
+             (data.knownResponse == null || data.knownResponse == 'yes' || data.knownResponse == 'no') &&
+             data.updatedAt == request.time;
+    }
+
+    match /guestRoster/{entryId} {
+      // Only signed-in admins can read, add, edit, or remove roster entries -
+      // the dashboard is the source of truth for this collection.
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidId(entryId) && isValidGuestRosterEntry(incoming());
+      allow update: if isAdmin() && isValidGuestRosterEntry(incoming());
+      allow delete: if isAdmin();
+    }
+  }
+}

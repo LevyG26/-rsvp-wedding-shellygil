@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "RSVP": {
+      "title": "RSVP",
+      "description": "A guest's RSVP submission",
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string",
+          "description": "Guest's full name"
+        },
+        "isAttending": {
+          "type": "boolean",
+          "description": "Whether the guest is attending"
+        },
+        "guestsCount": {
+          "type": "number",
+          "description": "Number of guests (including the person RSVPing)"
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional note from the guest"
+        },
+        "lang": {
+          "type": "string",
+          "description": "The language the guest used to RSVP"
+        },
+        "createdAt": {
+          "type": "timestamp",
+          "description": "Time the RSVP was submitted"
+        }
+      },
+      "required": ["fullName", "isAttending", "guestsCount", "createdAt"]
+    }
+  },
+  "firestore": {
+    "rsvps/{rsvpId}": {
+      "schema": "RSVP",
+      "description": "Collection of all guest RSVPs"
+    }
+  }
+}

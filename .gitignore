@@ -1,0 +1,13 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+baseList.json
+firebase-applet-config.json
+service-account*.json
+
+.vercel

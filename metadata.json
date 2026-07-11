@@ -1,0 +1,7 @@
+{
+  "name": "RSVP-Wedding",
+  "description": "A beautiful, responsive multi-language wedding RSVP website.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
