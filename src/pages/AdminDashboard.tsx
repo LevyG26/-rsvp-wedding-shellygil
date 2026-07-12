@@ -13,7 +13,6 @@ import {
     Trash2,
     UserCheck,
     Users,
-    UsersRound,
     UserX,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -213,8 +212,9 @@ export function AdminDashboard() {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isDeletingSelected, setIsDeletingSelected] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    // Kept only for the Excel export summary sheet, which still includes it -
+    // no longer editable or shown anywhere in the dashboard UI itself.
     const [plannedGuests, setPlannedGuests] = useState(0);
-    const [plannedGuestsInput, setPlannedGuestsInput] = useState('0');
     const [activeResponseHour, setActiveResponseHour] = useState<number | null>(null);
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'createdAt', direction: 'desc' });
     const [isAuthChecked, setIsAuthChecked] = useState(false);
@@ -248,7 +248,6 @@ export function AdminDashboard() {
         }
 
         setPlannedGuests(parsed);
-        setPlannedGuestsInput(String(parsed));
     }, []);
 
     // Firebase Auth state resolves asynchronously. We wait for the first
@@ -360,7 +359,6 @@ export function AdminDashboard() {
 
     const funnelSteps = useMemo(() => {
         const steps = [
-            { label: t.adminPlannedGuestsTitle, value: plannedGuests },
             { label: t.adminTotalSubmissions, value: records.length },
             { label: t.adminAttendingCount, value: attendingCount },
             { label: t.adminNotAttendingCount, value: notAttendingCount },
@@ -372,7 +370,7 @@ export function AdminDashboard() {
             ...step,
             percent: (step.value / maxValue) * 100,
         }));
-    }, [plannedGuests, records.length, attendingCount, notAttendingCount, t.adminPlannedGuestsTitle, t.adminTotalSubmissions, t.adminAttendingCount, t.adminNotAttendingCount]);
+    }, [records.length, attendingCount, notAttendingCount, t.adminTotalSubmissions, t.adminAttendingCount, t.adminNotAttendingCount]);
 
     const hourlyResponses = useMemo(() => {
         const responsesByHour = Array.from({ length: 24 }, () => 0);
@@ -399,11 +397,6 @@ export function AdminDashboard() {
         const count = Math.max(...hourlyResponses);
         return { hour: hourlyResponses.indexOf(count), count };
     }, [hourlyResponses]);
-
-    const attendanceProgressPercentage = plannedGuests > 0
-        ? (attendingCount / plannedGuests) * 100
-        : 0;
-    const attendanceProgressDegrees = Math.min(attendanceProgressPercentage, 100) * 3.6;
 
     const groupDistributionData = useMemo(() => {
         const counts = new Map<string, number>();
@@ -665,10 +658,15 @@ export function AdminDashboard() {
     // itself: linkGuestRosterWithRsvps only ever writes an entry that's
     // actually different, so a second pass after its own write finds nothing
     // left to change and quietly stops.
+    //
+    // Deliberately does NOT bail out when records.length === 0 - deleting
+    // the last (or only) linked RSVP still needs this to run so its revert
+    // pass can flip that roster entry back to "not yet responded". Only
+    // guestRoster being empty means there's truly nothing to do.
     const isAutoLinkingRosterRef = useRef(false);
     useEffect(() => {
         if (!isAuthChecked || !isSignedIn) return;
-        if (records.length === 0 || guestRoster.length === 0) return;
+        if (guestRoster.length === 0) return;
         if (isAutoLinkingRosterRef.current) return;
 
         isAutoLinkingRosterRef.current = true;
@@ -944,23 +942,6 @@ export function AdminDashboard() {
         }
     };
 
-    const handleSetPlannedGuests = () => {
-        const parsed = Number.parseInt(plannedGuestsInput, 10);
-        if (Number.isNaN(parsed) || parsed < 0) {
-            setError(t.adminPlannedGuestsInvalid);
-            return;
-        }
-
-        setError('');
-        setPlannedGuests(parsed);
-        setPlannedGuestsInput(String(parsed));
-
-        if (typeof window !== 'undefined') {
-            window.localStorage.setItem(PLANNED_GUESTS_STORAGE_KEY, String(parsed));
-        }
-    };
-
-
     // All hooks above must run on every render (Rules of Hooks). Only the
     // JSX we return depends on language/auth state, decided here at the end.
     if (!isValidLang) {
@@ -1164,7 +1145,7 @@ export function AdminDashboard() {
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.05 }}
-                    className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
+                    className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
                 >
                     <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md">
                         <div className="mb-3 flex items-center gap-2 text-gray-500">
@@ -1188,32 +1169,6 @@ export function AdminDashboard() {
                             <span className="text-sm font-medium">{t.adminNotAttendingCount}</span>
                         </div>
                         <p dir="ltr" className="text-3xl font-semibold text-gray-900">{notAttendingCount}</p>
-                    </article>
-
-                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md">
-                        <div className="mb-3 flex items-center gap-2 text-blue-700">
-                            <UsersRound size={16} />
-                            <span className="text-sm font-medium">{t.adminPlannedGuestsTitle}</span>
-                        </div>
-                        <p dir="ltr" className="text-3xl font-semibold text-gray-900">{plannedGuests}</p>
-                        <div className="mt-3 flex items-center gap-2" dir="ltr">
-                            <input
-                                type="number"
-                                min={0}
-                                step={1}
-                                value={plannedGuestsInput}
-                                onChange={(event) => setPlannedGuestsInput(event.target.value)}
-                                aria-label={t.adminPlannedGuestsInputLabel}
-                                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 outline-none transition-all focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
-                            />
-                            <button
-                                type="button"
-                                onClick={handleSetPlannedGuests}
-                                className="rounded-xl bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-800"
-                            >
-                                {t.adminSetPlannedGuests}
-                            </button>
-                        </div>
                     </article>
 
                     <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md">
@@ -1467,43 +1422,6 @@ export function AdminDashboard() {
                                         <span dir="ltr" className="text-xs font-semibold text-gray-900">{bucket.count}</span>
                                     </div>
                                 ))}
-                            </div>
-                        )}
-                    </article>
-
-                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md">
-                        <h3 className="mb-3 text-sm font-semibold text-gray-700">{t.adminChartAttendanceProgressTitle}</h3>
-                        {plannedGuests <= 0 ? (
-                            <p className="text-sm text-gray-500">{t.adminChartAttendanceProgressNoPlan}</p>
-                        ) : (
-                            <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-                                <div
-                                    className="relative h-36 w-36 shrink-0 rounded-full"
-                                    style={{
-                                        background: `conic-gradient(#10b981 0deg ${attendanceProgressDegrees}deg, #e5e7eb ${attendanceProgressDegrees}deg 360deg)`,
-                                    }}
-                                    role="img"
-                                    aria-label={`${attendanceProgressPercentage.toFixed(1)}%`}
-                                >
-                                    <div className="absolute inset-5 flex items-center justify-center rounded-full bg-white">
-                                        <span className="text-2xl font-bold text-gray-900" dir="ltr">
-                                            {attendanceProgressPercentage.toFixed(1)}%
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="space-y-2 text-sm text-gray-600">
-                                    <p>
-                                        <span className="font-semibold text-emerald-600">{t.adminChartLegendAttending}:</span>{' '}
-                                        <span dir="ltr">{attendingCount}</span>
-                                    </p>
-                                    <p>
-                                        <span className="font-semibold text-gray-700">{t.adminPlannedGuestsTitle}:</span>{' '}
-                                        <span dir="ltr">{plannedGuests}</span>
-                                    </p>
-                                    <p className="font-semibold text-gray-900" dir="ltr">
-                                        {attendingCount} / {plannedGuests}
-                                    </p>
-                                </div>
                             </div>
                         )}
                     </article>
