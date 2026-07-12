@@ -440,11 +440,15 @@
   opacity: 0;
   pointer-events: none;
 }
+/* A solid pale fill and a firmer border to read as "chosen" - rather than a
+   stark black block, which broke the soft grey/white palette used
+   everywhere else on the page. */
 .radio-option.selected {
-  background: #2b2924;
-  border-color: #2b2924;
-  color: #f5f4f0;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1.5px solid rgba(60, 58, 52, 0.65);
+  color: #2b2924;
+  font-weight: 700;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
 }
 .stepper {
   display: flex;
