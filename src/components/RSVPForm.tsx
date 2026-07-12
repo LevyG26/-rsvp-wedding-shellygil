@@ -3,7 +3,6 @@ import { CheckCircle2, XCircle } from 'lucide-react';
 import { Language, translations } from '../i18n';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import thankYouImage from '../assets/rings-transparent-white-gold.png';
 import logoSg from '../assets/logo-sg-dark.png';
 import { isValidPhoneNumber } from '../utils/phoneNumbers';
 import { CalendarLink } from '../utils/calendarLink';
@@ -138,10 +137,7 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
         </p>
 
         {isAttending && (
-          <>
-            <img src={thankYouImage} alt="" aria-hidden="true" />
-            <img src={logoSg} alt="" aria-hidden="true" className="thankyou-logo" />
-          </>
+          <img src={logoSg} alt="" aria-hidden="true" className="thankyou-logo" />
         )}
       </div>
     );

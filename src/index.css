@@ -544,24 +544,18 @@
     transform: translateY(0);
   }
 }
-.thankyou-card img {
-  max-width: 100px;
-  margin: 4px auto 0;
-  display: block;
-  /* This file now has real background removal (run through remove.bg) - no
-     blend-mode hack needed, and multiply was actually dulling/greying the
-     rings themselves on top of hiding the background, which read as low
-     quality. Plain display shows the ring photo at full quality. */
-}
 .thankyou-card .thankyou-logo {
   /* This is the dark-background version (same file used for the favicon) -
      it's meant to read as a small solid badge/seal, not blend into the lace
      texture, so no blend-mode here (multiply would turn its dark background
-     black against the light page instead of hiding it). */
-  max-width: 82px;
-  margin: 12px auto 0;
-  border-radius: 8px;
-  opacity: 0.9;
+     black against the light page instead of hiding it). Rings image was
+     removed per Gil's request - the logo alone is now the confirmation
+     visual, made bigger and pulled up closer to the text above it. */
+  display: block;
+  max-width: 108px;
+  margin: 2px auto 0;
+  border-radius: 10px;
+  opacity: 0.92;
 }
 
 .wedding-silk-background {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { collection, deleteDoc, doc, getDocs, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import {
@@ -624,6 +624,37 @@ export function AdminDashboard() {
         }
         return result;
     };
+
+    // Runs the same name-matching as the manual "Link" button above, but on
+    // its own whenever records/roster change (a guest submits, the sheet
+    // gets re-synced, etc.) - so the roster's status/count stays current
+    // without anyone needing to remember to press a button. Guarded by a ref
+    // (not state) so overlapping runs never stack up, and safe to re-trigger
+    // itself: linkGuestRosterWithRsvps only ever writes an entry that's
+    // actually different, so a second pass after its own write finds nothing
+    // left to change and quietly stops.
+    const isAutoLinkingRosterRef = useRef(false);
+    useEffect(() => {
+        if (!isAuthChecked || !isSignedIn) return;
+        if (records.length === 0 || guestRoster.length === 0) return;
+        if (isAutoLinkingRosterRef.current) return;
+
+        isAutoLinkingRosterRef.current = true;
+        linkGuestRosterWithRsvps(
+            guestRoster,
+            records.map((record) => ({
+                fullName: record.fullName,
+                isAttending: record.isAttending,
+                guestsCount: record.guestsCount,
+            })),
+        )
+            .catch((linkError) => {
+                console.error('Automatic roster linking failed', linkError);
+            })
+            .finally(() => {
+                isAutoLinkingRosterRef.current = false;
+            });
+    }, [records, guestRoster, isAuthChecked, isSignedIn]);
 
     const handleCreateGuestRosterEntry = async (input: GuestRosterEntryInput) => {
         await createGuestRosterEntry(input);

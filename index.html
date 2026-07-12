@@ -10,11 +10,17 @@
     <meta property="og:title" content="Wedding | Shelly & Gil" />
     <meta property="og:description" content="Join us in celebrating our wedding." />
     <meta property="og:type" content="website" />
-    <!-- Without this, Safari's link-preview/suggestion cards had nothing to
-         show but the tiny favicon in an empty box, unlike the rich preview
-         the old Wix site had (it shipped its own dedicated share image). -->
-    <meta property="og:image" content="/src/assets/invite-card-he.jpg" />
+    <!-- Absolute URL, pointing at a file in /public (served as-is, not
+         processed/hashed by Vite) - link-preview crawlers (WhatsApp, Safari,
+         etc.) need a real, fully-qualified image URL to fetch; a relative
+         src/assets path either 404s in the production build or gets ignored
+         entirely, which is why no preview image was showing before.
+         NOTE: update this domain once the real shellygilwedding.com redirect
+         is live (Gil is handling that separately via Wix). -->
+    <meta property="og:url" content="https://shelly-gil-wedding-dashboard.vercel.app/" />
+    <meta property="og:image" content="https://shelly-gil-wedding-dashboard.vercel.app/og-image.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://shelly-gil-wedding-dashboard.vercel.app/og-image.jpg" />
   </head>
   <body>
     <div id="root"></div>
