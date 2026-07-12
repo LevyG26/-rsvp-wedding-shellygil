@@ -22,6 +22,16 @@ export interface GuestRosterEntry {
   lastName: string;
   invitedCount: number;
   knownResponse: KnownResponse;
+  // True when knownResponse/invitedCount currently reflect an automatic
+  // RSVP-roster link (see rsvpRosterLink.ts) rather than the guest sheet or
+  // a manual dashboard edit. Lets the auto-linker safely revert this entry
+  // back to "not yet responded" if the RSVP that produced the link is later
+  // deleted, without ever touching entries set by sheet sync or by hand.
+  linkedFromRsvp: boolean;
+  // invitedCount from just before an RSVP auto-link last overwrote it, so a
+  // later revert (see above) restores the original planned count instead of
+  // leaving behind whatever headcount the now-deleted RSVP had reported.
+  preLinkInvitedCount: number | null;
 }
 
 export interface GuestRosterEntryInput {
@@ -31,11 +41,18 @@ export interface GuestRosterEntryInput {
   lastName: string;
   invitedCount: number;
   knownResponse: KnownResponse;
+  // Optional - omitted by every write site except the RSVP auto-linker,
+  // which is the only one that needs to set these. Defaults below keep all
+  // other writes (manual edits, sheet sync, old-site import) marking the
+  // entry as NOT auto-linked, which is the correct, conservative default.
+  linkedFromRsvp?: boolean;
+  preLinkInvitedCount?: number | null;
 }
 
 function normalizeEntry(id: string, data: Record<string, unknown>): GuestRosterEntry {
   const invitedCountValue = data.invitedCount;
   const knownResponseValue = data.knownResponse;
+  const preLinkInvitedCountValue = data.preLinkInvitedCount;
 
   return {
     id,
@@ -45,6 +62,9 @@ function normalizeEntry(id: string, data: Record<string, unknown>): GuestRosterE
     lastName: typeof data.lastName === 'string' ? data.lastName : '',
     invitedCount: typeof invitedCountValue === 'number' && Number.isFinite(invitedCountValue) ? invitedCountValue : 0,
     knownResponse: knownResponseValue === 'yes' || knownResponseValue === 'no' ? knownResponseValue : null,
+    linkedFromRsvp: data.linkedFromRsvp === true,
+    preLinkInvitedCount:
+      typeof preLinkInvitedCountValue === 'number' && Number.isFinite(preLinkInvitedCountValue) ? preLinkInvitedCountValue : null,
   };
 }
 
@@ -93,6 +113,8 @@ function toEntryDocData(input: GuestRosterEntryInput) {
     lastName: input.lastName.trim(),
     invitedCount: input.invitedCount,
     knownResponse: input.knownResponse,
+    linkedFromRsvp: input.linkedFromRsvp ?? false,
+    preLinkInvitedCount: input.preLinkInvitedCount ?? null,
     updatedAt: serverTimestamp(),
   };
 }

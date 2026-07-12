@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { collection, deleteDoc, doc, getDocs, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import {
+    AlertTriangle,
     ArrowDown,
     ArrowUp,
     ArrowUpDown,
@@ -22,6 +23,7 @@ import { Language, translations } from '../i18n';
 import { logoutAdmin, onAdminAuthStateChanged } from '../admin/auth';
 import { exportRsvpWorkbook } from '../admin/exportRsvpWorkbook';
 import { GuestCountInput } from '../components/admin/GuestCountInput';
+import { EditableTextField } from '../components/admin/EditableTextField';
 import { GuestGroupSelect } from '../components/admin/GuestGroupSelect';
 import { InviteLinkVisitsTable, type InviteLinkVisitRecord } from '../components/admin/InviteLinkVisitsTable';
 import { GuestRosterSection } from '../components/admin/GuestRosterSection';
@@ -88,6 +90,29 @@ function SortableHeader({ activeSort, className = '', label, onSort, sortKey }: 
             </button>
         </th>
     );
+}
+
+type RosterMatchStatus = 'matched' | 'none' | 'ambiguous' | 'empty';
+
+interface RosterMatchInfo {
+    status: RosterMatchStatus;
+    label: string;
+}
+
+// Highlights "no match"/"ambiguous" cases with an amber warning badge so
+// they catch the eye instead of blending in as plain text - these are the
+// ones that need a manual look (fix a typo in the name, or add the guest to
+// the roster) since name-matching couldn't place them on its own.
+function RosterMatchBadge({ info }: { info: RosterMatchInfo }) {
+    if (info.status === 'none' || info.status === 'ambiguous') {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                <AlertTriangle size={12} aria-hidden="true" />
+                {info.label}
+            </span>
+        );
+    }
+    return <span className="text-gray-700">{info.label}</span>;
 }
 
 function toDate(value: unknown): Date | null {
@@ -311,9 +336,16 @@ export function AdminDashboard() {
         if (!value) {
             return '-';
         }
+        // Numeric-only (no Hebrew month name) so this never mixes RTL text
+        // with LTR digits - that mixing is what made the date/time render
+        // jumbled and out of order when shown inside a dir="ltr" cell.
         return new Intl.DateTimeFormat(locale, {
-            dateStyle: 'medium',
-            timeStyle: 'short',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
         }).format(value);
     };
 
@@ -479,21 +511,21 @@ export function AdminDashboard() {
     // the "Link" button in the Roster tab), so this never writes anything,
     // it just answers "who is this on the roster" right in the responses
     // table instead of needing to cross-reference manually.
-    const rosterMatchLabelByRecordId = useMemo(() => {
-        const map = new Map<string, string>();
+    const rosterMatchInfoByRecordId = useMemo(() => {
+        const map = new Map<string, RosterMatchInfo>();
         records.forEach((record) => {
             if (!record.fullName.trim()) {
-                map.set(record.id, '-');
+                map.set(record.id, { status: 'empty', label: '-' });
                 return;
             }
 
             const matches = findRosterMatches(record.fullName, guestRoster);
             if (matches.length === 0) {
-                map.set(record.id, t.adminNoRosterMatch);
+                map.set(record.id, { status: 'none', label: t.adminNoRosterMatch });
             } else if (matches.length > 1) {
-                map.set(record.id, t.adminAmbiguousRosterMatch);
+                map.set(record.id, { status: 'ambiguous', label: t.adminAmbiguousRosterMatch });
             } else {
-                map.set(record.id, `${matches[0].side} · ${matches[0].category}`);
+                map.set(record.id, { status: 'matched', label: `${matches[0].side} · ${matches[0].category}` });
             }
         });
         return map;
@@ -619,7 +651,7 @@ export function AdminDashboard() {
                 guestsCount: record.guestsCount,
             })),
         );
-        if (result.updatedCount > 0) {
+        if (result.updatedCount > 0 || result.revertedCount > 0) {
             await reloadGuestRoster();
         }
         return result;
@@ -865,6 +897,25 @@ export function AdminDashboard() {
         }
     };
 
+    // Lets an admin fix a typo'd guest name right in the table. No extra
+    // wiring needed to re-match it to the roster: the automatic roster-link
+    // effect already reruns on every change to `records` (see above), so a
+    // corrected name that now matches a roster entry gets linked to the
+    // right side/category on its own, right after this save.
+    const handleFullNameChange = async (recordId: string, fullName: string) => {
+        setError('');
+        try {
+            await updateDoc(doc(db, 'rsvps', recordId), { fullName });
+            setRecords((prevRecords) => prevRecords.map((record) => (
+                record.id === recordId ? { ...record, fullName } : record
+            )));
+        } catch (updateError) {
+            console.error('Failed to update guest full name', updateError);
+            setError(t.adminFullNameUpdateError);
+            throw updateError;
+        }
+    };
+
     const handleGroupChange = async (recordId: string, group: string) => {
         setError('');
         try {
@@ -1060,6 +1111,7 @@ export function AdminDashboard() {
                             linkUpdated: t.adminRosterLinkUpdated,
                             linkNone: t.adminRosterLinkNone,
                             linkAmbiguous: t.adminRosterLinkAmbiguous,
+                            linkReverted: t.adminRosterLinkReverted,
                             linkError: t.adminRosterLinkError,
                             resetSideButton: t.adminRosterResetSideButton,
                             resettingSide: t.adminRosterResettingSide,
@@ -1508,7 +1560,9 @@ export function AdminDashboard() {
                                                     {record.fullName || t.adminUnknownName}
                                                 </p>
                                                 <p className="text-xs text-gray-500" dir="ltr">{record.phone || t.adminNoPhone}</p>
-                                                <p className="text-xs text-gray-500">{rosterMatchLabelByRecordId.get(record.id)}</p>
+                                                <div className="mt-1">
+                                                    <RosterMatchBadge info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-' }} />
+                                                </div>
                                             </div>
                                         </div>
                                         <span
@@ -1522,6 +1576,18 @@ export function AdminDashboard() {
                                     </div>
 
                                     <div className="mt-3 grid grid-cols-2 gap-3">
+                                        <div className="col-span-2">
+                                            <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableName}</p>
+                                            <EditableTextField
+                                                value={record.fullName}
+                                                disabled={isDeletingSelected || deletingId === record.id}
+                                                inputLabel={t.adminTableName}
+                                                saveLabel={t.adminGroupSave}
+                                                savingLabel={t.adminGroupSaving}
+                                                placeholder={t.adminUnknownName}
+                                                onChange={(fullName) => handleFullNameChange(record.id, fullName)}
+                                            />
+                                        </div>
                                         <div>
                                             <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableGuests}</p>
                                             <GuestCountInput
@@ -1619,7 +1685,6 @@ export function AdminDashboard() {
                                             onSort={handleSort}
                                         />
                                         <th className="w-40 px-4 py-3 text-start font-semibold">{t.adminTableSideCategory}</th>
-                                        <th className="px-4 py-3 text-start font-semibold">{t.adminTableNote}</th>
                                         <SortableHeader
                                             className="text-start"
                                             label={t.adminTableStatus}
@@ -1658,7 +1723,17 @@ export function AdminDashboard() {
                                                 />
                                             </td>
                                             <td className="w-20 px-4 py-3 text-center text-gray-700" dir="ltr">{index + 1}</td>
-                                            <td className="w-48 px-4 py-3 font-medium text-gray-900">{record.fullName || t.adminUnknownName}</td>
+                                            <td className="w-48 px-4 py-3 font-medium text-gray-900">
+                                                <EditableTextField
+                                                    value={record.fullName}
+                                                    disabled={isDeletingSelected || deletingId === record.id}
+                                                    inputLabel={t.adminTableName}
+                                                    saveLabel={t.adminGroupSave}
+                                                    savingLabel={t.adminGroupSaving}
+                                                    placeholder={t.adminUnknownName}
+                                                    onChange={(fullName) => handleFullNameChange(record.id, fullName)}
+                                                />
+                                            </td>
                                             <td className="w-40 px-4 py-3 text-center text-gray-700 whitespace-nowrap" dir="ltr">{record.phone || t.adminNoPhone}</td>
                                             <td className="w-40 px-4 py-3 text-center text-gray-700">
                                                 <GuestCountInput
@@ -1686,8 +1761,9 @@ export function AdminDashboard() {
                                                     }}
                                                 />
                                             </td>
-                                            <td className="w-40 px-4 py-3 text-gray-700">{rosterMatchLabelByRecordId.get(record.id)}</td>
-                                            <td className="px-4 py-3 text-gray-700">{record.note || t.adminNoNote}</td>
+                                            <td className="w-40 px-4 py-3 text-gray-700">
+                                                <RosterMatchBadge info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-' }} />
+                                            </td>
                                             <td className="px-4 py-3">
                                                 <span
                                                     className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${record.isAttending

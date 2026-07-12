@@ -16,6 +16,10 @@ export interface RosterLinkResult {
   // RSVP full names that matched more than one roster entry - skipped, since
   // guessing wrong would silently mark the wrong person as attending.
   ambiguousCount: number;
+  // Roster entries that had been auto-linked to an RSVP that no longer
+  // exists (deleted, or edited enough to stop matching) and were reverted
+  // back to "not yet responded".
+  revertedCount: number;
 }
 
 // Strips Hebrew niqqud/cantillation marks, Latin accents (é/è/ë -> e, so
@@ -299,6 +303,11 @@ export async function linkGuestRosterWithRsvps(
   let updatedCount = 0;
   let matchedNoChangeCount = 0;
   let ambiguousCount = 0;
+  let revertedCount = 0;
+
+  // Tracks which entries still have a current RSVP match this run, so the
+  // revert pass below only touches entries that truly lost theirs.
+  const stillMatchedEntryIds = new Set<string>();
 
   for (const rsvp of rsvps) {
     if (!rsvp.fullName.trim()) continue;
@@ -311,10 +320,12 @@ export async function linkGuestRosterWithRsvps(
     }
 
     const entry = matches[0];
+    stillMatchedEntryIds.add(entry.id);
+
     const desiredKnownResponse = rsvp.isAttending ? 'yes' : 'no';
     const desiredInvitedCount = rsvp.isAttending && rsvp.guestsCount > 0 ? rsvp.guestsCount : entry.invitedCount;
 
-    if (entry.knownResponse === desiredKnownResponse && entry.invitedCount === desiredInvitedCount) {
+    if (entry.knownResponse === desiredKnownResponse && entry.invitedCount === desiredInvitedCount && entry.linkedFromRsvp) {
       matchedNoChangeCount += 1;
       continue;
     }
@@ -326,11 +337,41 @@ export async function linkGuestRosterWithRsvps(
       lastName: entry.lastName,
       invitedCount: desiredInvitedCount,
       knownResponse: desiredKnownResponse,
+      linkedFromRsvp: true,
+      // Only capture the pre-link count the first time this entry gets
+      // linked - a later re-run (e.g. the guest changing their headcount)
+      // must not overwrite it with a value that's already post-link.
+      preLinkInvitedCount: entry.linkedFromRsvp ? entry.preLinkInvitedCount : entry.invitedCount,
     };
 
     await updateGuestRosterEntry(entry.id, input);
     updatedCount += 1;
   }
 
-  return { updatedCount, matchedNoChangeCount, ambiguousCount };
+  // Any entry that was previously auto-linked from an RSVP but no longer
+  // matches any CURRENT RSVP (the RSVP was deleted, or edited enough to stop
+  // matching) reverts back to "not yet responded" with its pre-link planned
+  // count restored - so deleting a test/duplicate RSVP actually cleans up
+  // the roster status it created, instead of leaving a stale "confirmed"
+  // behind forever. Entries whose knownResponse came from the guest sheet or
+  // a manual edit (linkedFromRsvp is false) are never touched here.
+  for (const entry of entries) {
+    if (!entry.linkedFromRsvp || stillMatchedEntryIds.has(entry.id)) continue;
+
+    const input: GuestRosterEntryInput = {
+      side: entry.side,
+      category: entry.category,
+      firstName: entry.firstName,
+      lastName: entry.lastName,
+      invitedCount: entry.preLinkInvitedCount ?? entry.invitedCount,
+      knownResponse: null,
+      linkedFromRsvp: false,
+      preLinkInvitedCount: null,
+    };
+
+    await updateGuestRosterEntry(entry.id, input);
+    revertedCount += 1;
+  }
+
+  return { updatedCount, matchedNoChangeCount, ambiguousCount, revertedCount };
 }

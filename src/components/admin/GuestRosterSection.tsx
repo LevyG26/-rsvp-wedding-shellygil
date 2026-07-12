@@ -42,6 +42,7 @@ export interface GuestRosterLabels {
   linkUpdated: string;
   linkNone: string;
   linkAmbiguous: string;
+  linkReverted: string;
   linkError: string;
   resetSideButton: string;
   resettingSide: string;
@@ -331,11 +332,15 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
     setLinkIsError(false);
     try {
       const result = await onLinkRsvps();
+      const suffixParts: string[] = [];
+      if (result.ambiguousCount > 0) suffixParts.push(`${labels.linkAmbiguous}: ${result.ambiguousCount}`);
+      if (result.revertedCount > 0) suffixParts.push(`${labels.linkReverted}: ${result.revertedCount}`);
+      const suffix = suffixParts.length > 0 ? ` (${suffixParts.join(' · ')})` : '';
+
       if (result.updatedCount > 0) {
-        const ambiguousSuffix = result.ambiguousCount > 0 ? ` (${labels.linkAmbiguous}: ${result.ambiguousCount})` : '';
-        setLinkMessage(`${labels.linkUpdated}: ${result.updatedCount}${ambiguousSuffix}`);
-      } else if (result.ambiguousCount > 0) {
-        setLinkMessage(`${labels.linkNone} (${labels.linkAmbiguous}: ${result.ambiguousCount})`);
+        setLinkMessage(`${labels.linkUpdated}: ${result.updatedCount}${suffix}`);
+      } else if (suffixParts.length > 0) {
+        setLinkMessage(`${labels.linkNone}${suffix}`);
       } else {
         setLinkMessage(labels.linkNone);
       }
