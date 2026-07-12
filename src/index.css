@@ -175,10 +175,12 @@
   justify-content: center;
   pointer-events: none;
 }
-/* A thin, transparent-background outline instead of a filled pill - a solid
-   or blurred white fill read as too heavy a UI element against the lace
-   texture; a fine grey border gives it just enough definition to notice
-   without sitting on top of the artwork as an opaque shape. */
+/* Same size/shape as before (no white fill - Gil didn't like that as a
+   solid box against the artwork) - stays a plain transparent outline, but
+   the border itself now pulses (brightens/glows on its own cycle) and the
+   text breathes with it, so the whole thing reads as a quiet, deliberate
+   "still here, still moving" cue rather than a static label that's easy to
+   scan past. */
 .scroll-cue-pill {
   display: flex;
   flex-direction: column;
@@ -187,21 +189,43 @@
   padding: 3px 12px;
   border-radius: 12px;
   background: transparent;
-  border: 1px solid rgba(90, 87, 79, 0.4);
+  border: 1px solid rgba(90, 87, 79, 0.45);
+  animation: scroll-cue-glow 2.4s ease-in-out infinite;
+}
+@keyframes scroll-cue-glow {
+  0%,
+  100% {
+    border-color: rgba(90, 87, 79, 0.35);
+    box-shadow: 0 0 0 rgba(74, 69, 60, 0);
+  }
+  50% {
+    border-color: rgba(90, 87, 79, 0.85);
+    box-shadow: 0 0 8px rgba(74, 69, 60, 0.3);
+  }
 }
 .scroll-cue {
   font-family: Arial, sans-serif;
   font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  color: #4a453c;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #3d382f;
   margin: 0;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+  animation: scroll-cue-text-pulse 2.4s ease-in-out infinite;
+}
+@keyframes scroll-cue-text-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .scroll-chevron {
   width: 11px;
   height: 11px;
-  animation: bounce 1.6s infinite;
+  animation: bounce 1.4s infinite;
 }
 @keyframes bounce {
   0%,
@@ -209,7 +233,7 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(4px);
+    transform: translateY(6px);
   }
 }
 .waze-row {
