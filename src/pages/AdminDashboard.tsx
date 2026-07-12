@@ -169,6 +169,13 @@ async function loadInviteLinkVisits(): Promise<InviteLinkVisitRecord[]> {
 }
 
 const PLANNED_GUESTS_STORAGE_KEY = 'rsvp-admin-planned-guests';
+// The "invite links opened" panel only records a visit when the link itself
+// contains the guest's phone number (a personalized per-guest link) - it
+// stays hidden while Gil is sending one shared link to a WhatsApp group,
+// since nothing gets recorded for that case anyway. Planned follow-up: build
+// a way to generate a personalized link per phone number so this becomes
+// useful, then flip this back to true.
+const SHOW_INVITE_LINK_VISITS = false;
 const TREND_CHART_WIDTH = 360;
 const TREND_CHART_HEIGHT = 160;
 const TREND_CHART_PADDING = 18;
@@ -1246,6 +1253,7 @@ export function AdminDashboard() {
                     </article>
                 </motion.section>
 
+                {SHOW_INVITE_LINK_VISITS && (
                 <motion.section
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1285,6 +1293,7 @@ export function AdminDashboard() {
                         }}
                     />
                 </motion.section>
+                )}
 
                 <motion.section
                     initial={{ opacity: 0, y: 16 }}
@@ -1309,27 +1318,26 @@ export function AdminDashboard() {
                         </div>
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md">
-                        <h3 className="mb-3 text-sm font-semibold text-gray-700">{t.adminChartLanguageAttendanceTitle}</h3>
-                        <div className="mb-4 flex items-center gap-4 text-xs text-gray-600">
-                            <span className="inline-flex items-center gap-1">
-                                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                                {t.adminChartLegendAttending}
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                                <span className="h-2 w-2 rounded-full bg-rose-300" />
-                                {t.adminChartLegendNotAttending}
-                            </span>
+                    <article className="rounded-3xl border border-white/30 bg-white/95 p-4 shadow-lg backdrop-blur-md">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                            <h3 className="text-sm font-semibold text-gray-700">{t.adminChartLanguageAttendanceTitle}</h3>
+                            <div className="flex shrink-0 items-center gap-2.5 text-[11px] text-gray-500">
+                                <span className="inline-flex items-center gap-1">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                    {t.adminChartLegendAttending}
+                                </span>
+                                <span className="inline-flex items-center gap-1">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
+                                    {t.adminChartLegendNotAttending}
+                                </span>
+                            </div>
                         </div>
 
-                        <div className="space-y-3" dir="ltr">
+                        <div className="space-y-1.5" dir="ltr">
                             {languageAttendanceData.map((item) => (
-                                <div key={item.label}>
-                                    <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
-                                        <span>{item.label}</span>
-                                        <span className="font-semibold text-gray-900">{item.total}</span>
-                                    </div>
-                                    <div className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                                <div key={item.label} className="flex items-center gap-2">
+                                    <span className="w-6 shrink-0 text-xs text-gray-600">{item.label}</span>
+                                    <div className="flex h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100">
                                         <div
                                             className="h-full bg-emerald-400"
                                             style={{ width: `${(item.attending / maxLanguageAttendance) * 100}%` }}
@@ -1339,6 +1347,7 @@ export function AdminDashboard() {
                                             style={{ width: `${(item.notAttending / maxLanguageAttendance) * 100}%` }}
                                         />
                                     </div>
+                                    <span className="w-5 shrink-0 text-end text-xs font-semibold text-gray-900">{item.total}</span>
                                 </div>
                             ))}
                         </div>
@@ -1526,24 +1535,24 @@ export function AdminDashboard() {
                                 const isExpanded = expandedRecordIds.has(record.id);
                                 return (
                                 <div key={record.id} className="p-3">
-                                    <div className="flex items-start gap-2">
+                                    <div className="flex items-center gap-2">
                                         <input
                                             type="checkbox"
                                             checked={selectedIds.includes(record.id)}
                                             onChange={() => handleToggleRecordSelection(record.id)}
                                             disabled={isDeletingSelected || deletingId === record.id}
                                             aria-label={t.adminSelectRow}
-                                            className="mt-1.5 h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+                                            className="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => toggleRecordExpanded(record.id)}
-                                            className="flex min-w-0 flex-1 items-start gap-2 text-start"
+                                            className="flex min-w-0 flex-1 items-center gap-2 text-start"
                                             aria-expanded={isExpanded}
                                         >
                                             <ChevronDown
                                                 size={16}
-                                                className={`mt-1 shrink-0 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                                className={`shrink-0 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                                             />
                                             <span className="min-w-0 flex-1">
                                                 <span className="block truncate font-medium text-gray-900">
@@ -1554,6 +1563,7 @@ export function AdminDashboard() {
                                                     <RosterMatchBadge info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-' }} />
                                                 </span>
                                             </span>
+                                            <span className="shrink-0 text-xs font-medium text-gray-500" dir="ltr">×{record.guestsCount}</span>
                                             <span
                                                 className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${record.isAttending
                                                     ? 'bg-emerald-100 text-emerald-700'

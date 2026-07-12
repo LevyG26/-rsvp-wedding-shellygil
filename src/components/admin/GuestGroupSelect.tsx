@@ -66,9 +66,15 @@ export function GuestGroupSelect({
     await saveGroup(existingGroup ?? normalizedName);
   };
 
+  // w-full (not a fixed width like w-44/min-w-56) so this always fills
+  // whatever container it's placed in - a wide desktop table column, or a
+  // narrow mobile grid cell - instead of overflowing past the edge of a
+  // narrow container the way a fixed width does. flex-wrap on the add-new
+  // form lets the buttons drop to their own line on narrow screens rather
+  // than forcing the row wider than its container.
   if (isAdding) {
     return (
-      <form onSubmit={handleSubmit} className="flex min-w-56 items-center gap-2">
+      <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={newGroupName}
@@ -82,7 +88,7 @@ export function GuestGroupSelect({
         <button
           type="submit"
           disabled={!newGroupName.trim() || isSaving || disabled}
-          className="rounded-xl bg-gray-900 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="shrink-0 rounded-xl bg-gray-900 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           {isSaving ? labels.saving : labels.save}
         </button>
@@ -93,7 +99,7 @@ export function GuestGroupSelect({
             setNewGroupName('');
           }}
           disabled={isSaving}
-          className="rounded-xl bg-gray-100 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed"
+          className="shrink-0 rounded-xl bg-gray-100 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed"
         >
           {labels.cancel}
         </button>
@@ -106,7 +112,7 @@ export function GuestGroupSelect({
       value={group}
       onChange={(event) => void handleSelectChange(event.target.value)}
       disabled={isSaving || disabled}
-      className="w-44 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200 disabled:cursor-not-allowed disabled:bg-gray-100"
+      className="w-full min-w-0 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200 disabled:cursor-not-allowed disabled:bg-gray-100"
     >
       <option value="">{labels.unassigned}</option>
       {groups.map((option) => (
