@@ -545,7 +545,7 @@
   }
 }
 .thankyou-card img {
-  max-width: 130px;
+  max-width: 100px;
   margin: 4px auto 0;
   display: block;
   /* This file now has real background removal (run through remove.bg) - no
@@ -558,7 +558,7 @@
      it's meant to read as a small solid badge/seal, not blend into the lace
      texture, so no blend-mode here (multiply would turn its dark background
      black against the light page instead of hiding it). */
-  max-width: 62px;
+  max-width: 82px;
   margin: 12px auto 0;
   border-radius: 8px;
   opacity: 0.9;

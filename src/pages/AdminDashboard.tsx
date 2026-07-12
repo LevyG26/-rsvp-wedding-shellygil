@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import {
     ArrowDown,
     ArrowUp,
@@ -33,12 +33,13 @@ import {
     deleteGuestRosterEntriesForSide,
     deleteGuestRosterEntry,
     loadGuestRoster,
+    subscribeToGuestRoster,
     syncGuestRosterFromSheet,
     updateGuestRosterEntry,
     type GuestRosterEntry,
     type GuestRosterEntryInput,
 } from '../services/guestRoster';
-import { linkGuestRosterWithRsvps, type RosterLinkResult } from '../services/rsvpRosterLink';
+import { findRosterMatches, linkGuestRosterWithRsvps, type RosterLinkResult } from '../services/rsvpRosterLink';
 
 interface RSVPRecord {
     id: string;
@@ -241,34 +242,69 @@ export function AdminDashboard() {
         return unsubscribe;
     }, [loginPath, navigate]);
 
+    // Live listeners (not one-time loads) for the two things that change
+    // while the dashboard is left open - a guest submitting the RSVP form,
+    // or the roster being synced/edited - so both the list and every stat
+    // derived from it (totals, by-side breakdowns) update on their own,
+    // without needing the manual refresh button. Invite link visits stay a
+    // one-time load (via handleRefresh) since they're not time-sensitive in
+    // the same way.
     useEffect(() => {
         if (!isAuthChecked || !isSignedIn) {
             return;
         }
 
-        const loadRecords = async () => {
-            setIsLoading(true);
-            setError('');
-            try {
-                const [loadedRecords, loadedInviteLinkVisits, loadedGuestRoster] = await Promise.all([
-                    loadRsvpRecords(),
-                    loadInviteLinkVisits(),
-                    loadGuestRoster(),
-                ]);
-                setRecords(loadedRecords);
-                setInviteLinkVisits(loadedInviteLinkVisits);
-                setGuestRoster(loadedGuestRoster);
-                setSelectedIds((prevSelected) => prevSelected.filter((id) => loadedRecords.some((record) => record.id === id)));
-            } catch (loadError) {
-                console.error('Failed to load RSVP data', loadError);
-                setError(t.adminLoadError);
-            } finally {
+        setIsLoading(true);
+        setError('');
+
+        let rsvpsLoaded = false;
+        let rosterLoaded = false;
+        const markLoadedIfReady = () => {
+            if (rsvpsLoaded && rosterLoaded) {
                 setIsLoading(false);
             }
         };
 
-        loadRecords();
-    }, [currentLang, isAuthChecked, isSignedIn, t.adminLoadError]);
+        const rsvpQuery = query(collection(db, 'rsvps'), orderBy('createdAt', 'desc'));
+        const unsubscribeRsvps = onSnapshot(
+            rsvpQuery,
+            (snapshot) => {
+                const loadedRecords = snapshot.docs.map((snapshotDoc) => normalizeRecord(snapshotDoc.id, snapshotDoc.data() as Record<string, unknown>));
+                setRecords(loadedRecords);
+                setSelectedIds((prevSelected) => prevSelected.filter((id) => loadedRecords.some((record) => record.id === id)));
+                rsvpsLoaded = true;
+                markLoadedIfReady();
+            },
+            (snapshotError) => {
+                console.error('RSVP live listener failed', snapshotError);
+                setError(t.adminLoadError);
+                rsvpsLoaded = true;
+                markLoadedIfReady();
+            },
+        );
+
+        const unsubscribeRoster = subscribeToGuestRoster(
+            (loadedGuestRoster) => {
+                setGuestRoster(loadedGuestRoster);
+                rosterLoaded = true;
+                markLoadedIfReady();
+            },
+            () => {
+                setError(t.adminLoadError);
+                rosterLoaded = true;
+                markLoadedIfReady();
+            },
+        );
+
+        loadInviteLinkVisits()
+            .then(setInviteLinkVisits)
+            .catch((loadError) => console.error('Failed to load invite link visits', loadError));
+
+        return () => {
+            unsubscribeRsvps();
+            unsubscribeRoster();
+        };
+    }, [isAuthChecked, isSignedIn, t.adminLoadError]);
 
     const locale = currentLang === 'he' ? 'he-IL' : currentLang === 'fr' ? 'fr-FR' : 'en-US';
     const formatDate = (value: Date | null) => {
@@ -437,6 +473,31 @@ export function AdminDashboard() {
             .sort((first, second) => first.localeCompare(second, locale)),
         [locale, records],
     );
+
+    // Which side/category each site response belongs to, matched by name
+    // against the guest roster - display only (mirrors the matching used by
+    // the "Link" button in the Roster tab), so this never writes anything,
+    // it just answers "who is this on the roster" right in the responses
+    // table instead of needing to cross-reference manually.
+    const rosterMatchLabelByRecordId = useMemo(() => {
+        const map = new Map<string, string>();
+        records.forEach((record) => {
+            if (!record.fullName.trim()) {
+                map.set(record.id, '-');
+                return;
+            }
+
+            const matches = findRosterMatches(record.fullName, guestRoster);
+            if (matches.length === 0) {
+                map.set(record.id, t.adminNoRosterMatch);
+            } else if (matches.length > 1) {
+                map.set(record.id, t.adminAmbiguousRosterMatch);
+            } else {
+                map.set(record.id, `${matches[0].side} · ${matches[0].category}`);
+            }
+        });
+        return map;
+    }, [records, guestRoster, t.adminNoRosterMatch, t.adminAmbiguousRosterMatch]);
 
     const sortedRecords = useMemo(() => {
         const compareText = (first: string, second: string) => first.localeCompare(second, locale, { sensitivity: 'base' });
@@ -1416,6 +1477,7 @@ export function AdminDashboard() {
                                                     {record.fullName || t.adminUnknownName}
                                                 </p>
                                                 <p className="text-xs text-gray-500" dir="ltr">{record.phone || t.adminNoPhone}</p>
+                                                <p className="text-xs text-gray-500">{rosterMatchLabelByRecordId.get(record.id)}</p>
                                             </div>
                                         </div>
                                         <span
@@ -1525,6 +1587,7 @@ export function AdminDashboard() {
                                             activeSort={sortConfig}
                                             onSort={handleSort}
                                         />
+                                        <th className="w-40 px-4 py-3 text-start font-semibold">{t.adminTableSideCategory}</th>
                                         <th className="px-4 py-3 text-start font-semibold">{t.adminTableNote}</th>
                                         <SortableHeader
                                             className="text-start"
@@ -1592,6 +1655,7 @@ export function AdminDashboard() {
                                                     }}
                                                 />
                                             </td>
+                                            <td className="w-40 px-4 py-3 text-gray-700">{rosterMatchLabelByRecordId.get(record.id)}</td>
                                             <td className="px-4 py-3 text-gray-700">{record.note || t.adminNoNote}</td>
                                             <td className="px-4 py-3">
                                                 <span

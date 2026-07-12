@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  onSnapshot,
   serverTimestamp,
   setDoc,
   writeBatch,
@@ -50,6 +51,25 @@ function normalizeEntry(id: string, data: Record<string, unknown>): GuestRosterE
 export async function loadGuestRoster(): Promise<GuestRosterEntry[]> {
   const snapshot = await getDocs(collection(db, GUEST_ROSTER_COLLECTION));
   return snapshot.docs.map((docSnapshot) => normalizeEntry(docSnapshot.id, docSnapshot.data() as Record<string, unknown>));
+}
+
+// Live version of loadGuestRoster - keeps the dashboard's roster state
+// current on its own (new sheet syncs, edits from another tab/device, etc.)
+// without needing a manual refresh. Returns an unsubscribe function.
+export function subscribeToGuestRoster(
+  onChange: (entries: GuestRosterEntry[]) => void,
+  onError?: (error: unknown) => void,
+): () => void {
+  return onSnapshot(
+    collection(db, GUEST_ROSTER_COLLECTION),
+    (snapshot) => {
+      onChange(snapshot.docs.map((docSnapshot) => normalizeEntry(docSnapshot.id, docSnapshot.data() as Record<string, unknown>)));
+    },
+    (error) => {
+      console.error('Guest roster live listener failed', error);
+      onError?.(error);
+    },
+  );
 }
 
 // Same hashing formula as scripts/importGuestRoster.ts, so entries created
