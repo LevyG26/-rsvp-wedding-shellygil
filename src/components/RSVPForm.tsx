@@ -3,7 +3,8 @@ import { CheckCircle2, XCircle } from 'lucide-react';
 import { Language, translations } from '../i18n';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import thankYouImage from '../assets/rings-transparent.png';
+import thankYouImage from '../assets/call_L4Jfb428Tg5ITFxtR88Tdg1m.png';
+import logoSg from '../assets/logo-sg.png';
 import { isValidPhoneNumber } from '../utils/phoneNumbers';
 import { CalendarLink } from '../utils/calendarLink';
 import { EVENT_START_ISO } from '../eventDetails';
@@ -136,7 +137,12 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
           {isAttending ? t.thankYouAttending : t.thankYouNotAttending}
         </p>
 
-        {isAttending && <img src={thankYouImage} alt="" aria-hidden="true" />}
+        {isAttending && (
+          <>
+            <img src={thankYouImage} alt="" aria-hidden="true" />
+            <img src={logoSg} alt="" aria-hidden="true" className="thankyou-logo" />
+          </>
+        )}
       </div>
     );
   }
@@ -264,12 +270,17 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
             </a>
           )}
           {calendarLink && (
+            // No `download` attribute here even for the Apple/.ics link: iOS
+            // Safari doesn't reliably honor `download` on a data: URI (it
+            // silently does nothing rather than saving a usable file).
+            // Safari's native "Add to Calendar" handoff for a plain
+            // data:text/calendar link only fires on a normal navigation, not
+            // a forced download - this is the one-tap behavior that used to
+            // work; adding `download` is what broke it.
             <a
               className="waze-btn"
               href={calendarLink.href}
-              download={calendarLink.isDownload ? calendarLink.fileName : undefined}
-              target={calendarLink.isDownload ? undefined : '_blank'}
-              rel={calendarLink.isDownload ? undefined : 'noopener noreferrer'}
+              {...(calendarLink.isDownload ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="#5c594f" strokeWidth={2}>
                 <rect x="3" y="4" width="18" height="18" rx="2" />

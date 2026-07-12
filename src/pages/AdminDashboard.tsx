@@ -16,7 +16,7 @@ import {
     UserX,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import logoSg from '../assets/logo-sg.png';
+import logoSg from '../assets/logo-sg-dark.png';
 import { db } from '../firebase';
 import { Language, translations } from '../i18n';
 import { logoutAdmin, onAdminAuthStateChanged } from '../admin/auth';

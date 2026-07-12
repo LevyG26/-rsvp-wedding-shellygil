@@ -534,6 +534,11 @@
   margin: 16px auto 0;
   display: block;
 }
+.thankyou-card .thankyou-logo {
+  max-width: 44px;
+  margin: 10px auto 0;
+  opacity: 0.85;
+}
 
 .wedding-silk-background {
   background-color: #f8f9fa;
