@@ -597,7 +597,7 @@ export function AdminDashboard() {
     };
 
     const handleExport = async () => {
-        if (records.length === 0 || isExporting) {
+        if ((records.length === 0 && guestRoster.length === 0) || isExporting) {
             return;
         }
 
@@ -607,11 +607,13 @@ export function AdminDashboard() {
         try {
             await exportRsvpWorkbook({
                 records: sortedRecords,
+                guestRoster,
                 plannedGuests,
                 isRtl,
                 labels: {
                     summarySheet: currentLang === 'he' ? 'סיכום' : currentLang === 'fr' ? 'Résumé' : 'Summary',
-                    recordsSheet: currentLang === 'he' ? 'אישורי הגעה' : currentLang === 'fr' ? 'Réponses RSVP' : 'RSVP Records',
+                    recordsSheet: currentLang === 'he' ? 'תגובות מהאתר' : currentLang === 'fr' ? 'Réponses RSVP' : 'Site Responses',
+                    rosterSheet: t.adminRosterTitle,
                     totalSubmissions: t.adminTotalSubmissions,
                     attendingCount: t.adminAttendingCount,
                     notAttendingCount: t.adminNotAttendingCount,
@@ -630,6 +632,16 @@ export function AdminDashboard() {
                     submittedAt: t.adminTableSubmittedAt,
                     attending: t.adminStatusAttending,
                     notAttending: t.adminStatusNotAttending,
+                    rosterOverallHeading: t.adminRosterOverallHeading,
+                    rosterSideBreakdown: t.adminRosterSideBreakdown,
+                    rosterTotalInvited: t.adminRosterTotalInvited,
+                    rosterConfirmed: t.adminRosterConfirmed,
+                    rosterDeclined: t.adminRosterDeclined,
+                    rosterPending: t.adminRosterPending,
+                    rosterSide: t.adminRosterSide,
+                    rosterCategory: t.adminRosterCategory,
+                    rosterInvitedCount: t.adminRosterInvitedCount,
+                    rosterStatus: t.adminTableStatus,
                 },
             });
         } catch (exportError) {
@@ -843,10 +855,10 @@ export function AdminDashboard() {
                         <button
                             type="button"
                             onClick={handleExport}
-                            disabled={records.length === 0 || isLoading || isExporting}
+                            disabled={(records.length === 0 && guestRoster.length === 0) || isLoading || isExporting}
                             title={t.adminExportExcel}
                             aria-label={t.adminExportExcel}
-                            className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors sm:h-9 sm:w-9 ${records.length === 0 || isLoading || isExporting
+                            className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors sm:h-9 sm:w-9 ${(records.length === 0 && guestRoster.length === 0) || isLoading || isExporting
                                 ? 'cursor-not-allowed bg-gray-100 text-gray-400'
                                 : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
                                 }`}
