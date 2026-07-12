@@ -166,6 +166,20 @@
   transform: scale(1.12);
   transform-origin: center;
 }
+/* #d3d2ce matches .rsvp-wrap's own background-color (the flat tone its
+   background image sits on) - fading down into that exact color means the
+   last visible row of the invite card already reads as "the same surface"
+   the RSVP section starts with, instead of a hard cut between two slightly
+   different tones. */
+.invite-fade-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 14%;
+  background: linear-gradient(to bottom, rgba(211, 210, 206, 0), rgba(211, 210, 206, 0.95));
+  pointer-events: none;
+}
 .scroll-cue-overlay {
   position: absolute;
   left: 0;

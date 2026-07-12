@@ -43,6 +43,12 @@ export function InviteScreen({ lang, linkedPhone }: Props) {
 
       <div className="invite-card-wrap">
         <img className="card-img" src={cardImage} alt={`${t.names} — ${t.venueName}, ${t.venue}`} />
+        {/* Fades the bottom of the invite artwork into the same flat tone the
+            RSVP background starts with, right where the two images meet -
+            softens what was a hard, mismatched seam into a smooth blend.
+            Placed after the image (paints above it) but before the scroll
+            cue (paints below it), so the fade never dulls the cue itself. */}
+        <div className="invite-fade-overlay" aria-hidden="true" />
         <div className="scroll-cue-overlay">
           <div className="scroll-cue-pill">
             <p className="scroll-cue">{t.scrollCue}</p>
