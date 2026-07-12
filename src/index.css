@@ -533,11 +533,17 @@
   max-width: 160px;
   margin: 16px auto 0;
   display: block;
+  /* Both images sit on a flat white/light background (not real transparency)
+     - "multiply" blend makes light pixels fade into whatever's behind them
+     (the lace paper texture) while the darker ring/monogram shapes stay
+     visible, so no background-removed file is actually needed. */
+  mix-blend-mode: multiply;
 }
 .thankyou-card .thankyou-logo {
   max-width: 44px;
   margin: 10px auto 0;
   opacity: 0.85;
+  mix-blend-mode: multiply;
 }
 
 .wedding-silk-background {

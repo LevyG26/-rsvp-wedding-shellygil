@@ -3,7 +3,7 @@ import { CheckCircle2, XCircle } from 'lucide-react';
 import { Language, translations } from '../i18n';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import thankYouImage from '../assets/call_L4Jfb428Tg5ITFxtR88Tdg1m.png';
+import thankYouImage from '../assets/rings-transparent-white-gold.png';
 import logoSg from '../assets/logo-sg.png';
 import { isValidPhoneNumber } from '../utils/phoneNumbers';
 import { CalendarLink } from '../utils/calendarLink';
