@@ -155,6 +155,16 @@
    element with a flat white background. */
 .invite-card-wrap {
   position: relative;
+  overflow: hidden;
+}
+/* The invitation artwork has a plain empty-paper margin outside the lace
+   frame on all sides. Zooming in slightly crops away that empty margin only
+   (never the flowers or any text), pushing the ornamental frame toward the
+   edges and making the whole invitation read bigger without needing a new
+   source image. */
+.invite-card-wrap .card-img {
+  transform: scale(1.12);
+  transform-origin: center;
 }
 .scroll-cue-overlay {
   position: absolute;
