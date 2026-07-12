@@ -686,6 +686,51 @@ export function AdminDashboard() {
             });
     }, [records, guestRoster, isAuthChecked, isSignedIn]);
 
+    // Auto-fills a response's own "group" tag (used for the group-select
+    // dropdown, its own distribution chart, etc.) from the roster match
+    // shown in the "Side/Category" column - only when the response doesn't
+    // already have a group set (never overwrites a manual choice) and the
+    // name matches exactly one roster entry (skips "no match"/"ambiguous"
+    // cases, same as everywhere else this matching is used). Otherwise the
+    // two columns showed inconsistent info: "Side/Category" correctly
+    // identified the guest, but "Group" stayed "no group" forever since
+    // nothing ever wrote to it.
+    const isAutoFillingGroupRef = useRef(false);
+    useEffect(() => {
+        if (!isAuthChecked || !isSignedIn) return;
+        if (records.length === 0 || guestRoster.length === 0) return;
+        if (isAutoFillingGroupRef.current) return;
+
+        const updates = records
+            .filter((record) => !record.group.trim() && record.fullName.trim())
+            .map((record) => {
+                const matches = findRosterMatches(record.fullName, guestRoster);
+                return matches.length === 1 && matches[0].category.trim()
+                    ? { id: record.id, category: matches[0].category.trim() }
+                    : null;
+            })
+            .filter((update): update is { id: string; category: string } => update !== null);
+
+        if (updates.length === 0) return;
+
+        isAutoFillingGroupRef.current = true;
+        Promise.all(
+            updates.map((update) =>
+                updateDoc(doc(db, 'rsvps', update.id), { group: update.category }).then(() => {
+                    setRecords((prevRecords) => prevRecords.map((record) => (
+                        record.id === update.id ? { ...record, group: update.category } : record
+                    )));
+                }),
+            ),
+        )
+            .catch((autoFillError) => {
+                console.error('Automatic group fill from roster match failed', autoFillError);
+            })
+            .finally(() => {
+                isAutoFillingGroupRef.current = false;
+            });
+    }, [records, guestRoster, isAuthChecked, isSignedIn]);
+
     const handleCreateGuestRosterEntry = async (input: GuestRosterEntryInput) => {
         await createGuestRosterEntry(input);
         await reloadGuestRoster();
