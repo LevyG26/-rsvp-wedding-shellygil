@@ -289,7 +289,15 @@
 .field {
   margin-bottom: 4px;
 }
-.field label {
+/* ">" (direct child) on purpose, not a descendant selector - the field's own
+   label ("שם מלא", "בחרו סטטוס הגעה", etc.) is a direct child of .field, but
+   the radio-option <label> elements are nested two levels down inside
+   .radio-row. A plain ".field label" descendant selector was also matching
+   those nested labels and (being more specific than .radio-option) silently
+   overriding their centering with this rule's text-align - that was the
+   actual cause of the radio button text never centering no matter what was
+   changed on .radio-option directly. */
+.field > label {
   display: block;
   font-family: Arial, sans-serif;
   font-size: 11px;
@@ -302,13 +310,7 @@
   text-align: center;
   text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 1px rgba(255, 255, 255, 0.9);
 }
-/* Uppercase Latin-style tracking doesn't read well in Hebrew, so RTL labels
-   drop text-transform/letter-spacing - but keep the same plain, clear
-   sans-serif as the scroll-cue text (rather than the elegant serif used for
-   the invitation's decorative wording), since these are functional form
-   labels that need to read instantly, not ornamental text. Right-aligned to
-   match the RTL reading direction, sitting snug above its field. */
-[dir="rtl"] .field label {
+[dir="rtl"] .field > label {
   text-transform: none;
   letter-spacing: 0.2px;
   font-size: 12.5px;
