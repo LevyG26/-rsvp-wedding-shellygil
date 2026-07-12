@@ -170,14 +170,24 @@
    background image sits on) - fading down into that exact color means the
    last visible row of the invite card already reads as "the same surface"
    the RSVP section starts with, instead of a hard cut between two slightly
-   different tones. */
+   different tones. Shorter than the first version (14% -> 8%), and the
+   gradient itself stays fully transparent for its first third before
+   starting to ramp - the dedication paragraph text sits just above the
+   scroll cue, and the taller/earlier-starting fade was washing over it.
+   This keeps the blend confined to the plain margin right at the very
+   bottom edge, away from that text. */
 .invite-fade-overlay {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 14%;
-  background: linear-gradient(to bottom, rgba(211, 210, 206, 0), rgba(211, 210, 206, 0.95));
+  height: 8%;
+  background: linear-gradient(
+    to bottom,
+    rgba(211, 210, 206, 0) 0%,
+    rgba(211, 210, 206, 0) 35%,
+    rgba(211, 210, 206, 0.95) 100%
+  );
   pointer-events: none;
 }
 .scroll-cue-overlay {
