@@ -97,7 +97,7 @@
 .cover-lang {
   position: absolute;
   left: 50%;
-  bottom: 11%;
+  bottom: 16%;
   transform: translateX(-50%);
   display: flex;
   gap: 0;
@@ -530,8 +530,8 @@
   padding: 20px 0;
 }
 .thankyou-card img {
-  max-width: 160px;
-  margin: 16px auto 0;
+  max-width: 130px;
+  margin: 4px auto 0;
   display: block;
   /* This file now has real background removal (run through remove.bg) - no
      blend-mode hack needed, and multiply was actually dulling/greying the
