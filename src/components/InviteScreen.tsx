@@ -5,7 +5,7 @@ import inviteHe from '../assets/invite-card-he.jpg';
 import inviteFr from '../assets/invite-card-fr.jpg';
 import rsvpBackground from '../assets/rsvp-background.jpg';
 import { buildCalendarLink } from '../utils/calendarLink';
-import { EVENT_CALENDAR_START, EVENT_CALENDAR_END, EVENT_TIME_ZONE, EVENT_LOCATION_PLUS_CODE } from '../eventDetails';
+import { EVENT_CALENDAR_START, EVENT_CALENDAR_END, EVENT_TIME_ZONE } from '../eventDetails';
 
 interface Props {
   lang: Language;
@@ -23,12 +23,14 @@ export function InviteScreen({ lang, linkedPhone }: Props) {
   // the wrong result.
   const wazeUrl = 'https://waze.com/ul/hsv8z2g4m';
 
-  // Plus code appended so the calendar event's own "open in Maps" action
-  // (on both Apple Calendar/Maps and Google Calendar/Maps) lands on the
-  // exact venue instead of a text search that can drift to the wrong place.
+  // Plain venue name only - the plus code is precise for navigation, but
+  // shown in the calendar event's own location field it read as odd/
+  // confusing text to guests. Waze already gets the exact location via its
+  // own dedicated deep link above, so nothing is lost by keeping this field
+  // simple and human-readable.
   const calendarLink = buildCalendarLink({
     title: `${t.names} - ${t.subtitle}`,
-    location: `${t.venue}, ${EVENT_LOCATION_PLUS_CODE}`,
+    location: t.venue,
     description: t.venueName,
     startCompact: EVENT_CALENDAR_START,
     endCompact: EVENT_CALENDAR_END,
