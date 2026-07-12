@@ -270,17 +270,16 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
             </a>
           )}
           {calendarLink && (
-            // No `download` attribute here even for the Apple/.ics link: iOS
-            // Safari doesn't reliably honor `download` on a data: URI (it
-            // silently does nothing rather than saving a usable file).
-            // Safari's native "Add to Calendar" handoff for a plain
-            // data:text/calendar link only fires on a normal navigation, not
-            // a forced download - this is the one-tap behavior that used to
-            // work; adding `download` is what broke it.
+            // calendarLink.href is a real Blob object URL for the Apple/.ics
+            // case (not a data: URI) - `download` is reliable on Blob URLs in
+            // mobile Safari, unlike on data: URIs, which is what made this
+            // button silently do nothing before.
             <a
               className="waze-btn"
               href={calendarLink.href}
-              {...(calendarLink.isDownload ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
+              {...(calendarLink.isDownload
+                ? { download: calendarLink.fileName }
+                : { target: '_blank', rel: 'noopener noreferrer' })}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="#5c594f" strokeWidth={2}>
                 <rect x="3" y="4" width="18" height="18" rx="2" />

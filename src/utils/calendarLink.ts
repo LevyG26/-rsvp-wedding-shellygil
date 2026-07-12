@@ -22,9 +22,10 @@ export interface CalendarLink {
 function isApplePlatform(): boolean {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
-  const isIOs = /iPad|iPhone|iPod/.test(ua);
-  const isMac = /Macintosh/.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document === false;
-  return isIOs || isMac;
+  // Covers real Macs and iPads too - iPadOS reports its UA as "Macintosh" by
+  // default (with touch support), which a previous "Mac must have no touch"
+  // check here was incorrectly excluding.
+  return /iPad|iPhone|iPod|Macintosh/.test(ua);
 }
 
 function escapeIcsText(value: string): string {
@@ -47,8 +48,18 @@ function buildIcsHref(event: CalendarEventInput): CalendarLink {
     'END:VCALENDAR',
   ].join('\r\n');
 
+  // A Blob object URL (not a data: URI) is what makes the `download`
+  // attribute actually reliable in mobile Safari - Safari has always been
+  // inconsistent about honoring `download` on data: URIs (that's what made
+  // the button silently do nothing), but a real Blob URL downloads properly,
+  // after which tapping the downloaded file offers "Add to Calendar".
+  const blob = new Blob([lines], { type: 'text/calendar;charset=utf-8' });
+  const href = typeof URL !== 'undefined' && 'createObjectURL' in URL
+    ? URL.createObjectURL(blob)
+    : `data:text/calendar;charset=utf-8,${encodeURIComponent(lines)}`;
+
   return {
-    href: `data:text/calendar;charset=utf-8,${encodeURIComponent(lines)}`,
+    href,
     isDownload: true,
     fileName: 'wedding.ics',
   };

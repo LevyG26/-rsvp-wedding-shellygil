@@ -5,7 +5,7 @@ import inviteHe from '../assets/invite-card-he.jpg';
 import inviteFr from '../assets/invite-card-fr.jpg';
 import rsvpBackground from '../assets/rsvp-background.jpg';
 import { buildCalendarLink } from '../utils/calendarLink';
-import { EVENT_CALENDAR_START, EVENT_CALENDAR_END, EVENT_TIME_ZONE } from '../eventDetails';
+import { EVENT_CALENDAR_START, EVENT_CALENDAR_END, EVENT_TIME_ZONE, EVENT_LOCATION_PLUS_CODE } from '../eventDetails';
 
 interface Props {
   lang: Language;
@@ -16,12 +16,19 @@ export function InviteScreen({ lang, linkedPhone }: Props) {
   const t = translations[lang];
   const cardImage = lang === 'fr' ? inviteFr : inviteHe;
 
-  const encodedAddress = encodeURIComponent(t.venue);
-  const wazeUrl = `https://waze.com/ul?q=${encodedAddress}&navigate=yes`;
+  // A text-search Waze link (built from the venue name) was resolving to
+  // the wrong nearby place ("מטבח חוות רונית" instead of the venue itself).
+  // This is the exact Waze deep link the original site used - it points at
+  // fixed coordinates instead of a fuzzy name search, so it can't drift to
+  // the wrong result.
+  const wazeUrl = 'https://waze.com/ul/hsv8z2g4m';
 
+  // Plus code appended so the calendar event's own "open in Maps" action
+  // (on both Apple Calendar/Maps and Google Calendar/Maps) lands on the
+  // exact venue instead of a text search that can drift to the wrong place.
   const calendarLink = buildCalendarLink({
     title: `${t.names} - ${t.subtitle}`,
-    location: t.venue,
+    location: `${t.venue}, ${EVENT_LOCATION_PLUS_CODE}`,
     description: t.venueName,
     startCompact: EVENT_CALENDAR_START,
     endCompact: EVENT_CALENDAR_END,
