@@ -105,11 +105,12 @@
 .cover-lang a {
   font-family: Georgia, serif;
   letter-spacing: 2px;
-  font-size: 10px;
+  font-size: 13px;
+  font-weight: 600;
   text-transform: uppercase;
-  padding: 10px 18px;
+  padding: 13px 24px;
   border: 1px solid rgba(120, 117, 108, 0.55);
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.65);
   color: #5c594f;
   cursor: pointer;
   text-decoration: none;
@@ -528,6 +529,20 @@
 .thankyou-card {
   text-align: center;
   padding: 20px 0;
+  /* The form-card swaps to this card the instant the RSVP submits - a plain
+     instant swap read as an abrupt jump-cut against the surrounding
+     invitation artwork. A quick fade+rise softens that handoff. */
+  animation: thankyou-in 0.5s ease both;
+}
+@keyframes thankyou-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .thankyou-card img {
   max-width: 130px;
@@ -543,9 +558,9 @@
      it's meant to read as a small solid badge/seal, not blend into the lace
      texture, so no blend-mode here (multiply would turn its dark background
      black against the light page instead of hiding it). */
-  max-width: 40px;
-  margin: 10px auto 0;
-  border-radius: 6px;
+  max-width: 62px;
+  margin: 12px auto 0;
+  border-radius: 8px;
   opacity: 0.9;
 }
 
