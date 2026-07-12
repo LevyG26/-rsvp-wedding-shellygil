@@ -285,10 +285,11 @@
   background-color: #d3d2ce;
   /* Bottom value only (unrelated to the top/side scaling math below) - was
      24px, which left almost no breathing room after the calendar/Waze
-     buttons. Guests scrolling down hit that abrupt edge and reported it as
-     "nowhere further to scroll", like the page had been cut off mid-design
-     rather than reaching a natural end. */
-  padding: 46% 23% 56px;
+     buttons, then 56px. Guests scrolling down hit that abrupt edge and
+     reported it as "nowhere further to scroll", like the page had been cut
+     off mid-design rather than reaching a natural end - bumped further
+     still for a clearer, more comfortable stopping point. */
+  padding: 46% 23% 88px;
   display: flex;
   justify-content: center;
 }
