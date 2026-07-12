@@ -62,13 +62,15 @@ export function GuestCountInput({
         disabled={isSaving || disabled}
         className="w-16 rounded-xl border border-gray-300 bg-white px-2 py-1.5 text-center text-sm text-gray-900 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200 disabled:cursor-not-allowed disabled:bg-gray-100"
       />
-      <button
-        type="submit"
-        disabled={!hasChanged || isSaving || disabled}
-        className="rounded-xl bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-      >
-        {isSaving ? savingLabel : saveLabel}
-      </button>
+      {(hasChanged || isSaving) && (
+        <button
+          type="submit"
+          disabled={!hasChanged || isSaving || disabled}
+          className="shrink-0 rounded-xl bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+        >
+          {isSaving ? savingLabel : saveLabel}
+        </button>
+      )}
     </form>
   );
 }

@@ -6,6 +6,7 @@ import {
     ArrowDown,
     ArrowUp,
     ArrowUpDown,
+    ChevronDown,
     Download,
     Languages,
     LogOut,
@@ -211,6 +212,22 @@ export function AdminDashboard() {
     const [isEnrichingInviteLinks, setIsEnrichingInviteLinks] = useState(false);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+    // Mobile response cards default to a compact one-line summary (name,
+    // roster match, status) and only reveal the editable fields + delete
+    // button once tapped open - same "one line to scan, one tap to edit"
+    // pattern as the Guest Roster mobile cards.
+    const [expandedRecordIds, setExpandedRecordIds] = useState<Set<string>>(new Set());
+    const toggleRecordExpanded = (id: string) => {
+        setExpandedRecordIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
     const [isExporting, setIsExporting] = useState(false);
     // Kept only for the Excel export summary sheet, which still includes it -
     // no longer editable or shown anywhere in the dashboard UI itself.
@@ -1505,105 +1522,122 @@ export function AdminDashboard() {
                         <>
                         {/* Mobile card list (below md breakpoint) */}
                         <div className="divide-y divide-gray-100 md:hidden">
-                            {sortedRecords.map((record, index) => (
-                                <div key={record.id} className="p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="flex items-start gap-3">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedIds.includes(record.id)}
-                                                onChange={() => handleToggleRecordSelection(record.id)}
-                                                disabled={isDeletingSelected || deletingId === record.id}
-                                                aria-label={t.adminSelectRow}
-                                                className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+                            {sortedRecords.map((record, index) => {
+                                const isExpanded = expandedRecordIds.has(record.id);
+                                return (
+                                <div key={record.id} className="p-3">
+                                    <div className="flex items-start gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.includes(record.id)}
+                                            onChange={() => handleToggleRecordSelection(record.id)}
+                                            disabled={isDeletingSelected || deletingId === record.id}
+                                            aria-label={t.adminSelectRow}
+                                            className="mt-1.5 h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleRecordExpanded(record.id)}
+                                            className="flex min-w-0 flex-1 items-start gap-2 text-start"
+                                            aria-expanded={isExpanded}
+                                        >
+                                            <ChevronDown
+                                                size={16}
+                                                className={`mt-1 shrink-0 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                                             />
-                                            <div>
-                                                <p className="font-medium text-gray-900">
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate font-medium text-gray-900">
                                                     <span className="text-gray-400 me-1" dir="ltr">#{index + 1}</span>
                                                     {record.fullName || t.adminUnknownName}
-                                                </p>
-                                                <p className="text-xs text-gray-500" dir="ltr">{record.phone || t.adminNoPhone}</p>
-                                                <div className="mt-1">
+                                                </span>
+                                                <span className="mt-0.5 block">
                                                     <RosterMatchBadge info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-' }} />
-                                                </div>
+                                                </span>
+                                            </span>
+                                            <span
+                                                className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${record.isAttending
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : 'bg-rose-100 text-rose-700'
+                                                    }`}
+                                            >
+                                                {record.isAttending ? t.adminStatusAttending : t.adminStatusNotAttending}
+                                            </span>
+                                        </button>
+                                    </div>
+
+                                    {isExpanded && (
+                                    <div className="mt-3 border-t border-gray-100 pt-3">
+                                        <p className="text-xs text-gray-500" dir="ltr">{record.phone || t.adminNoPhone}</p>
+
+                                        <div className="mt-3 grid grid-cols-2 gap-3">
+                                            <div className="col-span-2">
+                                                <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableName}</p>
+                                                <EditableTextField
+                                                    value={record.fullName}
+                                                    disabled={isDeletingSelected || deletingId === record.id}
+                                                    inputLabel={t.adminTableName}
+                                                    saveLabel={t.adminGroupSave}
+                                                    savingLabel={t.adminGroupSaving}
+                                                    placeholder={t.adminUnknownName}
+                                                    onChange={(fullName) => handleFullNameChange(record.id, fullName)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableGuests}</p>
+                                                <GuestCountInput
+                                                    count={record.guestsCount}
+                                                    disabled={isDeletingSelected || deletingId === record.id}
+                                                    inputLabel={t.adminTableGuests}
+                                                    saveLabel={t.adminGroupSave}
+                                                    savingLabel={t.adminGroupSaving}
+                                                    onChange={(guestsCount) => handleGuestCountChange(record.id, guestsCount)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableGroup}</p>
+                                                <GuestGroupSelect
+                                                    group={record.group}
+                                                    groups={guestGroups}
+                                                    disabled={isDeletingSelected || deletingId === record.id}
+                                                    onChange={(group) => handleGroupChange(record.id, group)}
+                                                    labels={{
+                                                        unassigned: t.adminGroupUnassigned,
+                                                        addNew: t.adminGroupAddNew,
+                                                        newGroupPlaceholder: t.adminGroupNamePlaceholder,
+                                                        save: t.adminGroupSave,
+                                                        cancel: t.adminGroupCancel,
+                                                        saving: t.adminGroupSaving,
+                                                    }}
+                                                />
                                             </div>
                                         </div>
-                                        <span
-                                            className={`inline-flex shrink-0 rounded-full px-3 py-1 text-xs font-medium ${record.isAttending
-                                                ? 'bg-emerald-100 text-emerald-700'
-                                                : 'bg-rose-100 text-rose-700'
+
+                                        {record.note && (
+                                            <p className="mt-3 rounded-xl bg-gray-50 p-2.5 text-sm text-gray-700">{record.note}</p>
+                                        )}
+
+                                        <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                                            <span dir="ltr">{record.lang.toUpperCase()}</span>
+                                            <span dir="ltr">{formatDate(record.createdAt)}</span>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDelete(record.id)}
+                                            disabled={deletingId === record.id || isDeletingSelected}
+                                            className={`mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${deletingId === record.id || isDeletingSelected
+                                                ? 'cursor-not-allowed bg-gray-100 text-gray-400'
+                                                : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
                                                 }`}
                                         >
-                                            {record.isAttending ? t.adminStatusAttending : t.adminStatusNotAttending}
-                                        </span>
+                                            <Trash2 size={14} />
+                                            {deletingId === record.id ? t.adminDeletingAction : t.adminDeleteAction}
+                                        </button>
                                     </div>
-
-                                    <div className="mt-3 grid grid-cols-2 gap-3">
-                                        <div className="col-span-2">
-                                            <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableName}</p>
-                                            <EditableTextField
-                                                value={record.fullName}
-                                                disabled={isDeletingSelected || deletingId === record.id}
-                                                inputLabel={t.adminTableName}
-                                                saveLabel={t.adminGroupSave}
-                                                savingLabel={t.adminGroupSaving}
-                                                placeholder={t.adminUnknownName}
-                                                onChange={(fullName) => handleFullNameChange(record.id, fullName)}
-                                            />
-                                        </div>
-                                        <div>
-                                            <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableGuests}</p>
-                                            <GuestCountInput
-                                                count={record.guestsCount}
-                                                disabled={isDeletingSelected || deletingId === record.id}
-                                                inputLabel={t.adminTableGuests}
-                                                saveLabel={t.adminGroupSave}
-                                                savingLabel={t.adminGroupSaving}
-                                                onChange={(guestsCount) => handleGuestCountChange(record.id, guestsCount)}
-                                            />
-                                        </div>
-                                        <div>
-                                            <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableGroup}</p>
-                                            <GuestGroupSelect
-                                                group={record.group}
-                                                groups={guestGroups}
-                                                disabled={isDeletingSelected || deletingId === record.id}
-                                                onChange={(group) => handleGroupChange(record.id, group)}
-                                                labels={{
-                                                    unassigned: t.adminGroupUnassigned,
-                                                    addNew: t.adminGroupAddNew,
-                                                    newGroupPlaceholder: t.adminGroupNamePlaceholder,
-                                                    save: t.adminGroupSave,
-                                                    cancel: t.adminGroupCancel,
-                                                    saving: t.adminGroupSaving,
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {record.note && (
-                                        <p className="mt-3 rounded-xl bg-gray-50 p-2.5 text-sm text-gray-700">{record.note}</p>
                                     )}
-
-                                    <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                                        <span dir="ltr">{record.lang.toUpperCase()}</span>
-                                        <span dir="ltr">{formatDate(record.createdAt)}</span>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => handleDelete(record.id)}
-                                        disabled={deletingId === record.id || isDeletingSelected}
-                                        className={`mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${deletingId === record.id || isDeletingSelected
-                                            ? 'cursor-not-allowed bg-gray-100 text-gray-400'
-                                            : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
-                                            }`}
-                                    >
-                                        <Trash2 size={14} />
-                                        {deletingId === record.id ? t.adminDeletingAction : t.adminDeleteAction}
-                                    </button>
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
 
                         {/* Desktop table (md breakpoint and up) */}

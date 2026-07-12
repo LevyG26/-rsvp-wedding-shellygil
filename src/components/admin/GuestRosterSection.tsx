@@ -178,6 +178,24 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
 
   const [isListOpen, setIsListOpen] = useState(false);
 
+  // Mobile cards default to a single compact summary line per guest (name,
+  // side/category, count, status) and only reveal the editable fields +
+  // delete button once tapped open - fitting every field on one line for
+  // every guest isn't realistic on a phone screen, so this trades that for
+  // "one line to scan, one tap to edit" instead.
+  const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(new Set());
+  const toggleEntryExpanded = (id: string) => {
+    setExpandedEntryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const [isCopied, setIsCopied] = useState(false);
 
   const overallTotals = useMemo(() => {
@@ -802,10 +820,30 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                   {filteredEntries.map((entry) => {
                     const isSaving = savingId === entry.id;
                     const rowError = rowErrors[entry.id];
+                    const isExpanded = expandedEntryIds.has(entry.id);
+                    const fullName = `${entry.firstName} ${entry.lastName}`.trim() || labels.name;
                     return (
-                      <div key={entry.id} className="p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1">
+                      <div key={entry.id} className="p-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleEntryExpanded(entry.id)}
+                          className="flex w-full items-center gap-2 text-start"
+                          aria-expanded={isExpanded}
+                        >
+                          <ChevronDown
+                            size={16}
+                            className={`shrink-0 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-gray-900">{fullName}</span>
+                            <span className="block truncate text-xs text-gray-500">{entry.side} · {entry.category}</span>
+                          </span>
+                          <span className="shrink-0 text-xs font-medium text-gray-500" dir="ltr">×{entry.invitedCount}</span>
+                          <span className="shrink-0">{statusBadge(entry.knownResponse)}</span>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="mt-3 border-t border-gray-100 pt-3">
                             <div className="flex gap-1.5">
                               <input
                                 type="text"
@@ -826,46 +864,45 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                 className="w-full min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
                               />
                             </div>
-                            <p className="mt-1 text-xs text-gray-500">{entry.side} · {entry.category}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(entry)}
-                            disabled={isSaving}
-                            title={labels.deleteAction}
-                            className="inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-60"
-                          >
-                            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                          </button>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-3">
-                          <div>
-                            <p className="mb-1 text-xs font-medium text-gray-500">{labels.invitedCount}</p>
-                            <input
-                              type="number"
-                              min={1}
-                              defaultValue={entry.invitedCount}
-                              key={`${entry.id}-${entry.invitedCount}`}
+                            <div className="mt-3 grid grid-cols-2 gap-3">
+                              <div>
+                                <p className="mb-1 text-xs font-medium text-gray-500">{labels.invitedCount}</p>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  defaultValue={entry.invitedCount}
+                                  key={`${entry.id}-${entry.invitedCount}`}
+                                  disabled={isSaving}
+                                  onBlur={(event) => handleCountChange(entry, event.target.value)}
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                />
+                              </div>
+                              <div>
+                                <p className="mb-1 text-xs font-medium text-gray-500">{labels.status}</p>
+                                <select
+                                  value={entry.knownResponse ?? ''}
+                                  disabled={isSaving}
+                                  onChange={(event) => handleStatusChange(entry, event.target.value)}
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                >
+                                  <option value="">{labels.statusPending}</option>
+                                  <option value="yes">{labels.statusConfirmed}</option>
+                                  <option value="no">{labels.statusDeclined}</option>
+                                </select>
+                              </div>
+                            </div>
+                            {rowError && <p className="mt-2 text-xs text-rose-600">{rowError}</p>}
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(entry)}
                               disabled={isSaving}
-                              onBlur={(event) => handleCountChange(entry, event.target.value)}
-                              className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
-                            />
-                          </div>
-                          <div>
-                            <p className="mb-1 text-xs font-medium text-gray-500">{labels.status}</p>
-                            <select
-                              value={entry.knownResponse ?? ''}
-                              disabled={isSaving}
-                              onChange={(event) => handleStatusChange(entry, event.target.value)}
-                              className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                              className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-rose-100 px-3 py-2 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              <option value="">{labels.statusPending}</option>
-                              <option value="yes">{labels.statusConfirmed}</option>
-                              <option value="no">{labels.statusDeclined}</option>
-                            </select>
+                              {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                              {labels.deleteAction}
+                            </button>
                           </div>
-                        </div>
-                        {rowError && <p className="mt-2 text-xs text-rose-600">{rowError}</p>}
+                        )}
                       </div>
                     );
                   })}
