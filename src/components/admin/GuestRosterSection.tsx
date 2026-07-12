@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, Clock, Link2, Loader2, Plus, RefreshCw, Trash2, UserCheck, Users, UserX, X } from 'lucide-react';
+import { Check, ChevronDown, Clock, Copy, Link2, Loader2, MessageCircle, Plus, RefreshCw, Trash2, UserCheck, Users, UserX, X } from 'lucide-react';
 import type { GuestRosterEntry, GuestRosterEntryInput, KnownResponse } from '../../services/guestRoster';
 import type { RosterLinkResult } from '../../services/rsvpRosterLink';
+import { EVENT_START_ISO } from '../../eventDetails';
 
 export interface GuestRosterLabels {
   title: string;
@@ -125,6 +126,24 @@ function StatCard({ label, value, accentClassName }: { label: string; value: num
 
 const emptyForm = { side: '', category: '', firstName: '', lastName: '', invitedCount: '1', knownResponse: '' as '' | KnownResponse };
 
+// One line with the wedding's own details (names, date/time, venue) so any
+// list shared out of the dashboard - to a parent, an usher, anyone helping
+// with follow-up calls - is self-explanatory on its own, without needing
+// context from whoever forwards it.
+const WEDDING_DETAILS_LINE = (() => {
+  const date = new Date(EVENT_START_ISO);
+  const datePart = new Intl.DateTimeFormat('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(date);
+  const timePart = new Intl.DateTimeFormat('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+  return `חתונת שלי וגיל · ${datePart} · שעה ${timePart} · חוות רונית`;
+})();
+
+function statusFilterLabel(statusFilter: string, labels: GuestRosterLabels): string {
+  if (statusFilter === 'yes') return labels.statusConfirmed;
+  if (statusFilter === 'no') return labels.statusDeclined;
+  if (statusFilter === 'pending') return labels.statusPending;
+  return '';
+}
+
 // Temporarily re-enabled: needed again to fix a real count mismatch on
 // גיל's side (stale duplicate entries from old category renames in the
 // sheet). Hide again once that's resolved by flipping this back to false.
@@ -157,6 +176,8 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
 
   const [isListOpen, setIsListOpen] = useState(false);
+
+  const [isCopied, setIsCopied] = useState(false);
 
   const overallTotals = useMemo(() => {
     const totals = emptyTotals();
@@ -225,6 +246,43 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
 
   const hasActiveFilter = search.trim() !== '' || sideFilter !== '' || categoryFilter !== '' || statusFilter !== '';
   const isListVisible = isListOpen || hasActiveFilter;
+
+  // Builds a ready-to-send WhatsApp message from whatever is currently
+  // filtered (side/category/status/search) - e.g. "צד גיל · חברים דור · טרם
+  // ענו" - so sharing "the list I'm looking at right now" is one tap away,
+  // whether that's to a helper following up on calls or just for Gil's own
+  // records.
+  const whatsAppMessage = useMemo(() => {
+    const filterParts = [sideFilter, categoryFilter, statusFilterLabel(statusFilter, labels)].filter(Boolean);
+    const titleLine = filterParts.length > 0
+      ? `רשימת מוזמנים - ${filterParts.join(' · ')}`
+      : 'רשימת מוזמנים - כולם';
+
+    const nameLines = filteredEntries.map((entry, index) => {
+      const fullName = `${entry.firstName} ${entry.lastName}`.trim() || '(ללא שם)';
+      const countSuffix = entry.invitedCount > 1 ? ` (${entry.invitedCount})` : '';
+      return `${index + 1}. ${fullName}${countSuffix}`;
+    });
+
+    const summaryLine = `סה"כ: ${filteredEntries.length} רשומות · ${filteredInvitedTotal} מוזמנים`;
+
+    return [titleLine, WEDDING_DETAILS_LINE, '', ...nameLines, '', summaryLine].join('\n');
+  }, [filteredEntries, filteredInvitedTotal, sideFilter, categoryFilter, statusFilter, labels]);
+
+  const handleShareWhatsApp = () => {
+    const url = `https://wa.me/?text=${encodeURIComponent(whatsAppMessage)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleCopyList = async () => {
+    try {
+      await navigator.clipboard.writeText(whatsAppMessage);
+      setIsCopied(true);
+      window.setTimeout(() => setIsCopied(false), 2000);
+    } catch (copyError) {
+      console.error('Failed to copy guest list to clipboard', copyError);
+    }
+  };
 
   const statusBadge = (response: GuestRosterEntry['knownResponse']) => {
     if (response === 'yes') {
@@ -695,6 +753,26 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
 
           {/* 4. Full guest list - collapsible (auto-shown once searching/filtering) */}
           <div>
+            {filteredEntries.length > 0 && (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleShareWhatsApp}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                >
+                  <MessageCircle size={16} />
+                  שלח רשימה בווטסאפ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyList}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  {isCopied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+                  {isCopied ? 'הועתק' : 'העתק טקסט'}
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => setIsListOpen((open) => !open)}
