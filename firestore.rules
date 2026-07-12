@@ -154,8 +154,8 @@ service cloud.firestore {
     // directly in the dashboard. Contains guest PII, so it's admin-only
     // for both reads and writes.
     function isValidGuestRosterEntry(data) {
-      return data.keys().hasAll(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt']) &&
-             data.keys().hasOnly(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt']) &&
+      return data.keys().hasAll(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt', 'linkedFromRsvp', 'preLinkInvitedCount']) &&
+             data.keys().hasOnly(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt', 'linkedFromRsvp', 'preLinkInvitedCount']) &&
              data.side is string && data.side.size() <= 60 &&
              data.category is string && data.category.size() <= 60 &&
              data.firstName is string && data.firstName.size() <= 60 &&
@@ -163,7 +163,14 @@ service cloud.firestore {
              (data.firstName.size() > 0 || data.lastName.size() > 0) &&
              data.invitedCount is int && data.invitedCount >= 1 && data.invitedCount <= 30 &&
              (data.knownResponse == null || data.knownResponse == 'yes' || data.knownResponse == 'no') &&
-             data.updatedAt == request.time;
+             data.updatedAt == request.time &&
+             // Tracks whether knownResponse/invitedCount currently came from
+             // the automatic RSVP-roster linker (see rsvpRosterLink.ts),
+             // so it can be reverted if that RSVP is later deleted, without
+             // ever touching entries set by sheet sync or a manual edit.
+             data.linkedFromRsvp is bool &&
+             (data.preLinkInvitedCount == null ||
+               (data.preLinkInvitedCount is int && data.preLinkInvitedCount >= 0 && data.preLinkInvitedCount <= 30));
     }
 
     match /guestRoster/{entryId} {
