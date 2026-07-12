@@ -266,18 +266,22 @@
    position within the image (roughly 26%-73% horizontally, starting ~44%
    from the top) - the padding below is deliberately matched to that, so the
    form content lands inside the oval opening instead of overlapping the
-   ornate crown/border artwork. Scaling the background up (as tried
-   previously, to make the image feel bigger) throws this alignment off,
-   since the padding box stays fixed while the oval's on-screen position
-   shifts - that's what pushed the title under the crown and let content
-   spill past the frame. Keeping this at 100% is what keeps everything
-   registered inside the oval. */
+   ornate crown/border artwork.
+   The background is anchored "top center", so zooming it in pushes every
+   point below the top edge further down, and every point away from the
+   horizontal center further out, in direct proportion to the zoom factor.
+   To crop the empty paper margin around the oval (same idea as the
+   invitation image) while keeping the fields/buttons perfectly registered
+   inside the oval, the padding values are scaled by that SAME factor
+   (112%): 41% -> ~46% top, 26% -> ~23% sides. If the zoom factor here ever
+   changes, scale padding-top and the side padding by that same factor to
+   keep the alignment intact - do not change one without the other. */
 .rsvp-wrap {
-  background-size: 100% auto;
+  background-size: 112% auto;
   background-repeat: no-repeat;
   background-position: top center;
   background-color: #d3d2ce;
-  padding: 41% 26% 24px;
+  padding: 46% 23% 24px;
   display: flex;
   justify-content: center;
 }
