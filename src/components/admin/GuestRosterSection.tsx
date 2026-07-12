@@ -253,10 +253,18 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
   // whether that's to a helper following up on calls or just for Gil's own
   // records.
   const whatsAppMessage = useMemo(() => {
-    const filterParts = [sideFilter, categoryFilter, statusFilterLabel(statusFilter, labels)].filter(Boolean);
-    const titleLine = filterParts.length > 0
-      ? `רשימת מוזמנים - ${filterParts.join(' · ')}`
-      : 'רשימת מוזמנים - כולם';
+    // WhatsApp renders *text* as bold and _text_ as italic in the message
+    // itself, so wrapping the group/status in asterisks makes them stand
+    // out for whoever receives it - not just a plain flat line.
+    const filterLines: string[] = [];
+    if (sideFilter) filterLines.push(`צד: ${sideFilter}`);
+    if (categoryFilter) filterLines.push(`קבוצה: *${categoryFilter}*`);
+    const statusLabel = statusFilterLabel(statusFilter, labels);
+    if (statusLabel) filterLines.push(`סטטוס: *${statusLabel}*`);
+
+    const titleBlock = filterLines.length > 0
+      ? ['📋 *רשימת מוזמנים*', ...filterLines]
+      : ['📋 *רשימת מוזמנים* - כולם'];
 
     const nameLines = filteredEntries.map((entry, index) => {
       const fullName = `${entry.firstName} ${entry.lastName}`.trim() || '(ללא שם)';
@@ -266,7 +274,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
 
     const summaryLine = `סה"כ: ${filteredEntries.length} רשומות · ${filteredInvitedTotal} מוזמנים`;
 
-    return [titleLine, WEDDING_DETAILS_LINE, '', ...nameLines, '', summaryLine].join('\n');
+    return [...titleBlock, '', WEDDING_DETAILS_LINE, '', ...nameLines, '', summaryLine].join('\n');
   }, [filteredEntries, filteredInvitedTotal, sideFilter, categoryFilter, statusFilter, labels]);
 
   const handleShareWhatsApp = () => {
