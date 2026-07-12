@@ -533,17 +533,20 @@
   max-width: 160px;
   margin: 16px auto 0;
   display: block;
-  /* Both images sit on a flat white/light background (not real transparency)
-     - "multiply" blend makes light pixels fade into whatever's behind them
-     (the lace paper texture) while the darker ring/monogram shapes stay
-     visible, so no background-removed file is actually needed. */
-  mix-blend-mode: multiply;
+  /* This file now has real background removal (run through remove.bg) - no
+     blend-mode hack needed, and multiply was actually dulling/greying the
+     rings themselves on top of hiding the background, which read as low
+     quality. Plain display shows the ring photo at full quality. */
 }
 .thankyou-card .thankyou-logo {
-  max-width: 44px;
+  /* This is the dark-background version (same file used for the favicon) -
+     it's meant to read as a small solid badge/seal, not blend into the lace
+     texture, so no blend-mode here (multiply would turn its dark background
+     black against the light page instead of hiding it). */
+  max-width: 40px;
   margin: 10px auto 0;
-  opacity: 0.85;
-  mix-blend-mode: multiply;
+  border-radius: 6px;
+  opacity: 0.9;
 }
 
 .wedding-silk-background {

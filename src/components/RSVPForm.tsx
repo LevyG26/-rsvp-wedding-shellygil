@@ -4,7 +4,7 @@ import { Language, translations } from '../i18n';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import thankYouImage from '../assets/rings-transparent-white-gold.png';
-import logoSg from '../assets/logo-sg.png';
+import logoSg from '../assets/logo-sg-dark.png';
 import { isValidPhoneNumber } from '../utils/phoneNumbers';
 import { CalendarLink } from '../utils/calendarLink';
 import { EVENT_START_ISO } from '../eventDetails';
