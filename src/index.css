@@ -236,6 +236,9 @@
   margin: 0;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
   animation: scroll-cue-text-pulse 2.4s ease-in-out infinite;
+  /* See the big comment on .field > label below - same iOS/WebKit
+     glyph-dropping workaround. */
+  transform: translateZ(0);
 }
 @keyframes scroll-cue-text-pulse {
   0%,
@@ -356,6 +359,7 @@
   color: #777777;
   margin: 0 0 6px;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
+  transform: translateZ(0);
 }
 .field {
   margin-bottom: 4px;
@@ -379,7 +383,16 @@
   margin: 0 0 1px;
   line-height: 1.2;
   text-align: center;
-  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9), 0 0 1px rgba(255, 255, 255, 0.9);
+  /* Single shadow now (was two stacked) - a known WebKit bug (affects every
+     browser on iOS, since Apple requires them all to use WebKit, which is
+     why it showed up in "Chrome" on an iPhone too) randomly fails to
+     rasterize individual glyphs when a custom web font is combined with a
+     stacked/complex text-shadow - that's what caused random letters to
+     disappear from words throughout the form ("הגעה" -> "הגע", etc). The
+     translateZ(0) below forces this text onto its own GPU-composited layer,
+     which is the standard, reliable workaround for that specific bug. */
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+  transform: translateZ(0);
 }
 [dir="rtl"] .field > label {
   text-transform: none;
@@ -424,6 +437,7 @@
   margin: 4px 0 0;
   line-height: 1.5;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+  transform: translateZ(0);
 }
 .error-text {
   font-family: Arial, sans-serif;
@@ -451,6 +465,7 @@
   color: #777777;
   margin: 0;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+  transform: translateZ(0);
 }
 /* A shared look for every rectangular "tap this" control on the page -
    submit, navigate, add-to-calendar, and the attendance choice - so they all
@@ -476,6 +491,13 @@
   backdrop-filter: blur(3px);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  /* backdrop-filter forces its own compositing layer, which is the other
+     trigger (alongside text-shadow elsewhere in this file) for the
+     iOS/WebKit bug that was randomly dropping individual letters from this
+     button/radio-option text ("שליחה" -> "שליח", "מגיע/ה" -> "מגי/ה").
+     translateZ(0) promotes the text itself onto its own layer too, which is
+     the standard fix. */
+  transform: translateZ(0);
 }
 /* The radio pair spans the full card width edge-to-edge (flex:1 each), same
    as the nav/calendar row and the submit button below it - a fixed narrower
@@ -554,6 +576,7 @@
   min-width: 22px;
   text-align: center;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+  transform: translateZ(0);
 }
 .submit-btn {
   width: 100%;
@@ -576,6 +599,7 @@
   color: #6b6862;
   text-decoration: none;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
+  transform: translateZ(0);
 }
 .photos-link:hover {
   color: #2b2924;
