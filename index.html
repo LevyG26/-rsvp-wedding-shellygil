@@ -1,8 +1,18 @@
 <!doctype html>
-<html lang="en">
+<!-- lang="he" (not "en") to match the actual page content from the very
+     first paint - React only corrects this after mount, but Chrome/Google
+     Translate detect language almost immediately on load, before that JS
+     runs. A static "en" tag around Hebrew text is exactly the mismatch that
+     was triggering an auto-translate prompt/action on every visit (even the
+     very first cover screen) regardless of language chosen in-app, which in
+     turn was corrupting letters via live DOM text mutation. translate="no"
+     plus the notranslate meta tag below tell Chrome/Google Translate not to
+     touch this page at all, which is the definitive fix. -->
+<html lang="he" translate="no">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google" content="notranslate" />
     <title>Wedding | Shelly & Gil</title>
     <link rel="icon" type="image/png" href="/src/assets/logo-sg-dark.png" />
     <link rel="apple-touch-icon" href="/src/assets/logo-sg-dark.png" />
@@ -15,12 +25,12 @@
          etc.) need a real, fully-qualified image URL to fetch; a relative
          src/assets path either 404s in the production build or gets ignored
          entirely, which is why no preview image was showing before.
-         NOTE: update this domain once the real shellygilwedding.com redirect
-         is live (Gil is handling that separately via Wix). -->
-    <meta property="og:url" content="https://shelly-gil-wedding-dashboard.vercel.app/" />
-    <meta property="og:image" content="https://shelly-gil-wedding-dashboard.vercel.app/og-image.jpg" />
+         Now pointing at the real shellygilwedding.com domain, since Gil's
+         Wix DNS cutover is live and confirmed working. -->
+    <meta property="og:url" content="https://shellygilwedding.com/" />
+    <meta property="og:image" content="https://shellygilwedding.com/og-image.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="https://shelly-gil-wedding-dashboard.vercel.app/og-image.jpg" />
+    <meta name="twitter:image" content="https://shellygilwedding.com/og-image.jpg" />
   </head>
   <body>
     <div id="root"></div>
