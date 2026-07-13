@@ -106,6 +106,12 @@ interface RosterMatchInfo {
     // algorithm - shown as a small "Manual" tag so it's clear it was a human
     // decision, and so it's obvious the picker below can still be changed.
     isManual: boolean;
+    // The actual roster entries the name-matching algorithm found for
+    // 'ambiguous' (more than one) - so the picker below can show exactly
+    // those candidates up front instead of making an admin hunt through the
+    // entire guest list for a match the system already found. Empty for
+    // every other status.
+    candidates: GuestRosterEntry[];
 }
 
 // Highlights "no match"/"ambiguous" cases with an amber warning badge so
@@ -133,17 +139,33 @@ function RosterMatchBadge({ info, manualLabel }: { info: RosterMatchInfo; manual
     );
 }
 
+function rosterEntryLabel(entry: GuestRosterEntry): string {
+    return `${entry.side} · ${entry.category} · ${entry.firstName} ${entry.lastName}`;
+}
+
+function sortRosterEntries(entries: GuestRosterEntry[]): GuestRosterEntry[] {
+    return [...entries].sort((first, second) => rosterEntryLabel(first).localeCompare(rosterEntryLabel(second)));
+}
+
 // Lets an admin pin a response to a specific roster entry when the automatic
 // name-matching came back empty or ambiguous (or to correct a manual pick
 // made earlier). Always shown alongside the badge above for 'none'/'ambiguous'
 // statuses, and also shown (so it can be undone) whenever the current match
 // is itself manual.
+//
+// For 'ambiguous', the algorithm already found the candidates - it just
+// couldn't tell which one is right - so those go in their own "found
+// matches" group at the top of the list instead of forcing a search through
+// the entire guest roster. The full roster is still listed below in case the
+// real guest isn't among what the name-matching considered a candidate.
 function RosterMatchPicker({
     record,
     info,
     guestRoster,
     placeholder,
     clearLabel,
+    foundMatchesLabel,
+    fullListLabel,
     onChange,
 }: {
     record: RSVPRecord;
@@ -151,17 +173,17 @@ function RosterMatchPicker({
     guestRoster: GuestRosterEntry[];
     placeholder: string;
     clearLabel: string;
+    foundMatchesLabel: string;
+    fullListLabel: string;
     onChange: (recordId: string, entryId: string | null) => void;
 }) {
     if (info.status !== 'none' && info.status !== 'ambiguous' && !info.isManual) {
         return null;
     }
 
-    const sortedRoster = [...guestRoster].sort((first, second) => {
-        const firstLabel = `${first.side} ${first.category} ${first.firstName} ${first.lastName}`;
-        const secondLabel = `${second.side} ${second.category} ${second.firstName} ${second.lastName}`;
-        return firstLabel.localeCompare(secondLabel);
-    });
+    const candidateIds = new Set(info.candidates.map((entry) => entry.id));
+    const sortedCandidates = sortRosterEntries(info.candidates);
+    const sortedRest = sortRosterEntries(guestRoster.filter((entry) => !candidateIds.has(entry.id)));
 
     return (
         <select
@@ -170,11 +192,30 @@ function RosterMatchPicker({
             className="mt-1 w-full min-w-0 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
         >
             <option value="">{info.isManual ? clearLabel : placeholder}</option>
-            {sortedRoster.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                    {entry.side} · {entry.category} · {entry.firstName} {entry.lastName}
-                </option>
-            ))}
+            {sortedCandidates.length > 0 ? (
+                <>
+                    <optgroup label={foundMatchesLabel}>
+                        {sortedCandidates.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                                {rosterEntryLabel(entry)}
+                            </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label={fullListLabel}>
+                        {sortedRest.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                                {rosterEntryLabel(entry)}
+                            </option>
+                        ))}
+                    </optgroup>
+                </>
+            ) : (
+                sortedRest.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                        {rosterEntryLabel(entry)}
+                    </option>
+                ))
+            )}
         </select>
     );
 }
@@ -608,23 +649,24 @@ export function AdminDashboard() {
                         status: 'matched',
                         label: `${pickedEntry.side} · ${pickedEntry.category}`,
                         isManual: true,
+                        candidates: [],
                     });
                     return;
                 }
             }
 
             if (!record.fullName.trim()) {
-                map.set(record.id, { status: 'empty', label: '-', isManual: false });
+                map.set(record.id, { status: 'empty', label: '-', isManual: false, candidates: [] });
                 return;
             }
 
             const matches = findRosterMatches(record.fullName, guestRoster);
             if (matches.length === 0) {
-                map.set(record.id, { status: 'none', label: t.adminNoRosterMatch, isManual: false });
+                map.set(record.id, { status: 'none', label: t.adminNoRosterMatch, isManual: false, candidates: [] });
             } else if (matches.length > 1) {
-                map.set(record.id, { status: 'ambiguous', label: t.adminAmbiguousRosterMatch, isManual: false });
+                map.set(record.id, { status: 'ambiguous', label: t.adminAmbiguousRosterMatch, isManual: false, candidates: matches });
             } else {
-                map.set(record.id, { status: 'matched', label: `${matches[0].side} · ${matches[0].category}`, isManual: false });
+                map.set(record.id, { status: 'matched', label: `${matches[0].side} · ${matches[0].category}`, isManual: false, candidates: [] });
             }
         });
         return map;
@@ -1664,7 +1706,7 @@ export function AdminDashboard() {
                                                 </span>
                                                 <span className="mt-0.5 block">
                                                     <RosterMatchBadge
-                                                        info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false }}
+                                                        info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false, candidates: [] }}
                                                         manualLabel={t.adminManualMatchBadge}
                                                     />
                                                 </span>
@@ -1730,10 +1772,12 @@ export function AdminDashboard() {
                                                 <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableSideCategory}</p>
                                                 <RosterMatchPicker
                                                     record={record}
-                                                    info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false }}
+                                                    info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false, candidates: [] }}
                                                     guestRoster={guestRoster}
                                                     placeholder={t.adminManualMatchPlaceholder}
                                                     clearLabel={t.adminManualMatchClear}
+                                                    foundMatchesLabel={t.adminManualMatchFoundGroup}
+                                                    fullListLabel={t.adminManualMatchFullListGroup}
                                                     onChange={handleManualRosterMatchChange}
                                                 />
                                             </div>
@@ -1887,15 +1931,17 @@ export function AdminDashboard() {
                                             </td>
                                             <td className="w-48 px-4 py-3 text-gray-700">
                                                 <RosterMatchBadge
-                                                    info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false }}
+                                                    info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false, candidates: [] }}
                                                     manualLabel={t.adminManualMatchBadge}
                                                 />
                                                 <RosterMatchPicker
                                                     record={record}
-                                                    info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false }}
+                                                    info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false, candidates: [] }}
                                                     guestRoster={guestRoster}
                                                     placeholder={t.adminManualMatchPlaceholder}
                                                     clearLabel={t.adminManualMatchClear}
+                                                    foundMatchesLabel={t.adminManualMatchFoundGroup}
+                                                    fullListLabel={t.adminManualMatchFullListGroup}
                                                     onChange={handleManualRosterMatchChange}
                                                 />
                                             </td>
