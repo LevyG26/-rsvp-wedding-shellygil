@@ -41,7 +41,7 @@ import {
     type GuestRosterEntry,
     type GuestRosterEntryInput,
 } from '../services/guestRoster';
-import { findRosterMatches, linkGuestRosterWithRsvps, type RosterLinkResult } from '../services/rsvpRosterLink';
+import { findRosterMatches, linkGuestRosterWithRsvps, resolveRosterMatches, type RosterLinkResult } from '../services/rsvpRosterLink';
 
 interface RSVPRecord {
     id: string;
@@ -53,6 +53,10 @@ interface RSVPRecord {
     group: string;
     lang: string;
     createdAt: Date | null;
+    // Admin-picked roster entry id - set from the responses table when the
+    // automatic name match is empty or ambiguous and a human confirms which
+    // roster entry is actually correct. null means "use automatic matching".
+    manualRosterEntryId: string | null;
 }
 
 type SortKey = 'fullName' | 'guestsCount' | 'group' | 'isAttending' | 'lang' | 'createdAt';
@@ -97,13 +101,18 @@ type RosterMatchStatus = 'matched' | 'none' | 'ambiguous' | 'empty';
 interface RosterMatchInfo {
     status: RosterMatchStatus;
     label: string;
+    // True when this "matched" result came from an admin's manual pick
+    // (RSVPRecord.manualRosterEntryId) rather than the automatic name-matching
+    // algorithm - shown as a small "Manual" tag so it's clear it was a human
+    // decision, and so it's obvious the picker below can still be changed.
+    isManual: boolean;
 }
 
 // Highlights "no match"/"ambiguous" cases with an amber warning badge so
 // they catch the eye instead of blending in as plain text - these are the
 // ones that need a manual look (fix a typo in the name, or add the guest to
 // the roster) since name-matching couldn't place them on its own.
-function RosterMatchBadge({ info }: { info: RosterMatchInfo }) {
+function RosterMatchBadge({ info, manualLabel }: { info: RosterMatchInfo; manualLabel: string }) {
     if (info.status === 'none' || info.status === 'ambiguous') {
         return (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
@@ -112,7 +121,62 @@ function RosterMatchBadge({ info }: { info: RosterMatchInfo }) {
             </span>
         );
     }
-    return <span className="text-gray-700">{info.label}</span>;
+    return (
+        <span className="inline-flex items-center gap-1.5 text-gray-700">
+            {info.label}
+            {info.isManual && (
+                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                    {manualLabel}
+                </span>
+            )}
+        </span>
+    );
+}
+
+// Lets an admin pin a response to a specific roster entry when the automatic
+// name-matching came back empty or ambiguous (or to correct a manual pick
+// made earlier). Always shown alongside the badge above for 'none'/'ambiguous'
+// statuses, and also shown (so it can be undone) whenever the current match
+// is itself manual.
+function RosterMatchPicker({
+    record,
+    info,
+    guestRoster,
+    placeholder,
+    clearLabel,
+    onChange,
+}: {
+    record: RSVPRecord;
+    info: RosterMatchInfo;
+    guestRoster: GuestRosterEntry[];
+    placeholder: string;
+    clearLabel: string;
+    onChange: (recordId: string, entryId: string | null) => void;
+}) {
+    if (info.status !== 'none' && info.status !== 'ambiguous' && !info.isManual) {
+        return null;
+    }
+
+    const sortedRoster = [...guestRoster].sort((first, second) => {
+        const firstLabel = `${first.side} ${first.category} ${first.firstName} ${first.lastName}`;
+        const secondLabel = `${second.side} ${second.category} ${second.firstName} ${second.lastName}`;
+        return firstLabel.localeCompare(secondLabel);
+    });
+
+    return (
+        <select
+            value={record.manualRosterEntryId ?? ''}
+            onChange={(event) => onChange(record.id, event.target.value || null)}
+            className="mt-1 w-full min-w-0 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+        >
+            <option value="">{info.isManual ? clearLabel : placeholder}</option>
+            {sortedRoster.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                    {entry.side} · {entry.category} · {entry.firstName} {entry.lastName}
+                </option>
+            ))}
+        </select>
+    );
 }
 
 function toDate(value: unknown): Date | null {
@@ -142,6 +206,7 @@ function normalizeRecord(id: string, input: Record<string, unknown>): RSVPRecord
         group: typeof input.group === 'string' ? input.group : '',
         lang: typeof input.lang === 'string' ? input.lang : '-',
         createdAt: toDate(input.createdAt),
+        manualRosterEntryId: typeof input.manualRosterEntryId === 'string' ? input.manualRosterEntryId : null,
     };
 }
 
@@ -531,18 +596,35 @@ export function AdminDashboard() {
     const rosterMatchInfoByRecordId = useMemo(() => {
         const map = new Map<string, RosterMatchInfo>();
         records.forEach((record) => {
+            // A manual pick always wins over automatic name matching, mirroring
+            // resolveRosterMatches() in rsvpRosterLink.ts - but only while the
+            // picked entry still exists (it may have since been deleted from
+            // the roster, in which case we fall back to automatic matching
+            // below exactly as if no override were set).
+            if (record.manualRosterEntryId) {
+                const pickedEntry = guestRoster.find((entry) => entry.id === record.manualRosterEntryId);
+                if (pickedEntry) {
+                    map.set(record.id, {
+                        status: 'matched',
+                        label: `${pickedEntry.side} · ${pickedEntry.category}`,
+                        isManual: true,
+                    });
+                    return;
+                }
+            }
+
             if (!record.fullName.trim()) {
-                map.set(record.id, { status: 'empty', label: '-' });
+                map.set(record.id, { status: 'empty', label: '-', isManual: false });
                 return;
             }
 
             const matches = findRosterMatches(record.fullName, guestRoster);
             if (matches.length === 0) {
-                map.set(record.id, { status: 'none', label: t.adminNoRosterMatch });
+                map.set(record.id, { status: 'none', label: t.adminNoRosterMatch, isManual: false });
             } else if (matches.length > 1) {
-                map.set(record.id, { status: 'ambiguous', label: t.adminAmbiguousRosterMatch });
+                map.set(record.id, { status: 'ambiguous', label: t.adminAmbiguousRosterMatch, isManual: false });
             } else {
-                map.set(record.id, { status: 'matched', label: `${matches[0].side} · ${matches[0].category}` });
+                map.set(record.id, { status: 'matched', label: `${matches[0].side} · ${matches[0].category}`, isManual: false });
             }
         });
         return map;
@@ -666,6 +748,7 @@ export function AdminDashboard() {
                 fullName: record.fullName,
                 isAttending: record.isAttending,
                 guestsCount: record.guestsCount,
+                manualRosterEntryId: record.manualRosterEntryId,
             })),
         );
         if (result.updatedCount > 0 || result.revertedCount > 0) {
@@ -700,6 +783,7 @@ export function AdminDashboard() {
                 fullName: record.fullName,
                 isAttending: record.isAttending,
                 guestsCount: record.guestsCount,
+                manualRosterEntryId: record.manualRosterEntryId,
             })),
         )
             .catch((linkError) => {
@@ -728,7 +812,7 @@ export function AdminDashboard() {
         const updates = records
             .filter((record) => !record.group.trim() && record.fullName.trim())
             .map((record) => {
-                const matches = findRosterMatches(record.fullName, guestRoster);
+                const matches = resolveRosterMatches(record, guestRoster);
                 return matches.length === 1 && matches[0].category.trim()
                     ? { id: record.id, category: matches[0].category.trim() }
                     : null;
@@ -1007,6 +1091,25 @@ export function AdminDashboard() {
         } catch (updateError) {
             console.error('Failed to update guest count', updateError);
             setError(t.adminGuestCountUpdateError);
+            throw updateError;
+        }
+    };
+
+    // Pins (or, passing null, un-pins) a response to a specific roster entry -
+    // used from the picker shown for "no match"/"ambiguous" statuses so an
+    // admin can confirm the correct guest by hand instead of leaving it
+    // uncounted. Always wins over automatic name matching afterwards (see
+    // resolveRosterMatches in rsvpRosterLink.ts).
+    const handleManualRosterMatchChange = async (recordId: string, entryId: string | null) => {
+        setError('');
+        try {
+            await updateDoc(doc(db, 'rsvps', recordId), { manualRosterEntryId: entryId });
+            setRecords((prevRecords) => prevRecords.map((record) => (
+                record.id === recordId ? { ...record, manualRosterEntryId: entryId } : record
+            )));
+        } catch (updateError) {
+            console.error('Failed to update manual roster match', updateError);
+            setError(t.adminManualMatchUpdateError);
             throw updateError;
         }
     };
@@ -1560,7 +1663,10 @@ export function AdminDashboard() {
                                                     {record.fullName || t.adminUnknownName}
                                                 </span>
                                                 <span className="mt-0.5 block">
-                                                    <RosterMatchBadge info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-' }} />
+                                                    <RosterMatchBadge
+                                                        info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false }}
+                                                        manualLabel={t.adminManualMatchBadge}
+                                                    />
                                                 </span>
                                             </span>
                                             <span className="shrink-0 text-xs font-medium text-gray-500" dir="ltr">×{record.guestsCount}</span>
@@ -1618,6 +1724,17 @@ export function AdminDashboard() {
                                                         cancel: t.adminGroupCancel,
                                                         saving: t.adminGroupSaving,
                                                     }}
+                                                />
+                                            </div>
+                                            <div className="col-span-2">
+                                                <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableSideCategory}</p>
+                                                <RosterMatchPicker
+                                                    record={record}
+                                                    info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false }}
+                                                    guestRoster={guestRoster}
+                                                    placeholder={t.adminManualMatchPlaceholder}
+                                                    clearLabel={t.adminManualMatchClear}
+                                                    onChange={handleManualRosterMatchChange}
                                                 />
                                             </div>
                                         </div>
@@ -1691,7 +1808,7 @@ export function AdminDashboard() {
                                             activeSort={sortConfig}
                                             onSort={handleSort}
                                         />
-                                        <th className="w-40 px-4 py-3 text-start font-semibold">{t.adminTableSideCategory}</th>
+                                        <th className="w-48 px-4 py-3 text-start font-semibold">{t.adminTableSideCategory}</th>
                                         <SortableHeader
                                             className="text-start"
                                             label={t.adminTableStatus}
@@ -1768,8 +1885,19 @@ export function AdminDashboard() {
                                                     }}
                                                 />
                                             </td>
-                                            <td className="w-40 px-4 py-3 text-gray-700">
-                                                <RosterMatchBadge info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-' }} />
+                                            <td className="w-48 px-4 py-3 text-gray-700">
+                                                <RosterMatchBadge
+                                                    info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false }}
+                                                    manualLabel={t.adminManualMatchBadge}
+                                                />
+                                                <RosterMatchPicker
+                                                    record={record}
+                                                    info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false }}
+                                                    guestRoster={guestRoster}
+                                                    placeholder={t.adminManualMatchPlaceholder}
+                                                    clearLabel={t.adminManualMatchClear}
+                                                    onChange={handleManualRosterMatchChange}
+                                                />
                                             </td>
                                             <td className="px-4 py-3">
                                                 <span

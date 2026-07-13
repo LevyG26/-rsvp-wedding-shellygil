@@ -6,6 +6,12 @@ export interface LinkableRsvp {
   fullName: string;
   isAttending: boolean;
   guestsCount: number;
+  // Admin-picked roster entry id, set from the responses table when the
+  // automatic name match came back empty ("no match") or ambiguous ("several
+  // matches") and a human confirms which one is actually correct. Always
+  // wins over the automatic name matching below when present and still
+  // valid (the entry hasn't since been deleted).
+  manualRosterEntryId?: string | null;
 }
 
 export interface RosterLinkResult {
@@ -24,9 +30,14 @@ export interface RosterLinkResult {
 
 // Strips Hebrew niqqud/cantillation marks, Latin accents (é/è/ë -> e, so
 // "Élisa"/"Stéphane" line up with unaccented spellings), quotes, and
-// punctuation, then lowercases. Also splits "&" into its own separator (it's
-// never part of an actual name), so "Swann&Sharone" tokenizes the same as
-// "Swann & Sharone".
+// punctuation, then lowercases. Also turns "&" and "-" into a plain space
+// (a word separator) rather than deleting them outright - a hyphenated
+// compound name like "מי-טל" needs to tokenize the same as "מי טל", since a
+// guest filling in the RSVP form will often type the space version even
+// though the roster has it hyphenated (or vice versa). Deleting the hyphen
+// instead (the old behavior) fused it into one token "מיטל" that could
+// never match a name typed as two separate words - that's what caused a
+// genuine roster entry to show up as "no match" for "מי טל נוימן".
 const HEBREW_NIQQUD_PATTERN = new RegExp('[\\u0591-\\u05C7]', 'g');
 const LATIN_COMBINING_ACCENT_PATTERN = new RegExp('[\\u0300-\\u036f]', 'g');
 
@@ -35,8 +46,8 @@ function normalizeNameToken(value: string): string {
     .normalize('NFD')
     .replace(HEBREW_NIQQUD_PATTERN, '') // Hebrew niqqud/cantillation
     .replace(LATIN_COMBINING_ACCENT_PATTERN, '') // Latin combining accents, e.g. Élisa -> Elisa
-    .replace(/["'׳״.,\-]/g, '')
-    .replace(/&/g, ' ')
+    .replace(/["'׳״.,]/g, '')
+    .replace(/[-&]/g, ' ')
     .toLowerCase()
     .trim();
 }
@@ -185,6 +196,21 @@ export function findRosterMatches(rsvpFullName: string, entries: GuestRosterEntr
   return entries.filter((entry) => namesMatch(rsvpTokens, tokenize(`${entry.firstName} ${entry.lastName}`)));
 }
 
+// Same result shape as findRosterMatches, but checks a manual admin override
+// first - used everywhere a response needs to be resolved to a roster entry
+// (the responses table's display column, and the auto-linker below), so a
+// human's explicit pick for a "no match"/"ambiguous" case is honored
+// consistently everywhere instead of just in one place. Falls back to the
+// normal name matching if there's no override, or if the picked entry no
+// longer exists (e.g. it was since deleted from the roster).
+export function resolveRosterMatches(rsvp: LinkableRsvp, entries: GuestRosterEntry[]): GuestRosterEntry[] {
+  if (rsvp.manualRosterEntryId) {
+    const pickedEntry = entries.find((entry) => entry.id === rsvp.manualRosterEntryId);
+    if (pickedEntry) return [pickedEntry];
+  }
+  return findRosterMatches(rsvp.fullName, entries);
+}
+
 // True if two roster entries' names fuzzy-match each other using the same
 // tolerant comparison as findRosterMatches - e.g. catches "ספיר ויותם מרי"
 // vs "ספיר ויותם מאירי" left behind after a rename in the sheet created a
@@ -312,7 +338,7 @@ export async function linkGuestRosterWithRsvps(
   for (const rsvp of rsvps) {
     if (!rsvp.fullName.trim()) continue;
 
-    const matches = findRosterMatches(rsvp.fullName, entries);
+    const matches = resolveRosterMatches(rsvp, entries);
     if (matches.length === 0) continue;
     if (matches.length > 1) {
       ambiguousCount += 1;
