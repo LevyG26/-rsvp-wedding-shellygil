@@ -54,11 +54,11 @@ service cloud.firestore {
       allow create: if isValidId(rsvpId) && isValidRSVP(incoming());
       // Dashboard updates (group assignment, guest count, full-name typo
       // fixes, manual roster-match overrides) are admin-only. fullName and
-      // manualRosterEntryId were added later than group/guestsCount - both
+      // manualRosterEntryIds were added later than group/guestsCount - both
       // needed adding here too, since a field the dashboard writes but this
       // list doesn't allow gets silently rejected by Firestore.
       allow update: if isAdmin() &&
-                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryId']) &&
+                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds']) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['group']) ||
                          (incoming().group is string && incoming().group.size() <= 60)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['guestsCount']) ||
@@ -67,9 +67,8 @@ service cloud.firestore {
                            incoming().guestsCount <= 10)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['fullName']) ||
                          (incoming().fullName is string && incoming().fullName.size() > 0 && incoming().fullName.size() <= 100)) &&
-                       (!incoming().diff(resource.data).affectedKeys().hasAny(['manualRosterEntryId']) ||
-                         incoming().manualRosterEntryId == null ||
-                         (incoming().manualRosterEntryId is string && incoming().manualRosterEntryId.size() <= 128));
+                       (!incoming().diff(resource.data).affectedKeys().hasAny(['manualRosterEntryIds']) ||
+                         (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10));
       // Deletes are admin-only.
       allow delete: if isAdmin();
     }
@@ -154,8 +153,14 @@ service cloud.firestore {
     }
 
     match /baseList/{phoneId} {
+      // Public get-by-known-phone-id lookup (used to enrich an invite link
+      // visit / RSVP with the guest's name from the base list) stays as-is.
       allow get: if isValidLinkedPhone(phoneId);
-      allow list, create, update, delete: if false;
+      // Admin-only listing of the whole collection - needed for the
+      // dashboard's WhatsApp reminders tab, which needs every guest's phone
+      // number to build a personalized "click to send" link for each one.
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     // Full invite roster (side/category/name/count/known response), imported

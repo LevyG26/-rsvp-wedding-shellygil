@@ -30,6 +30,9 @@ import { GuestRosterSection } from '../components/admin/GuestRosterSection';
 import { OldSiteRsvpImportPanel } from '../components/admin/OldSiteRsvpImportPanel';
 import { DuplicateFinderPanel } from '../components/admin/DuplicateFinderPanel';
 import { enrichInviteLinkVisitsWithBaseList } from '../services/inviteLinkVisits';
+import { loadBaseList } from '../services/baseList';
+import type { NormalizedBaseListEntry } from '../utils/baseList';
+import { WhatsappReminders } from '../components/admin/WhatsappReminders';
 import {
     createGuestRosterEntry,
     deleteGuestRosterEntriesForSide,
@@ -41,7 +44,7 @@ import {
     type GuestRosterEntry,
     type GuestRosterEntryInput,
 } from '../services/guestRoster';
-import { findRosterMatches, linkGuestRosterWithRsvps, resolveRosterMatches, type RosterLinkResult } from '../services/rsvpRosterLink';
+import { linkGuestRosterWithRsvps, resolveRosterMatches, type RosterLinkResult } from '../services/rsvpRosterLink';
 
 interface RSVPRecord {
     id: string;
@@ -53,10 +56,13 @@ interface RSVPRecord {
     group: string;
     lang: string;
     createdAt: Date | null;
-    // Admin-picked roster entry id - set from the responses table when the
+    // Admin-picked roster entry ids - set from the responses table when the
     // automatic name match is empty or ambiguous and a human confirms which
-    // roster entry is actually correct. null means "use automatic matching".
-    manualRosterEntryId: string | null;
+    // roster entry/entries are actually correct (usually one, but can be
+    // more than one for a single response that covers multiple roster rows,
+    // e.g. a couple who RSVP'd together). Empty array means "use automatic
+    // matching".
+    manualRosterEntryIds: string[];
 }
 
 type SortKey = 'fullName' | 'guestsCount' | 'group' | 'isAttending' | 'lang' | 'createdAt';
@@ -101,10 +107,11 @@ type RosterMatchStatus = 'matched' | 'none' | 'ambiguous' | 'empty';
 interface RosterMatchInfo {
     status: RosterMatchStatus;
     label: string;
-    // True when this "matched" result came from an admin's manual pick
-    // (RSVPRecord.manualRosterEntryId) rather than the automatic name-matching
-    // algorithm - shown as a small "Manual" tag so it's clear it was a human
-    // decision, and so it's obvious the picker below can still be changed.
+    // True when this "matched" result came from an admin's manual pick(s)
+    // (RSVPRecord.manualRosterEntryIds) rather than the automatic
+    // name-matching algorithm - shown as a small "Manual" tag so it's clear
+    // it was a human decision, and so it's obvious the picker below can
+    // still be changed.
     isManual: boolean;
     // The actual roster entries the name-matching algorithm found for
     // 'ambiguous' (more than one) - so the picker below can show exactly
@@ -147,76 +154,110 @@ function sortRosterEntries(entries: GuestRosterEntry[]): GuestRosterEntry[] {
     return [...entries].sort((first, second) => rosterEntryLabel(first).localeCompare(rosterEntryLabel(second)));
 }
 
-// Lets an admin pin a response to a specific roster entry when the automatic
-// name-matching came back empty or ambiguous (or to correct a manual pick
-// made earlier). Always shown alongside the badge above for 'none'/'ambiguous'
-// statuses, and also shown (so it can be undone) whenever the current match
-// is itself manual.
+// Lets an admin pin a response to specific roster entry/entries when the
+// automatic name-matching came back empty or ambiguous (or to correct a
+// manual pick made earlier). Always shown alongside the badge above for
+// 'none'/'ambiguous' statuses, and also shown (so it can be undone) whenever
+// the current match is itself manual.
 //
-// For 'ambiguous', the algorithm already found the candidates - it just
-// couldn't tell which one is right - so those go in their own "found
-// matches" group at the top of the list instead of forcing a search through
-// the entire guest roster. The full roster is still listed below in case the
-// real guest isn't among what the name-matching considered a candidate.
+// Checkboxes rather than a single dropdown, since one response sometimes
+// covers MORE than one roster row on purpose - e.g. "David et Isabelle" is
+// one submitted RSVP but needs to be linked to both their separate roster
+// rows so both get counted. For 'ambiguous', the algorithm already found the
+// candidates - it just couldn't tell whether one, or all, of them are right
+// - so those go in their own "found matches" group at the top of the list
+// instead of forcing a search through the entire guest roster. The full
+// roster is collapsed behind a toggle in case the real guest(s) aren't among
+// what the name-matching considered a candidate.
 function RosterMatchPicker({
     record,
     info,
     guestRoster,
-    placeholder,
+    instructions,
     clearLabel,
     foundMatchesLabel,
     fullListLabel,
+    showFullListLabel,
     onChange,
 }: {
     record: RSVPRecord;
     info: RosterMatchInfo;
     guestRoster: GuestRosterEntry[];
-    placeholder: string;
+    instructions: string;
     clearLabel: string;
     foundMatchesLabel: string;
     fullListLabel: string;
-    onChange: (recordId: string, entryId: string | null) => void;
+    showFullListLabel: string;
+    onChange: (recordId: string, entryIds: string[]) => void;
 }) {
+    const [isFullListVisible, setIsFullListVisible] = useState(false);
+
     if (info.status !== 'none' && info.status !== 'ambiguous' && !info.isManual) {
         return null;
     }
 
+    const selectedIds = new Set(record.manualRosterEntryIds);
     const candidateIds = new Set(info.candidates.map((entry) => entry.id));
     const sortedCandidates = sortRosterEntries(info.candidates);
     const sortedRest = sortRosterEntries(guestRoster.filter((entry) => !candidateIds.has(entry.id)));
 
+    const toggleEntry = (entryId: string) => {
+        const next = selectedIds.has(entryId)
+            ? record.manualRosterEntryIds.filter((id) => id !== entryId)
+            : [...record.manualRosterEntryIds, entryId];
+        onChange(record.id, next);
+    };
+
+    const renderRow = (entry: GuestRosterEntry) => (
+        <label key={entry.id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-gray-700 hover:bg-gray-50">
+            <input
+                type="checkbox"
+                checked={selectedIds.has(entry.id)}
+                onChange={() => toggleEntry(entry.id)}
+                className="h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+            />
+            <span className="truncate">{rosterEntryLabel(entry)}</span>
+        </label>
+    );
+
     return (
-        <select
-            value={record.manualRosterEntryId ?? ''}
-            onChange={(event) => onChange(record.id, event.target.value || null)}
-            className="mt-1 w-full min-w-0 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
-        >
-            <option value="">{info.isManual ? clearLabel : placeholder}</option>
-            {sortedCandidates.length > 0 ? (
-                <>
-                    <optgroup label={foundMatchesLabel}>
-                        {sortedCandidates.map((entry) => (
-                            <option key={entry.id} value={entry.id}>
-                                {rosterEntryLabel(entry)}
-                            </option>
-                        ))}
-                    </optgroup>
-                    <optgroup label={fullListLabel}>
-                        {sortedRest.map((entry) => (
-                            <option key={entry.id} value={entry.id}>
-                                {rosterEntryLabel(entry)}
-                            </option>
-                        ))}
-                    </optgroup>
-                </>
-            ) : (
-                sortedRest.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                        {rosterEntryLabel(entry)}
-                    </option>
-                ))
+        <div className="mt-1 space-y-1.5 rounded-lg border border-gray-200 bg-white p-2">
+            <p className="text-[11px] text-gray-500">{instructions}</p>
+
+            {sortedCandidates.length > 0 && (
+                <div>
+                    <p className="px-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{foundMatchesLabel}</p>
+                    {sortedCandidates.map(renderRow)}
+                </div>
             )}
-        </select>
+
+            {sortedCandidates.length === 0 ? (
+                <div className="max-h-40 overflow-y-auto">{sortedRest.map(renderRow)}</div>
+            ) : isFullListVisible ? (
+                <div>
+                    <p className="px-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{fullListLabel}</p>
+                    <div className="max-h-40 overflow-y-auto">{sortedRest.map(renderRow)}</div>
+                </div>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => setIsFullListVisible(true)}
+                    className="px-1.5 text-[11px] font-medium text-gray-500 underline underline-offset-2"
+                >
+                    {showFullListLabel}
+                </button>
+            )}
+
+            {record.manualRosterEntryIds.length > 0 && (
+                <button
+                    type="button"
+                    onClick={() => onChange(record.id, [])}
+                    className="px-1.5 text-[11px] font-medium text-rose-600 underline underline-offset-2"
+                >
+                    {clearLabel}
+                </button>
+            )}
+        </div>
     );
 }
 
@@ -247,7 +288,9 @@ function normalizeRecord(id: string, input: Record<string, unknown>): RSVPRecord
         group: typeof input.group === 'string' ? input.group : '',
         lang: typeof input.lang === 'string' ? input.lang : '-',
         createdAt: toDate(input.createdAt),
-        manualRosterEntryId: typeof input.manualRosterEntryId === 'string' ? input.manualRosterEntryId : null,
+        manualRosterEntryIds: Array.isArray(input.manualRosterEntryIds)
+            ? input.manualRosterEntryIds.filter((entryId): entryId is string => typeof entryId === 'string')
+            : [],
     };
 }
 
@@ -276,12 +319,11 @@ async function loadInviteLinkVisits(): Promise<InviteLinkVisitRecord[]> {
 
 const PLANNED_GUESTS_STORAGE_KEY = 'rsvp-admin-planned-guests';
 // The "invite links opened" panel only records a visit when the link itself
-// contains the guest's phone number (a personalized per-guest link) - it
-// stays hidden while Gil is sending one shared link to a WhatsApp group,
-// since nothing gets recorded for that case anyway. Planned follow-up: build
-// a way to generate a personalized link per phone number so this becomes
-// useful, then flip this back to true.
-const SHOW_INVITE_LINK_VISITS = false;
+// contains the guest's phone number (a personalized per-guest link). Now
+// shown again since the WhatsApp reminders tab generates exactly those
+// personalized links - it'll just be empty until reminders actually go out
+// and guests start clicking them.
+const SHOW_INVITE_LINK_VISITS = true;
 const TREND_CHART_WIDTH = 360;
 const TREND_CHART_HEIGHT = 160;
 const TREND_CHART_PADDING = 18;
@@ -318,6 +360,8 @@ export function AdminDashboard() {
     const [records, setRecords] = useState<RSVPRecord[]>([]);
     const [inviteLinkVisits, setInviteLinkVisits] = useState<InviteLinkVisitRecord[]>([]);
     const [guestRoster, setGuestRoster] = useState<GuestRosterEntry[]>([]);
+    const [baseList, setBaseList] = useState<NormalizedBaseListEntry[]>([]);
+    const [isLoadingBaseList, setIsLoadingBaseList] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -349,7 +393,7 @@ export function AdminDashboard() {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'createdAt', direction: 'desc' });
     const [isAuthChecked, setIsAuthChecked] = useState(false);
     const [isSignedIn, setIsSignedIn] = useState(false);
-    const [activeTab, setActiveTab] = useState<'roster' | 'responses'>('roster');
+    const [activeTab, setActiveTab] = useState<'roster' | 'responses' | 'reminders'>('roster');
 
     const isValidLang = lang === 'en' || lang === 'he' || lang === 'fr';
     const currentLang = (isValidLang ? lang : 'he') as Language;
@@ -453,6 +497,12 @@ export function AdminDashboard() {
         loadInviteLinkVisits()
             .then(setInviteLinkVisits)
             .catch((loadError) => console.error('Failed to load invite link visits', loadError));
+
+        setIsLoadingBaseList(true);
+        loadBaseList()
+            .then(setBaseList)
+            .catch((loadError) => console.error('Failed to load base list', loadError))
+            .finally(() => setIsLoadingBaseList(false));
 
         return () => {
             unsubscribeRsvps();
@@ -629,6 +679,18 @@ export function AdminDashboard() {
         [locale, records],
     );
 
+    // Phone numbers (digits-only) that have already submitted an RSVP -
+    // matched directly by phone rather than by name, since that's exact and
+    // free of any fuzzy-matching edge cases. Used by the WhatsApp reminders
+    // tab to tag/hide guests who don't need a reminder any more. Only
+    // guests who came in through their own personalized link (or typed a
+    // phone in the form) are recoverable this way - the phone field is
+    // optional, so this is a best-effort hint, not a guarantee.
+    const respondedPhones = useMemo(
+        () => new Set(records.map((record) => record.phone.replace(/\D/g, '')).filter(Boolean)),
+        [records],
+    );
+
     // Which side/category each site response belongs to, matched by name
     // against the guest roster - display only (mirrors the matching used by
     // the "Link" button in the Roster tab), so this never writes anything,
@@ -637,30 +699,24 @@ export function AdminDashboard() {
     const rosterMatchInfoByRecordId = useMemo(() => {
         const map = new Map<string, RosterMatchInfo>();
         records.forEach((record) => {
-            // A manual pick always wins over automatic name matching, mirroring
-            // resolveRosterMatches() in rsvpRosterLink.ts - but only while the
-            // picked entry still exists (it may have since been deleted from
-            // the roster, in which case we fall back to automatic matching
-            // below exactly as if no override were set).
-            if (record.manualRosterEntryId) {
-                const pickedEntry = guestRoster.find((entry) => entry.id === record.manualRosterEntryId);
-                if (pickedEntry) {
-                    map.set(record.id, {
-                        status: 'matched',
-                        label: `${pickedEntry.side} · ${pickedEntry.category}`,
-                        isManual: true,
-                        candidates: [],
-                    });
-                    return;
-                }
-            }
-
-            if (!record.fullName.trim()) {
+            if (!record.fullName.trim() && record.manualRosterEntryIds.length === 0) {
                 map.set(record.id, { status: 'empty', label: '-', isManual: false, candidates: [] });
                 return;
             }
 
-            const matches = findRosterMatches(record.fullName, guestRoster);
+            // Mirrors resolveRosterMatches() in rsvpRosterLink.ts exactly, so
+            // the badge shown here always agrees with what the auto-linker
+            // actually wrote to the roster.
+            const { matches, isManual } = resolveRosterMatches(record, guestRoster);
+
+            if (isManual) {
+                const label = matches.length === 1
+                    ? `${matches[0].side} · ${matches[0].category}`
+                    : matches.map((entry) => `${entry.firstName} ${entry.lastName}`.trim()).join(', ');
+                map.set(record.id, { status: 'matched', label, isManual: true, candidates: [] });
+                return;
+            }
+
             if (matches.length === 0) {
                 map.set(record.id, { status: 'none', label: t.adminNoRosterMatch, isManual: false, candidates: [] });
             } else if (matches.length > 1) {
@@ -734,14 +790,16 @@ export function AdminDashboard() {
         setIsLoading(true);
         setError('');
         try {
-            const [loadedRecords, loadedInviteLinkVisits, loadedGuestRoster] = await Promise.all([
+            const [loadedRecords, loadedInviteLinkVisits, loadedGuestRoster, loadedBaseList] = await Promise.all([
                 loadRsvpRecords(),
                 loadInviteLinkVisits(),
                 loadGuestRoster(),
+                loadBaseList(),
             ]);
             setRecords(loadedRecords);
             setInviteLinkVisits(loadedInviteLinkVisits);
             setGuestRoster(loadedGuestRoster);
+            setBaseList(loadedBaseList);
             setSelectedIds((prevSelected) => prevSelected.filter((id) => loadedRecords.some((record) => record.id === id)));
         } catch (loadError) {
             console.error('Failed to refresh RSVP data', loadError);
@@ -790,7 +848,7 @@ export function AdminDashboard() {
                 fullName: record.fullName,
                 isAttending: record.isAttending,
                 guestsCount: record.guestsCount,
-                manualRosterEntryId: record.manualRosterEntryId,
+                manualRosterEntryIds: record.manualRosterEntryIds,
             })),
         );
         if (result.updatedCount > 0 || result.revertedCount > 0) {
@@ -825,7 +883,7 @@ export function AdminDashboard() {
                 fullName: record.fullName,
                 isAttending: record.isAttending,
                 guestsCount: record.guestsCount,
-                manualRosterEntryId: record.manualRosterEntryId,
+                manualRosterEntryIds: record.manualRosterEntryIds,
             })),
         )
             .catch((linkError) => {
@@ -854,10 +912,15 @@ export function AdminDashboard() {
         const updates = records
             .filter((record) => !record.group.trim() && record.fullName.trim())
             .map((record) => {
-                const matches = resolveRosterMatches(record, guestRoster);
-                return matches.length === 1 && matches[0].category.trim()
-                    ? { id: record.id, category: matches[0].category.trim() }
-                    : null;
+                const { matches } = resolveRosterMatches(record, guestRoster);
+                // A manual multi-pick (e.g. a couple linked to two roster
+                // rows) can still auto-fill the group, as long as every
+                // matched row agrees on the category - if they don't, it's
+                // not safe to guess which one the group should follow.
+                const sharedCategory = matches.length > 0 && matches.every((entry) => entry.category.trim() === matches[0].category.trim())
+                    ? matches[0].category.trim()
+                    : '';
+                return sharedCategory ? { id: record.id, category: sharedCategory } : null;
             })
             .filter((update): update is { id: string; category: string } => update !== null);
 
@@ -1137,17 +1200,20 @@ export function AdminDashboard() {
         }
     };
 
-    // Pins (or, passing null, un-pins) a response to a specific roster entry -
-    // used from the picker shown for "no match"/"ambiguous" statuses so an
-    // admin can confirm the correct guest by hand instead of leaving it
-    // uncounted. Always wins over automatic name matching afterwards (see
-    // resolveRosterMatches in rsvpRosterLink.ts).
-    const handleManualRosterMatchChange = async (recordId: string, entryId: string | null) => {
+    // Pins (or, passing an empty array, un-pins) a response to specific
+    // roster entry/entries - used from the picker shown for "no
+    // match"/"ambiguous" statuses so an admin can confirm the correct
+    // guest(s) by hand instead of leaving it uncounted. Usually one entry,
+    // but can be more than one when a single response covers multiple
+    // roster rows (e.g. a couple who RSVP'd together). Always wins over
+    // automatic name matching afterwards (see resolveRosterMatches in
+    // rsvpRosterLink.ts).
+    const handleManualRosterMatchChange = async (recordId: string, entryIds: string[]) => {
         setError('');
         try {
-            await updateDoc(doc(db, 'rsvps', recordId), { manualRosterEntryId: entryId });
+            await updateDoc(doc(db, 'rsvps', recordId), { manualRosterEntryIds: entryIds });
             setRecords((prevRecords) => prevRecords.map((record) => (
-                record.id === recordId ? { ...record, manualRosterEntryId: entryId } : record
+                record.id === recordId ? { ...record, manualRosterEntryIds: entryIds } : record
             )));
         } catch (updateError) {
             console.error('Failed to update manual roster match', updateError);
@@ -1248,6 +1314,16 @@ export function AdminDashboard() {
                                 }`}
                         >
                             {t.adminTabResponses}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('reminders')}
+                            className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'reminders'
+                                ? 'border-gray-900 text-gray-900'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            {t.adminTabReminders}
                         </button>
                     </div>
                 </motion.header>
@@ -1774,10 +1850,11 @@ export function AdminDashboard() {
                                                     record={record}
                                                     info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false, candidates: [] }}
                                                     guestRoster={guestRoster}
-                                                    placeholder={t.adminManualMatchPlaceholder}
+                                                    instructions={t.adminManualMatchInstructions}
                                                     clearLabel={t.adminManualMatchClear}
                                                     foundMatchesLabel={t.adminManualMatchFoundGroup}
                                                     fullListLabel={t.adminManualMatchFullListGroup}
+                                                    showFullListLabel={t.adminManualMatchShowFullList}
                                                     onChange={handleManualRosterMatchChange}
                                                 />
                                             </div>
@@ -1938,10 +2015,11 @@ export function AdminDashboard() {
                                                     record={record}
                                                     info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false, candidates: [] }}
                                                     guestRoster={guestRoster}
-                                                    placeholder={t.adminManualMatchPlaceholder}
+                                                    instructions={t.adminManualMatchInstructions}
                                                     clearLabel={t.adminManualMatchClear}
                                                     foundMatchesLabel={t.adminManualMatchFoundGroup}
                                                     fullListLabel={t.adminManualMatchFullListGroup}
+                                                    showFullListLabel={t.adminManualMatchShowFullList}
                                                     onChange={handleManualRosterMatchChange}
                                                 />
                                             </td>
@@ -1980,6 +2058,37 @@ export function AdminDashboard() {
                     )}
                 </motion.section>
                 </>
+                )}
+
+                {activeTab === 'reminders' && (
+                <motion.section
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-6"
+                >
+                    <WhatsappReminders
+                        baseList={baseList}
+                        respondedPhones={respondedPhones}
+                        isLoading={isLoadingBaseList}
+                        labels={{
+                            title: t.adminRemindersTitle,
+                            subtitle: t.adminRemindersSubtitle,
+                            loading: t.adminRemindersLoading,
+                            noGuests: t.adminRemindersNoGuests,
+                            templateLabel: t.adminRemindersTemplateLabel,
+                            templateHelp: t.adminRemindersTemplateHelp,
+                            templateDefault: t.adminRemindersTemplateDefault,
+                            previewLabel: t.adminRemindersPreviewLabel,
+                            tip: t.adminRemindersTip,
+                            searchPlaceholder: t.adminRemindersSearchPlaceholder,
+                            filterAll: t.adminRemindersFilterAll,
+                            filterPending: t.adminRemindersFilterPending,
+                            alreadyResponded: t.adminRemindersAlreadyResponded,
+                            sendButton: t.adminRemindersSendButton,
+                            countLabel: t.adminRemindersCountLabel,
+                        }}
+                    />
+                </motion.section>
                 )}
             </div>
         </div>

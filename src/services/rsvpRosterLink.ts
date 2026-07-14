@@ -6,12 +6,14 @@ export interface LinkableRsvp {
   fullName: string;
   isAttending: boolean;
   guestsCount: number;
-  // Admin-picked roster entry id, set from the responses table when the
+  // Admin-picked roster entry ids, set from the responses table when the
   // automatic name match came back empty ("no match") or ambiguous ("several
-  // matches") and a human confirms which one is actually correct. Always
-  // wins over the automatic name matching below when present and still
-  // valid (the entry hasn't since been deleted).
-  manualRosterEntryId?: string | null;
+  // matches") and a human confirms which entry/entries are actually correct.
+  // Usually one id, but can be more than one for a single response that
+  // covers multiple roster rows (e.g. a couple who RSVP'd together but are
+  // tracked as two separate rows). Always wins over the automatic name
+  // matching below when at least one picked id still exists on the roster.
+  manualRosterEntryIds?: string[] | null;
 }
 
 export interface RosterLinkResult {
@@ -196,19 +198,34 @@ export function findRosterMatches(rsvpFullName: string, entries: GuestRosterEntr
   return entries.filter((entry) => namesMatch(rsvpTokens, tokenize(`${entry.firstName} ${entry.lastName}`)));
 }
 
-// Same result shape as findRosterMatches, but checks a manual admin override
-// first - used everywhere a response needs to be resolved to a roster entry
-// (the responses table's display column, and the auto-linker below), so a
-// human's explicit pick for a "no match"/"ambiguous" case is honored
-// consistently everywhere instead of just in one place. Falls back to the
-// normal name matching if there's no override, or if the picked entry no
-// longer exists (e.g. it was since deleted from the roster).
-export function resolveRosterMatches(rsvp: LinkableRsvp, entries: GuestRosterEntry[]): GuestRosterEntry[] {
-  if (rsvp.manualRosterEntryId) {
-    const pickedEntry = entries.find((entry) => entry.id === rsvp.manualRosterEntryId);
-    if (pickedEntry) return [pickedEntry];
+export interface ResolvedRosterMatches {
+  matches: GuestRosterEntry[];
+  // True when `matches` came from an admin's manual pick(s) rather than the
+  // automatic name-matching algorithm - callers use this to treat a manual
+  // multi-pick (a couple/family linked to more than one roster row on
+  // purpose) differently from an automatic "ambiguous" result (which means
+  // the algorithm couldn't tell which single entry is right, and nothing
+  // should be written).
+  isManual: boolean;
+}
+
+// Checks a manual admin override first - used everywhere a response needs to
+// be resolved to roster entry/entries (the responses table's display column,
+// and the auto-linker below), so a human's explicit pick for a "no
+// match"/"ambiguous" case is honored consistently everywhere instead of just
+// in one place. Falls back to the normal name matching if there's no
+// override, or if none of the picked entries exist any more (e.g. they were
+// since deleted from the roster) - partial survival (some picked entries
+// deleted, not all) still counts as manual and just uses whichever remain.
+export function resolveRosterMatches(rsvp: LinkableRsvp, entries: GuestRosterEntry[]): ResolvedRosterMatches {
+  const manualIds = rsvp.manualRosterEntryIds ?? [];
+  if (manualIds.length > 0) {
+    const pickedEntries = entries.filter((entry) => manualIds.includes(entry.id));
+    if (pickedEntries.length > 0) {
+      return { matches: pickedEntries, isManual: true };
+    }
   }
-  return findRosterMatches(rsvp.fullName, entries);
+  return { matches: findRosterMatches(rsvp.fullName, entries), isManual: false };
 }
 
 // True if two roster entries' names fuzzy-match each other using the same
@@ -336,42 +353,59 @@ export async function linkGuestRosterWithRsvps(
   const stillMatchedEntryIds = new Set<string>();
 
   for (const rsvp of rsvps) {
-    if (!rsvp.fullName.trim()) continue;
+    const hasManualPick = (rsvp.manualRosterEntryIds ?? []).length > 0;
+    if (!rsvp.fullName.trim() && !hasManualPick) continue;
 
-    const matches = resolveRosterMatches(rsvp, entries);
+    const { matches, isManual } = resolveRosterMatches(rsvp, entries);
     if (matches.length === 0) continue;
-    if (matches.length > 1) {
+    // More than one match is only ever safe to write when a human
+    // deliberately picked every one of them (a couple/family that answered
+    // together but is tracked as separate roster rows) - an automatic
+    // "ambiguous" result means the algorithm itself can't tell which single
+    // entry is right, so nothing gets written and it's left for review.
+    if (matches.length > 1 && !isManual) {
       ambiguousCount += 1;
       continue;
     }
 
-    const entry = matches[0];
-    stillMatchedEntryIds.add(entry.id);
-
     const desiredKnownResponse = rsvp.isAttending ? 'yes' : 'no';
-    const desiredInvitedCount = rsvp.isAttending && rsvp.guestsCount > 0 ? rsvp.guestsCount : entry.invitedCount;
 
-    if (entry.knownResponse === desiredKnownResponse && entry.invitedCount === desiredInvitedCount && entry.linkedFromRsvp) {
-      matchedNoChangeCount += 1;
-      continue;
+    for (const entry of matches) {
+      stillMatchedEntryIds.add(entry.id);
+
+      // Only overwrite invitedCount with the response's own reported
+      // guestsCount when this response maps to exactly one roster row - that
+      // number is that one person's real headcount. When one response
+      // covers several rows (a manual multi-pick), each row keeps its own
+      // original invitedCount instead - applying the combined headcount to
+      // every row would multiply it (e.g. a couple's shared guestsCount of 2
+      // would otherwise double-count to 4 across their two rows).
+      const desiredInvitedCount = matches.length === 1 && rsvp.isAttending && rsvp.guestsCount > 0
+        ? rsvp.guestsCount
+        : entry.invitedCount;
+
+      if (entry.knownResponse === desiredKnownResponse && entry.invitedCount === desiredInvitedCount && entry.linkedFromRsvp) {
+        matchedNoChangeCount += 1;
+        continue;
+      }
+
+      const input: GuestRosterEntryInput = {
+        side: entry.side,
+        category: entry.category,
+        firstName: entry.firstName,
+        lastName: entry.lastName,
+        invitedCount: desiredInvitedCount,
+        knownResponse: desiredKnownResponse,
+        linkedFromRsvp: true,
+        // Only capture the pre-link count the first time this entry gets
+        // linked - a later re-run (e.g. the guest changing their headcount)
+        // must not overwrite it with a value that's already post-link.
+        preLinkInvitedCount: entry.linkedFromRsvp ? entry.preLinkInvitedCount : entry.invitedCount,
+      };
+
+      await updateGuestRosterEntry(entry.id, input);
+      updatedCount += 1;
     }
-
-    const input: GuestRosterEntryInput = {
-      side: entry.side,
-      category: entry.category,
-      firstName: entry.firstName,
-      lastName: entry.lastName,
-      invitedCount: desiredInvitedCount,
-      knownResponse: desiredKnownResponse,
-      linkedFromRsvp: true,
-      // Only capture the pre-link count the first time this entry gets
-      // linked - a later re-run (e.g. the guest changing their headcount)
-      // must not overwrite it with a value that's already post-link.
-      preLinkInvitedCount: entry.linkedFromRsvp ? entry.preLinkInvitedCount : entry.invitedCount,
-    };
-
-    await updateGuestRosterEntry(entry.id, input);
-    updatedCount += 1;
   }
 
   // Any entry that was previously auto-linked from an RSVP but no longer
