@@ -34,6 +34,7 @@ export interface WhatsappRemindersLabels {
     syncError: string;
     openAllButton: string;
     openAllHelp: string;
+    openAllMobileNote: string;
 }
 
 interface WhatsappRemindersProps {
@@ -67,6 +68,18 @@ function buildWaHref(guest: NormalizedBaseListEntry, template: string, siteOrigi
     return `https://wa.me/${toWhatsappDialableNumber(guest.phone)}?text=${encodeURIComponent(message)}`;
 }
 
+// On phones, a wa.me link hands the whole browser tab off to the WhatsApp
+// app itself (rather than opening a new browser tab the way it does on
+// desktop) - so the page is suspended the moment the first link is followed,
+// and any further staggered window.open() calls queued behind it never get
+// a chance to run. "Open all" is a desktop-only convenience for that reason;
+// on mobile we hide it and just point Gil at the one-at-a-time Send buttons,
+// which already work fine there.
+function isMobileUserAgent(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 // Lets Gil send a personalized WhatsApp reminder (with each guest's own
 // invite link) to every guest one at a time, with zero typing - the message
 // is fully pre-filled via WhatsApp's official "click to chat" (wa.me) links,
@@ -78,6 +91,7 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncMessage, setSyncMessage] = useState('');
     const [syncIsError, setSyncIsError] = useState(false);
+    const [isMobile] = useState(isMobileUserAgent);
     const [template, setTemplate] = useState<string>(() => {
         try {
             return window.localStorage.getItem(TEMPLATE_STORAGE_KEY) || labels.templateDefault;
@@ -274,17 +288,19 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
                                 >
                                     {labels.clearSelection}
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={handleOpenAllSelected}
-                                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
-                                >
-                                    <MessageCircle size={14} />
-                                    {labels.openAllButton}
-                                </button>
+                                {!isMobile && (
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenAllSelected}
+                                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
+                                    >
+                                        <MessageCircle size={14} />
+                                        {labels.openAllButton}
+                                    </button>
+                                )}
                             </div>
                         </div>
-                        <p className="mb-2 text-xs text-gray-500">{labels.openAllHelp}</p>
+                        <p className="mb-2 text-xs text-gray-500">{isMobile ? labels.openAllMobileNote : labels.openAllHelp}</p>
                         <div className="max-h-72 divide-y divide-gray-200 overflow-y-auto rounded-xl border border-gray-200 bg-white">
                             {selectedGuests.map((guest) => (
                                 <div key={guest.phone} className="flex items-center gap-2 px-3 py-2">
