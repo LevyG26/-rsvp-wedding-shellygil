@@ -2154,6 +2154,8 @@ export function AdminDashboard() {
                             syncSkipped: t.adminRemindersSyncSkipped,
                             syncNone: t.adminRemindersSyncNone,
                             syncError: t.adminRemindersSyncError,
+                            openAllButton: t.adminRemindersOpenAllButton,
+                            openAllHelp: t.adminRemindersOpenAllHelp,
                         }}
                     />
                 </motion.section>

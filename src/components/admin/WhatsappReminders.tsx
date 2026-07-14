@@ -32,6 +32,8 @@ export interface WhatsappRemindersLabels {
     syncSkipped: string;
     syncNone: string;
     syncError: string;
+    openAllButton: string;
+    openAllHelp: string;
 }
 
 interface WhatsappRemindersProps {
@@ -190,6 +192,20 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
         }
     };
 
+    // Opens a wa.me tab per shortlisted guest, staggered slightly so browser
+    // popup blockers are less likely to swallow tabs after the first one -
+    // this is the safe middle ground for "send to a few people at once":
+    // every tab still requires Gil to press Send himself inside WhatsApp, so
+    // no message actually goes out without a real human click, but he no
+    // longer has to go back to the dashboard between each guest.
+    const handleOpenAllSelected = () => {
+        selectedGuests.forEach((guest, index) => {
+            window.setTimeout(() => {
+                window.open(buildWaHref(guest, template, siteOrigin), '_blank', 'noopener,noreferrer');
+            }, index * 350);
+        });
+    };
+
     const previewGuest = selectedGuests[0] ?? visibleGuests[0] ?? sortedGuests[0];
     const previewMessage = previewGuest
         ? buildMessage(template, previewGuest.name, `${siteOrigin}/link/${previewGuest.phone}`)
@@ -250,14 +266,25 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
                                 <p className="text-sm font-semibold text-gray-900">{labels.selectedTitle} ({selectedGuests.length})</p>
                                 <p className="text-xs text-gray-500">{labels.selectedHelp}</p>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedPhones(new Set())}
-                                className="shrink-0 text-xs font-medium text-rose-600 underline underline-offset-2"
-                            >
-                                {labels.clearSelection}
-                            </button>
+                            <div className="flex shrink-0 items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedPhones(new Set())}
+                                    className="text-xs font-medium text-rose-600 underline underline-offset-2"
+                                >
+                                    {labels.clearSelection}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleOpenAllSelected}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
+                                >
+                                    <MessageCircle size={14} />
+                                    {labels.openAllButton}
+                                </button>
+                            </div>
                         </div>
+                        <p className="mb-2 text-xs text-gray-500">{labels.openAllHelp}</p>
                         <div className="max-h-72 divide-y divide-gray-200 overflow-y-auto rounded-xl border border-gray-200 bg-white">
                             {selectedGuests.map((guest) => (
                                 <div key={guest.phone} className="flex items-center gap-2 px-3 py-2">
