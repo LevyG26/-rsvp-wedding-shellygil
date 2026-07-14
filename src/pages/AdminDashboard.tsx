@@ -44,7 +44,7 @@ import {
     type GuestRosterEntry,
     type GuestRosterEntryInput,
 } from '../services/guestRoster';
-import { linkGuestRosterWithRsvps, resolveRosterMatches, type RosterLinkResult } from '../services/rsvpRosterLink';
+import { findRosterMatches, linkGuestRosterWithRsvps, resolveRosterMatches, type RosterLinkResult } from '../services/rsvpRosterLink';
 
 interface RSVPRecord {
     id: string;
@@ -178,6 +178,7 @@ function RosterMatchPicker({
     foundMatchesLabel,
     fullListLabel,
     showFullListLabel,
+    toggleLabel,
     onChange,
 }: {
     record: RSVPRecord;
@@ -188,12 +189,32 @@ function RosterMatchPicker({
     foundMatchesLabel: string;
     fullListLabel: string;
     showFullListLabel: string;
+    toggleLabel: string;
     onChange: (recordId: string, entryIds: string[]) => void;
 }) {
+    // Collapsed by default - the checkbox list (plus the full-roster list
+    // behind its own toggle below) takes real vertical/horizontal room, and
+    // most responses never need it opened at all. Keeping it closed until
+    // asked for is also what keeps this column narrow enough that the Name
+    // column next to it doesn't get squeezed and start truncating names.
+    const [isExpanded, setIsExpanded] = useState(false);
     const [isFullListVisible, setIsFullListVisible] = useState(false);
 
     if (info.status !== 'none' && info.status !== 'ambiguous' && !info.isManual) {
         return null;
+    }
+
+    if (!isExpanded) {
+        return (
+            <button
+                type="button"
+                onClick={() => setIsExpanded(true)}
+                className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 underline underline-offset-2"
+            >
+                <ChevronDown size={12} />
+                {toggleLabel}
+            </button>
+        );
     }
 
     const selectedIds = new Set(record.manualRosterEntryIds);
@@ -222,7 +243,17 @@ function RosterMatchPicker({
 
     return (
         <div className="mt-1 space-y-1.5 rounded-lg border border-gray-200 bg-white p-2">
-            <p className="text-[11px] text-gray-500">{instructions}</p>
+            <div className="flex items-center justify-between gap-1">
+                <p className="text-[11px] text-gray-500">{instructions}</p>
+                <button
+                    type="button"
+                    onClick={() => setIsExpanded(false)}
+                    className="shrink-0 text-gray-400 hover:text-gray-600"
+                    aria-label={toggleLabel}
+                >
+                    <ChevronDown size={14} className="rotate-180" />
+                </button>
+            </div>
 
             {sortedCandidates.length > 0 && (
                 <div>
@@ -704,6 +735,16 @@ export function AdminDashboard() {
                 return;
             }
 
+            // Computed from automatic name-matching alone (ignoring any manual
+            // pick), so the picker's "found matches" checkboxes stay the same
+            // stable list while the admin is in the middle of checking them
+            // off - if this were derived from the (manual-aware) resolved
+            // result instead, checking the FIRST candidate would immediately
+            // make every other candidate disappear from the list, since the
+            // manual pick would already "win" and collapse the candidate set
+            // down to just the one just checked.
+            const automaticMatches = record.fullName.trim() ? findRosterMatches(record.fullName, guestRoster) : [];
+
             // Mirrors resolveRosterMatches() in rsvpRosterLink.ts exactly, so
             // the badge shown here always agrees with what the auto-linker
             // actually wrote to the roster.
@@ -713,16 +754,16 @@ export function AdminDashboard() {
                 const label = matches.length === 1
                     ? `${matches[0].side} · ${matches[0].category}`
                     : matches.map((entry) => `${entry.firstName} ${entry.lastName}`.trim()).join(', ');
-                map.set(record.id, { status: 'matched', label, isManual: true, candidates: [] });
+                map.set(record.id, { status: 'matched', label, isManual: true, candidates: automaticMatches.length > 1 ? automaticMatches : [] });
                 return;
             }
 
-            if (matches.length === 0) {
+            if (automaticMatches.length === 0) {
                 map.set(record.id, { status: 'none', label: t.adminNoRosterMatch, isManual: false, candidates: [] });
-            } else if (matches.length > 1) {
-                map.set(record.id, { status: 'ambiguous', label: t.adminAmbiguousRosterMatch, isManual: false, candidates: matches });
+            } else if (automaticMatches.length > 1) {
+                map.set(record.id, { status: 'ambiguous', label: t.adminAmbiguousRosterMatch, isManual: false, candidates: automaticMatches });
             } else {
-                map.set(record.id, { status: 'matched', label: `${matches[0].side} · ${matches[0].category}`, isManual: false, candidates: [] });
+                map.set(record.id, { status: 'matched', label: `${automaticMatches[0].side} · ${automaticMatches[0].category}`, isManual: false, candidates: [] });
             }
         });
         return map;
@@ -1855,6 +1896,7 @@ export function AdminDashboard() {
                                                     foundMatchesLabel={t.adminManualMatchFoundGroup}
                                                     fullListLabel={t.adminManualMatchFullListGroup}
                                                     showFullListLabel={t.adminManualMatchShowFullList}
+                                                    toggleLabel={t.adminManualMatchToggle}
                                                     onChange={handleManualRosterMatchChange}
                                                 />
                                             </div>
@@ -1890,7 +1932,7 @@ export function AdminDashboard() {
 
                         {/* Desktop table (md breakpoint and up) */}
                         <div className="hidden overflow-x-auto md:block">
-                            <table className="min-w-full table-fixed divide-y divide-gray-200 text-sm">
+                            <table className="min-w-[1600px] table-fixed divide-y divide-gray-200 text-sm">
                                 <thead className="bg-gray-50/80 text-gray-600">
                                     <tr>
                                         <th className="w-24 px-4 py-3 text-start font-semibold">
@@ -1908,7 +1950,7 @@ export function AdminDashboard() {
                                         </th>
                                         <th className="w-20 px-4 py-3 text-center font-semibold">{t.adminTableIndex}</th>
                                         <SortableHeader
-                                            className="w-48 text-start"
+                                            className="w-56 text-start"
                                             label={t.adminTableName}
                                             sortKey="fullName"
                                             activeSort={sortConfig}
@@ -1929,9 +1971,9 @@ export function AdminDashboard() {
                                             activeSort={sortConfig}
                                             onSort={handleSort}
                                         />
-                                        <th className="w-48 px-4 py-3 text-start font-semibold">{t.adminTableSideCategory}</th>
+                                        <th className="w-40 px-4 py-3 text-start font-semibold">{t.adminTableSideCategory}</th>
                                         <SortableHeader
-                                            className="text-start"
+                                            className="w-36 text-start"
                                             label={t.adminTableStatus}
                                             sortKey="isAttending"
                                             activeSort={sortConfig}
@@ -2006,7 +2048,7 @@ export function AdminDashboard() {
                                                     }}
                                                 />
                                             </td>
-                                            <td className="w-48 px-4 py-3 text-gray-700">
+                                            <td className="w-40 px-4 py-3 text-gray-700">
                                                 <RosterMatchBadge
                                                     info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false, candidates: [] }}
                                                     manualLabel={t.adminManualMatchBadge}
@@ -2020,6 +2062,7 @@ export function AdminDashboard() {
                                                     foundMatchesLabel={t.adminManualMatchFoundGroup}
                                                     fullListLabel={t.adminManualMatchFullListGroup}
                                                     showFullListLabel={t.adminManualMatchShowFullList}
+                                                    toggleLabel={t.adminManualMatchToggle}
                                                     onChange={handleManualRosterMatchChange}
                                                 />
                                             </td>
@@ -2086,6 +2129,12 @@ export function AdminDashboard() {
                             alreadyResponded: t.adminRemindersAlreadyResponded,
                             sendButton: t.adminRemindersSendButton,
                             countLabel: t.adminRemindersCountLabel,
+                            selectedTitle: t.adminRemindersSelectedTitle,
+                            selectedHelp: t.adminRemindersSelectedHelp,
+                            clearSelection: t.adminRemindersClearSelection,
+                            groupFilterAll: t.adminRemindersGroupFilterAll,
+                            selectAllVisible: t.adminRemindersSelectAllVisible,
+                            deselectAllVisible: t.adminRemindersDeselectAllVisible,
                         }}
                     />
                 </motion.section>

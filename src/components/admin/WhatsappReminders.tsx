@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MessageCircle, Search } from 'lucide-react';
+import { MessageCircle, Search, X } from 'lucide-react';
 import type { NormalizedBaseListEntry } from '../../utils/baseList';
 import { toWhatsappDialableNumber } from '../../utils/phoneNumbers';
 
@@ -19,6 +19,12 @@ export interface WhatsappRemindersLabels {
     alreadyResponded: string;
     sendButton: string;
     countLabel: string;
+    selectedTitle: string;
+    selectedHelp: string;
+    clearSelection: string;
+    groupFilterAll: string;
+    selectAllVisible: string;
+    deselectAllVisible: string;
 }
 
 interface WhatsappRemindersProps {
@@ -45,6 +51,12 @@ function buildMessage(template: string, name: string, link: string): string {
     return template.replace(/\{\{\s*name\s*\}\}/gi, name).replace(/\{\{\s*link\s*\}\}/gi, link);
 }
 
+function buildWaHref(guest: NormalizedBaseListEntry, template: string, siteOrigin: string): string {
+    const link = `${siteOrigin}/link/${guest.phone}`;
+    const message = buildMessage(template, guest.name, link);
+    return `https://wa.me/${toWhatsappDialableNumber(guest.phone)}?text=${encodeURIComponent(message)}`;
+}
+
 // Lets Gil send a personalized WhatsApp reminder (with each guest's own
 // invite link) to every guest one at a time, with zero typing - the message
 // is fully pre-filled via WhatsApp's official "click to chat" (wa.me) links,
@@ -62,6 +74,19 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
     });
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMode, setFilterMode] = useState<'all' | 'pending'>('pending');
+    // Empty string means "every group" - lets Gil narrow the list down to one
+    // group/side first (e.g. "עבודה דפנה"), then decide whether to select all
+    // of them at once or just a few, instead of scrolling the full guest list
+    // to find that group's people one at a time.
+    const [groupFilter, setGroupFilter] = useState('');
+    // Independent of search/filter - lets Gil search for "ליאור", check him
+    // off, then search for "אור כהן", check him off too, etc., building up a
+    // shortlist across several searches instead of losing earlier picks each
+    // time the search term changes. The "selected" panel below then shows
+    // every one of them with their Send button ready, so he can click
+    // through just that shortlist quickly instead of hunting the whole
+    // guest list one name at a time.
+    const [selectedPhones, setSelectedPhones] = useState<Set<string>>(new Set());
 
     const siteOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -75,21 +100,58 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
         }
     };
 
+    const toggleSelected = (phone: string) => {
+        setSelectedPhones((prev) => {
+            const next = new Set(prev);
+            if (next.has(phone)) {
+                next.delete(phone);
+            } else {
+                next.add(phone);
+            }
+            return next;
+        });
+    };
+
     const sortedGuests = useMemo(
         () => [...baseList].sort((first, second) => first.name.localeCompare(second.name)),
         [baseList],
+    );
+
+    const groups = useMemo(
+        () => Array.from(new Set(sortedGuests.map((guest) => guest.group).filter(Boolean))).sort((first, second) => first.localeCompare(second)),
+        [sortedGuests],
     );
 
     const visibleGuests = useMemo(() => {
         const term = searchTerm.trim().toLowerCase();
         return sortedGuests.filter((guest) => {
             if (filterMode === 'pending' && respondedPhones.has(guest.phone)) return false;
+            if (groupFilter && guest.group !== groupFilter) return false;
             if (!term) return true;
             return guest.name.toLowerCase().includes(term) || guest.group.toLowerCase().includes(term) || guest.phone.includes(term);
         });
-    }, [sortedGuests, filterMode, respondedPhones, searchTerm]);
+    }, [sortedGuests, filterMode, groupFilter, respondedPhones, searchTerm]);
 
-    const previewGuest = visibleGuests[0] ?? sortedGuests[0];
+    const selectedGuests = useMemo(
+        () => sortedGuests.filter((guest) => selectedPhones.has(guest.phone)),
+        [sortedGuests, selectedPhones],
+    );
+
+    const areAllVisibleSelected = visibleGuests.length > 0 && visibleGuests.every((guest) => selectedPhones.has(guest.phone));
+
+    const toggleSelectAllVisible = () => {
+        setSelectedPhones((prev) => {
+            const next = new Set(prev);
+            if (areAllVisibleSelected) {
+                visibleGuests.forEach((guest) => next.delete(guest.phone));
+            } else {
+                visibleGuests.forEach((guest) => next.add(guest.phone));
+            }
+            return next;
+        });
+    };
+
+    const previewGuest = selectedGuests[0] ?? visibleGuests[0] ?? sortedGuests[0];
     const previewMessage = previewGuest
         ? buildMessage(template, previewGuest.name, `${siteOrigin}/link/${previewGuest.phone}`)
         : buildMessage(template, 'שם המוזמן', `${siteOrigin}/link/0500000000`);
@@ -125,6 +187,51 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
                     </p>
                 </div>
 
+                {selectedGuests.length > 0 && (
+                    <div className="rounded-2xl border border-gray-900/10 bg-gray-50 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                            <div>
+                                <p className="text-sm font-semibold text-gray-900">{labels.selectedTitle} ({selectedGuests.length})</p>
+                                <p className="text-xs text-gray-500">{labels.selectedHelp}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedPhones(new Set())}
+                                className="shrink-0 text-xs font-medium text-rose-600 underline underline-offset-2"
+                            >
+                                {labels.clearSelection}
+                            </button>
+                        </div>
+                        <div className="max-h-72 divide-y divide-gray-200 overflow-y-auto rounded-xl border border-gray-200 bg-white">
+                            {selectedGuests.map((guest) => (
+                                <div key={guest.phone} className="flex items-center gap-2 px-3 py-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleSelected(guest.phone)}
+                                        className="shrink-0 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                        aria-label={labels.clearSelection}
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium text-gray-900">{guest.name}</p>
+                                        <p className="text-xs text-gray-500" dir="ltr">{formatPhoneForDisplay(guest.phone)}</p>
+                                    </div>
+                                    <a
+                                        href={buildWaHref(guest, template, siteOrigin)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
+                                    >
+                                        <MessageCircle size={14} />
+                                        {labels.sendButton}
+                                    </a>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="relative flex-1">
                         <Search size={16} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -136,6 +243,16 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
                             className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2 ps-9 pe-3 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
                         />
                     </div>
+                    <select
+                        value={groupFilter}
+                        onChange={(event) => setGroupFilter(event.target.value)}
+                        className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                    >
+                        <option value="">{labels.groupFilterAll}</option>
+                        {groups.map((group) => (
+                            <option key={group} value={group}>{group}</option>
+                        ))}
+                    </select>
                     <div className="flex gap-2">
                         <button
                             type="button"
@@ -154,7 +271,18 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
                     </div>
                 </div>
 
-                <p className="text-xs text-gray-500">{visibleGuests.length} {labels.countLabel}</p>
+                <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-500">{visibleGuests.length} {labels.countLabel}</p>
+                    {visibleGuests.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={toggleSelectAllVisible}
+                            className="text-xs font-medium text-gray-700 underline underline-offset-2"
+                        >
+                            {areAllVisibleSelected ? labels.deselectAllVisible : labels.selectAllVisible}
+                        </button>
+                    )}
+                </div>
 
                 {isLoading ? (
                     <p className="py-8 text-center text-sm text-gray-500">{labels.loading}</p>
@@ -164,12 +292,16 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
                     <div className="max-h-[32rem] divide-y divide-gray-100 overflow-y-auto rounded-2xl border border-gray-100">
                         {visibleGuests.map((guest) => {
                             const hasResponded = respondedPhones.has(guest.phone);
-                            const link = `${siteOrigin}/link/${guest.phone}`;
-                            const message = buildMessage(template, guest.name, link);
-                            const waHref = `https://wa.me/${toWhatsappDialableNumber(guest.phone)}?text=${encodeURIComponent(message)}`;
+                            const isSelected = selectedPhones.has(guest.phone);
 
                             return (
                                 <div key={guest.phone} className="flex items-center gap-3 px-4 py-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => toggleSelected(guest.phone)}
+                                        className="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+                                    />
                                     <div className="min-w-0 flex-1">
                                         <p className="truncate font-medium text-gray-900">{guest.name}</p>
                                         <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
@@ -183,7 +315,7 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
                                         </p>
                                     </div>
                                     <a
-                                        href={waHref}
+                                        href={buildWaHref(guest, template, siteOrigin)}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
