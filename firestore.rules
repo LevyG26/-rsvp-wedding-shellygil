@@ -152,6 +152,15 @@ service cloud.firestore {
       allow delete: if isAdmin() && isValidId(phoneId) && isValidLinkedPhone(phoneId);
     }
 
+    function isValidBaseListEntry(data, phoneId) {
+      return data.keys().hasAll(['phone', 'name', 'group']) &&
+             data.keys().hasOnly(['phone', 'name', 'group']) &&
+             data.phone == phoneId &&
+             isValidLinkedPhone(data.phone) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+             data.group is string && data.group.size() <= 120;
+    }
+
     match /baseList/{phoneId} {
       // Public get-by-known-phone-id lookup (used to enrich an invite link
       // visit / RSVP with the guest's name from the base list) stays as-is.
@@ -160,7 +169,13 @@ service cloud.firestore {
       // dashboard's WhatsApp reminders tab, which needs every guest's phone
       // number to build a personalized "click to send" link for each one.
       allow list: if isAdmin();
-      allow create, update, delete: if false;
+      // Admin-only create/update - lets the dashboard's "sync phone list
+      // from sheet" button (mirrors the existing guest-roster sheet sync)
+      // upsert entries directly from the browser, instead of requiring the
+      // local Admin-SDK script (scripts/syncBaseList.ts) that only runs from
+      // a developer's terminal - not something Gil can do himself.
+      allow create, update: if isAdmin() && isValidLinkedPhone(phoneId) && isValidBaseListEntry(incoming(), phoneId);
+      allow delete: if false;
     }
 
     // Full invite roster (side/category/name/count/known response), imported

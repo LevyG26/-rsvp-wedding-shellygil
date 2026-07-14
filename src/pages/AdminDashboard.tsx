@@ -30,7 +30,7 @@ import { GuestRosterSection } from '../components/admin/GuestRosterSection';
 import { OldSiteRsvpImportPanel } from '../components/admin/OldSiteRsvpImportPanel';
 import { DuplicateFinderPanel } from '../components/admin/DuplicateFinderPanel';
 import { enrichInviteLinkVisitsWithBaseList } from '../services/inviteLinkVisits';
-import { loadBaseList } from '../services/baseList';
+import { loadBaseList, syncBaseListFromSheet, type BaseListSyncResult } from '../services/baseList';
 import type { NormalizedBaseListEntry } from '../utils/baseList';
 import { WhatsappReminders } from '../components/admin/WhatsappReminders';
 import {
@@ -862,6 +862,18 @@ export function AdminDashboard() {
         const result = await syncGuestRosterFromSheet(guestRoster);
         if (result.addedCount > 0 || result.updatedCount > 0) {
             await reloadGuestRoster();
+        }
+        return result;
+    };
+
+    // Browser-based equivalent of running scripts/syncBaseList.ts from a
+    // terminal - pulls phone/name/group from Gil's per-side sheet tab(s) and
+    // upserts them into baseList, then reloads it so the WhatsApp reminders
+    // tab immediately reflects the new guests.
+    const handleSyncBaseList = async (): Promise<BaseListSyncResult> => {
+        const result = await syncBaseListFromSheet();
+        if (result.upsertedCount > 0) {
+            setBaseList(await loadBaseList());
         }
         return result;
     };
@@ -2113,6 +2125,7 @@ export function AdminDashboard() {
                         baseList={baseList}
                         respondedPhones={respondedPhones}
                         isLoading={isLoadingBaseList}
+                        onSync={handleSyncBaseList}
                         labels={{
                             title: t.adminRemindersTitle,
                             subtitle: t.adminRemindersSubtitle,
@@ -2135,6 +2148,12 @@ export function AdminDashboard() {
                             groupFilterAll: t.adminRemindersGroupFilterAll,
                             selectAllVisible: t.adminRemindersSelectAllVisible,
                             deselectAllVisible: t.adminRemindersDeselectAllVisible,
+                            syncButton: t.adminRemindersSyncButton,
+                            syncing: t.adminRemindersSyncing,
+                            syncUpserted: t.adminRemindersSyncUpserted,
+                            syncSkipped: t.adminRemindersSyncSkipped,
+                            syncNone: t.adminRemindersSyncNone,
+                            syncError: t.adminRemindersSyncError,
                         }}
                     />
                 </motion.section>

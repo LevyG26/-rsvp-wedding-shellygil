@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { MessageCircle, Search, X } from 'lucide-react';
+import { Loader2, MessageCircle, RefreshCw, Search, X } from 'lucide-react';
 import type { NormalizedBaseListEntry } from '../../utils/baseList';
+import type { BaseListSyncResult } from '../../services/baseList';
 import { toWhatsappDialableNumber } from '../../utils/phoneNumbers';
 
 export interface WhatsappRemindersLabels {
@@ -25,12 +26,19 @@ export interface WhatsappRemindersLabels {
     groupFilterAll: string;
     selectAllVisible: string;
     deselectAllVisible: string;
+    syncButton: string;
+    syncing: string;
+    syncUpserted: string;
+    syncSkipped: string;
+    syncNone: string;
+    syncError: string;
 }
 
 interface WhatsappRemindersProps {
     baseList: NormalizedBaseListEntry[];
     respondedPhones: Set<string>;
     isLoading: boolean;
+    onSync: () => Promise<BaseListSyncResult>;
     labels: WhatsappRemindersLabels;
 }
 
@@ -64,7 +72,10 @@ function buildWaHref(guest: NormalizedBaseListEntry, template: string, siteOrigi
 // short of full automation: WhatsApp bans accounts that message people at
 // scale in an "unauthorized" (bot-driven) way, and a real human clicking
 // through a list of pre-filled links is the compliant, safe version of that.
-export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels }: WhatsappRemindersProps) {
+export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync, labels }: WhatsappRemindersProps) {
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncMessage, setSyncMessage] = useState('');
+    const [syncIsError, setSyncIsError] = useState(false);
     const [template, setTemplate] = useState<string>(() => {
         try {
             return window.localStorage.getItem(TEMPLATE_STORAGE_KEY) || labels.templateDefault;
@@ -88,7 +99,12 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
     // guest list one name at a time.
     const [selectedPhones, setSelectedPhones] = useState<Set<string>>(new Set());
 
-    const siteOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    // Deliberately hardcoded to the real guest-facing domain rather than
+    // window.location.origin - the admin dashboard itself is sometimes still
+    // opened from the old vercel.app URL, but the links guests actually
+    // receive must always be the real wedding domain regardless of which URL
+    // Gil happens to be looking at the dashboard from right now.
+    const siteOrigin = 'https://www.shellygilwedding.com';
 
     const handleTemplateChange = (value: string) => {
         setTemplate(value);
@@ -151,6 +167,29 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
         });
     };
 
+    const handleSync = async () => {
+        setIsSyncing(true);
+        setSyncMessage('');
+        setSyncIsError(false);
+        try {
+            const result = await onSync();
+            if (result.upsertedCount === 0) {
+                setSyncMessage(labels.syncNone);
+            } else {
+                const parts = [`${labels.syncUpserted}: ${result.upsertedCount}`];
+                if (result.skippedCount > 0) {
+                    parts.push(`${labels.syncSkipped}: ${result.skippedCount}`);
+                }
+                setSyncMessage(parts.join(' · '));
+            }
+        } catch (error) {
+            setSyncIsError(true);
+            setSyncMessage(error instanceof Error ? error.message : labels.syncError);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     const previewGuest = selectedGuests[0] ?? visibleGuests[0] ?? sortedGuests[0];
     const previewMessage = previewGuest
         ? buildMessage(template, previewGuest.name, `${siteOrigin}/link/${previewGuest.phone}`)
@@ -158,12 +197,29 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, labels
 
     return (
         <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md">
-            <div className="border-b border-gray-100 px-5 py-4">
-                <h2 className="text-lg font-semibold text-gray-900">{labels.title}</h2>
-                <p className="mt-1 text-sm text-gray-500">{labels.subtitle}</p>
+            <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+                <div>
+                    <h2 className="text-lg font-semibold text-gray-900">{labels.title}</h2>
+                    <p className="mt-1 text-sm text-gray-500">{labels.subtitle}</p>
+                </div>
+                <button
+                    type="button"
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    {isSyncing ? labels.syncing : labels.syncButton}
+                </button>
             </div>
 
             <div className="space-y-4 p-5">
+                {syncMessage && (
+                    <div className={`rounded-2xl border px-4 py-3 text-sm ${syncIsError ? 'border-rose-100 bg-rose-50 text-rose-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'}`}>
+                        {syncMessage}
+                    </div>
+                )}
+
                 <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                     {labels.tip}
                 </div>
