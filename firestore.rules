@@ -210,5 +210,60 @@ service cloud.firestore {
       allow update: if isAdmin() && isValidGuestRosterEntry(incoming());
       allow delete: if isAdmin();
     }
+
+    // Seating chart: tables Gil defines himself (name + seat count), admin-only
+    // like everything else guest-related.
+    function isValidSeatingTable(data) {
+      return data.keys().hasAll(['name', 'seatCount', 'updatedAt']) &&
+             data.keys().hasOnly(['name', 'seatCount', 'updatedAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 60 &&
+             data.seatCount is int && data.seatCount >= 1 && data.seatCount <= 40 &&
+             data.updatedAt == request.time;
+    }
+
+    match /seatingTables/{tableId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidId(tableId) && isValidSeatingTable(incoming());
+      allow update: if isAdmin() && isValidSeatingTable(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Ad-hoc named clusters of confirmed guestRoster entry IDs, purely for
+    // seating multiple otherwise-unrelated parties together in one action -
+    // separate from the roster's own side/category fields.
+    function isValidSeatingGroup(data) {
+      return data.keys().hasAll(['name', 'memberEntryIds', 'updatedAt']) &&
+             data.keys().hasOnly(['name', 'memberEntryIds', 'updatedAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 60 &&
+             data.memberEntryIds is list && data.memberEntryIds.size() <= 50 &&
+             data.updatedAt == request.time;
+    }
+
+    match /seatingGroups/{groupId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidId(groupId) && isValidSeatingGroup(incoming());
+      allow update: if isAdmin() && isValidSeatingGroup(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // How many of a given roster entry's confirmed seats sit at a given
+    // table - a roster entry can have more than one of these rows (split
+    // across multiple tables), which is why this isn't just a field on the
+    // roster entry itself.
+    function isValidSeatingAssignment(data) {
+      return data.keys().hasAll(['rosterEntryId', 'tableId', 'seatsCount', 'updatedAt']) &&
+             data.keys().hasOnly(['rosterEntryId', 'tableId', 'seatsCount', 'updatedAt']) &&
+             data.rosterEntryId is string && data.rosterEntryId.size() > 0 &&
+             data.tableId is string && data.tableId.size() > 0 &&
+             data.seatsCount is int && data.seatsCount >= 1 && data.seatsCount <= 30 &&
+             data.updatedAt == request.time;
+    }
+
+    match /seatingAssignments/{assignmentId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidId(assignmentId) && isValidSeatingAssignment(incoming());
+      allow update: if isAdmin() && isValidSeatingAssignment(incoming());
+      allow delete: if isAdmin();
+    }
   }
 }

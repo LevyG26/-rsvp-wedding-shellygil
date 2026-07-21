@@ -45,6 +45,24 @@ import {
     type GuestRosterEntryInput,
 } from '../services/guestRoster';
 import { findRosterMatches, linkGuestRosterWithRsvps, resolveRosterMatches, type RosterLinkResult } from '../services/rsvpRosterLink';
+import { SeatingSection } from '../components/admin/SeatingSection';
+import {
+    assignGroupToTable,
+    createSeatingGroup,
+    createSeatingTable,
+    deleteSeatingGroup,
+    deleteSeatingTable,
+    removeSeatingAssignment,
+    setSeatingAssignment,
+    subscribeToSeatingAssignments,
+    subscribeToSeatingGroups,
+    subscribeToSeatingTables,
+    updateSeatingGroup,
+    updateSeatingTable,
+    type SeatingAssignment,
+    type SeatingGroup,
+    type SeatingTable,
+} from '../services/seating';
 
 interface RSVPRecord {
     id: string;
@@ -424,7 +442,11 @@ export function AdminDashboard() {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'createdAt', direction: 'desc' });
     const [isAuthChecked, setIsAuthChecked] = useState(false);
     const [isSignedIn, setIsSignedIn] = useState(false);
-    const [activeTab, setActiveTab] = useState<'roster' | 'responses' | 'reminders'>('roster');
+    const [activeTab, setActiveTab] = useState<'roster' | 'responses' | 'reminders' | 'seating'>('roster');
+    const [seatingTables, setSeatingTables] = useState<SeatingTable[]>([]);
+    const [seatingGroups, setSeatingGroups] = useState<SeatingGroup[]>([]);
+    const [seatingAssignments, setSeatingAssignments] = useState<SeatingAssignment[]>([]);
+    const [isLoadingSeating, setIsLoadingSeating] = useState(true);
 
     const isValidLang = lang === 'en' || lang === 'he' || lang === 'fr';
     const currentLang = (isValidLang ? lang : 'he') as Language;
@@ -535,9 +557,58 @@ export function AdminDashboard() {
             .catch((loadError) => console.error('Failed to load base list', loadError))
             .finally(() => setIsLoadingBaseList(false));
 
+        // Seating chart data loads independently of the RSVP/roster gate
+        // above (it doesn't block the rest of the dashboard) - just tracks
+        // its own three collections so the seating tab can show a loading
+        // state until all of them have returned at least once.
+        let tablesLoaded = false;
+        let groupsLoaded = false;
+        let assignmentsLoaded = false;
+        const markSeatingLoadedIfReady = () => {
+            if (tablesLoaded && groupsLoaded && assignmentsLoaded) {
+                setIsLoadingSeating(false);
+            }
+        };
+        const unsubscribeSeatingTables = subscribeToSeatingTables(
+            (loaded) => {
+                setSeatingTables(loaded);
+                tablesLoaded = true;
+                markSeatingLoadedIfReady();
+            },
+            () => {
+                tablesLoaded = true;
+                markSeatingLoadedIfReady();
+            },
+        );
+        const unsubscribeSeatingGroups = subscribeToSeatingGroups(
+            (loaded) => {
+                setSeatingGroups(loaded);
+                groupsLoaded = true;
+                markSeatingLoadedIfReady();
+            },
+            () => {
+                groupsLoaded = true;
+                markSeatingLoadedIfReady();
+            },
+        );
+        const unsubscribeSeatingAssignments = subscribeToSeatingAssignments(
+            (loaded) => {
+                setSeatingAssignments(loaded);
+                assignmentsLoaded = true;
+                markSeatingLoadedIfReady();
+            },
+            () => {
+                assignmentsLoaded = true;
+                markSeatingLoadedIfReady();
+            },
+        );
+
         return () => {
             unsubscribeRsvps();
             unsubscribeRoster();
+            unsubscribeSeatingTables();
+            unsubscribeSeatingGroups();
+            unsubscribeSeatingAssignments();
         };
     }, [isAuthChecked, isSignedIn, t.adminLoadError]);
 
@@ -722,6 +793,14 @@ export function AdminDashboard() {
         [records],
     );
 
+    // Only confirmed ("yes") roster entries are seatable - per Gil's choice,
+    // the seating tab deliberately doesn't show guests who haven't responded
+    // yet or declined, to keep it focused on people who are actually coming.
+    const confirmedRosterEntries = useMemo(
+        () => guestRoster.filter((entry) => entry.knownResponse === 'yes'),
+        [guestRoster],
+    );
+
     // Which side/category each site response belongs to, matched by name
     // against the guest roster - display only (mirrors the matching used by
     // the "Link" button in the Roster tab), so this never writes anything,
@@ -876,6 +955,61 @@ export function AdminDashboard() {
             setBaseList(await loadBaseList());
         }
         return result;
+    };
+
+    // Seating chart handlers - thin wrappers around services/seating.ts.
+    // Local state isn't updated manually here because the onSnapshot
+    // listeners set up above already keep seatingTables/seatingGroups/
+    // seatingAssignments current on their own.
+    const handleCreateSeatingTable = async (name: string, seatCount: number): Promise<void> => {
+        await createSeatingTable(name, seatCount);
+    };
+
+    const handleUpdateSeatingTable = async (id: string, name: string, seatCount: number): Promise<void> => {
+        await updateSeatingTable(id, name, seatCount);
+    };
+
+    const handleDeleteSeatingTable = async (id: string): Promise<void> => {
+        await deleteSeatingTable(id, seatingAssignments);
+    };
+
+    const handleCreateSeatingGroup = async (name: string, memberEntryIds: string[]): Promise<void> => {
+        await createSeatingGroup(name, memberEntryIds);
+    };
+
+    const handleUpdateSeatingGroup = async (id: string, name: string, memberEntryIds: string[]): Promise<void> => {
+        await updateSeatingGroup(id, name, memberEntryIds);
+    };
+
+    const handleDeleteSeatingGroup = async (id: string): Promise<void> => {
+        await deleteSeatingGroup(id);
+    };
+
+    const handleSetSeatingAssignment = async (rosterEntryId: string, tableId: string, seatsCount: number): Promise<void> => {
+        await setSeatingAssignment(rosterEntryId, tableId, seatsCount);
+    };
+
+    const handleRemoveSeatingAssignment = async (rosterEntryId: string, tableId: string): Promise<void> => {
+        await removeSeatingAssignment(rosterEntryId, tableId);
+    };
+
+    const handleAssignSeatingGroupToTable = async (group: SeatingGroup, tableId: string): Promise<void> => {
+        const remainingByEntryId = new Map<string, number>();
+        guestRoster.forEach((entry) => {
+            if (entry.knownResponse !== 'yes') return;
+            const assigned = seatingAssignments
+                .filter((assignment) => assignment.rosterEntryId === entry.id)
+                .reduce((sum, assignment) => sum + assignment.seatsCount, 0);
+            remainingByEntryId.set(entry.id, entry.invitedCount - assigned);
+        });
+
+        const table = seatingTables.find((candidate) => candidate.id === tableId);
+        if (!table) return;
+        const used = seatingAssignments
+            .filter((assignment) => assignment.tableId === tableId)
+            .reduce((sum, assignment) => sum + assignment.seatsCount, 0);
+
+        await assignGroupToTable(group, tableId, remainingByEntryId, table.seatCount - used);
     };
 
     // Wipes every roster entry for one side and immediately re-pulls it from
@@ -1377,6 +1511,16 @@ export function AdminDashboard() {
                                 }`}
                         >
                             {t.adminTabReminders}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('seating')}
+                            className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'seating'
+                                ? 'border-gray-900 text-gray-900'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            {t.adminTabSeating}
                         </button>
                     </div>
                 </motion.header>
@@ -2157,6 +2301,75 @@ export function AdminDashboard() {
                             openAllButton: t.adminRemindersOpenAllButton,
                             openAllHelp: t.adminRemindersOpenAllHelp,
                             openAllMobileNote: t.adminRemindersOpenAllMobileNote,
+                        }}
+                    />
+                </motion.section>
+                )}
+
+                {activeTab === 'seating' && (
+                <motion.section
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-6"
+                >
+                    <SeatingSection
+                        confirmedEntries={confirmedRosterEntries}
+                        tables={seatingTables}
+                        groups={seatingGroups}
+                        assignments={seatingAssignments}
+                        isLoading={isLoadingSeating}
+                        locale={locale}
+                        onCreateTable={handleCreateSeatingTable}
+                        onUpdateTable={handleUpdateSeatingTable}
+                        onDeleteTable={handleDeleteSeatingTable}
+                        onCreateGroup={handleCreateSeatingGroup}
+                        onUpdateGroup={handleUpdateSeatingGroup}
+                        onDeleteGroup={handleDeleteSeatingGroup}
+                        onSetAssignment={handleSetSeatingAssignment}
+                        onRemoveAssignment={handleRemoveSeatingAssignment}
+                        onAssignGroupToTable={handleAssignSeatingGroupToTable}
+                        labels={{
+                            title: t.adminSeatingTitle,
+                            subtitle: t.adminSeatingSubtitle,
+                            loading: t.adminSeatingLoading,
+                            statConfirmed: t.adminSeatingStatConfirmed,
+                            statSeated: t.adminSeatingStatSeated,
+                            statUnseated: t.adminSeatingStatUnseated,
+                            statTables: t.adminSeatingStatTables,
+                            statSeatsAvailable: t.adminSeatingStatSeatsAvailable,
+                            unseatedHeading: t.adminSeatingUnseatedHeading,
+                            unseatedEmpty: t.adminSeatingUnseatedEmpty,
+                            unseatedAllSeated: t.adminSeatingUnseatedAllSeated,
+                            searchPlaceholder: t.adminSeatingSearchPlaceholder,
+                            remainingOf: t.adminSeatingRemainingOf,
+                            seatsWord: t.adminSeatingSeatsWord,
+                            chooseTable: t.adminSeatingChooseTable,
+                            addButton: t.adminSeatingAddButton,
+                            noTablesHint: t.adminSeatingNoTablesHint,
+                            groupsHeading: t.adminSeatingGroupsHeading,
+                            addGroupButton: t.adminSeatingAddGroupButton,
+                            groupNamePlaceholder: t.adminSeatingGroupNamePlaceholder,
+                            groupMembersHint: t.adminSeatingGroupMembersHint,
+                            saveGroup: t.adminSeatingSaveGroup,
+                            cancelAction: t.adminSeatingCancelAction,
+                            editAction: t.adminSeatingEditAction,
+                            deleteAction: t.adminSeatingDeleteAction,
+                            assignButton: t.adminSeatingAssignButton,
+                            noGroups: t.adminSeatingNoGroups,
+                            membersCountLabel: t.adminSeatingMembersCountLabel,
+                            tablesHeading: t.adminSeatingTablesHeading,
+                            addTableButton: t.adminSeatingAddTableButton,
+                            tableNamePlaceholder: t.adminSeatingTableNamePlaceholder,
+                            tableSeatsPlaceholder: t.adminSeatingTableSeatsPlaceholder,
+                            saveTable: t.adminSeatingSaveTable,
+                            noTables: t.adminSeatingNoTables,
+                            tableFullBadge: t.adminSeatingTableFullBadge,
+                            deleteTableConfirm: t.adminSeatingDeleteTableConfirm,
+                            deleteGroupConfirm: t.adminSeatingDeleteGroupConfirm,
+                            updateError: t.adminSeatingUpdateError,
+                            createError: t.adminSeatingCreateError,
+                            deleteError: t.adminSeatingDeleteError,
+                            saving: t.adminSeatingSaving,
                         }}
                     />
                 </motion.section>
