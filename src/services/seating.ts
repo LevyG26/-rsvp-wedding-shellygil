@@ -1,11 +1,27 @@
-import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export const SEATING_TABLES_COLLECTION = 'seatingTables';
 export const SEATING_GROUPS_COLLECTION = 'seatingGroups';
 export const SEATING_ASSIGNMENTS_COLLECTION = 'seatingAssignments';
 
-export interface SeatingTable {
+export type SeatingTableShape = 'round' | 'rect';
+
+// Position/size on the free-form floor-plan canvas Gil drags and resizes by
+// hand to match the actual hall layout - kept separate from seatCount, since
+// a table's physical footprint on the plan and how many people it seats are
+// two different things he wants to control independently.
+export interface SeatingTableLayout {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  shape: SeatingTableShape;
+}
+
+export const DEFAULT_TABLE_LAYOUT: SeatingTableLayout = { x: 40, y: 40, width: 110, height: 110, shape: 'round' };
+
+export interface SeatingTable extends SeatingTableLayout {
   id: string;
   name: string;
   seatCount: number;
@@ -50,12 +66,20 @@ function makeId(): string {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 function normalizeTable(id: string, data: Record<string, unknown>): SeatingTable {
-  const seatCountValue = data.seatCount;
   return {
     id,
     name: typeof data.name === 'string' ? data.name : '',
-    seatCount: typeof seatCountValue === 'number' && Number.isFinite(seatCountValue) ? seatCountValue : 0,
+    seatCount: numberOr(data.seatCount, 0),
+    x: numberOr(data.x, DEFAULT_TABLE_LAYOUT.x),
+    y: numberOr(data.y, DEFAULT_TABLE_LAYOUT.y),
+    width: numberOr(data.width, DEFAULT_TABLE_LAYOUT.width),
+    height: numberOr(data.height, DEFAULT_TABLE_LAYOUT.height),
+    shape: data.shape === 'rect' ? 'rect' : 'round',
   };
 }
 
@@ -111,20 +135,35 @@ export function subscribeToSeatingAssignments(onChange: (assignments: SeatingAss
   );
 }
 
-export async function createSeatingTable(name: string, seatCount: number): Promise<string> {
+export async function createSeatingTable(name: string, seatCount: number, layout: SeatingTableLayout = DEFAULT_TABLE_LAYOUT): Promise<string> {
   const id = makeId();
   await setDoc(doc(db, SEATING_TABLES_COLLECTION, id), {
     name: name.trim(),
     seatCount,
+    ...layout,
     updatedAt: serverTimestamp(),
   });
   return id;
 }
 
-export async function updateSeatingTable(id: string, name: string, seatCount: number): Promise<void> {
+// Full update (rename / change seat count) - keeps whatever layout is passed
+// in, so callers editing just the name/seatCount should pass the table's
+// current layout back through unchanged.
+export async function updateSeatingTable(id: string, name: string, seatCount: number, layout: SeatingTableLayout): Promise<void> {
   await setDoc(doc(db, SEATING_TABLES_COLLECTION, id), {
     name: name.trim(),
     seatCount,
+    ...layout,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// Lightweight partial update for dragging/resizing on the floor-plan canvas -
+// a plain Firestore updateDoc (merge), so this never has to know or resend
+// the table's name/seatCount just to move it.
+export async function updateSeatingTableLayout(id: string, layout: SeatingTableLayout): Promise<void> {
+  await updateDoc(doc(db, SEATING_TABLES_COLLECTION, id), {
+    ...layout,
     updatedAt: serverTimestamp(),
   });
 }

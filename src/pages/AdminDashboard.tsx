@@ -59,9 +59,11 @@ import {
     subscribeToSeatingTables,
     updateSeatingGroup,
     updateSeatingTable,
+    updateSeatingTableLayout,
     type SeatingAssignment,
     type SeatingGroup,
     type SeatingTable,
+    type SeatingTableLayout,
 } from '../services/seating';
 
 interface RSVPRecord {
@@ -961,12 +963,16 @@ export function AdminDashboard() {
     // Local state isn't updated manually here because the onSnapshot
     // listeners set up above already keep seatingTables/seatingGroups/
     // seatingAssignments current on their own.
-    const handleCreateSeatingTable = async (name: string, seatCount: number): Promise<void> => {
-        await createSeatingTable(name, seatCount);
+    const handleCreateSeatingTable = async (name: string, seatCount: number, layout: SeatingTableLayout): Promise<void> => {
+        await createSeatingTable(name, seatCount, layout);
     };
 
-    const handleUpdateSeatingTable = async (id: string, name: string, seatCount: number): Promise<void> => {
-        await updateSeatingTable(id, name, seatCount);
+    const handleUpdateSeatingTable = async (id: string, name: string, seatCount: number, layout: SeatingTableLayout): Promise<void> => {
+        await updateSeatingTable(id, name, seatCount, layout);
+    };
+
+    const handleUpdateSeatingTableLayout = async (id: string, layout: SeatingTableLayout): Promise<void> => {
+        await updateSeatingTableLayout(id, layout);
     };
 
     const handleDeleteSeatingTable = async (id: string): Promise<void> => {
@@ -2321,6 +2327,7 @@ export function AdminDashboard() {
                         locale={locale}
                         onCreateTable={handleCreateSeatingTable}
                         onUpdateTable={handleUpdateSeatingTable}
+                        onUpdateTableLayout={handleUpdateSeatingTableLayout}
                         onDeleteTable={handleDeleteSeatingTable}
                         onCreateGroup={handleCreateSeatingGroup}
                         onUpdateGroup={handleUpdateSeatingGroup}
@@ -2364,6 +2371,10 @@ export function AdminDashboard() {
                             saveTable: t.adminSeatingSaveTable,
                             noTables: t.adminSeatingNoTables,
                             tableFullBadge: t.adminSeatingTableFullBadge,
+                            canvasHint: t.adminSeatingCanvasHint,
+                            shapeRound: t.adminSeatingShapeRound,
+                            shapeRect: t.adminSeatingShapeRect,
+                            tableDetailsHint: t.adminSeatingTableDetailsHint,
                             deleteTableConfirm: t.adminSeatingDeleteTableConfirm,
                             deleteGroupConfirm: t.adminSeatingDeleteGroupConfirm,
                             updateError: t.adminSeatingUpdateError,

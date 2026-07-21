@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Check, LayoutGrid, Loader2, Pencil, Plus, Trash2, UserCheck, Users, X } from 'lucide-react';
 import type { GuestRosterEntry } from '../../services/guestRoster';
-import type { SeatingAssignment, SeatingGroup, SeatingTable } from '../../services/seating';
+import type { SeatingAssignment, SeatingGroup, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
+import { SeatingFloorPlan } from './SeatingFloorPlan';
 
 export interface SeatingLabels {
   title: string;
@@ -39,6 +40,10 @@ export interface SeatingLabels {
   saveTable: string;
   noTables: string;
   tableFullBadge: string;
+  canvasHint: string;
+  shapeRound: string;
+  shapeRect: string;
+  tableDetailsHint: string;
   deleteTableConfirm: string;
   deleteGroupConfirm: string;
   updateError: string;
@@ -55,8 +60,9 @@ interface SeatingSectionProps {
   isLoading: boolean;
   locale: string;
   labels: SeatingLabels;
-  onCreateTable: (name: string, seatCount: number) => Promise<void>;
-  onUpdateTable: (id: string, name: string, seatCount: number) => Promise<void>;
+  onCreateTable: (name: string, seatCount: number, layout: SeatingTableLayout) => Promise<void>;
+  onUpdateTable: (id: string, name: string, seatCount: number, layout: SeatingTableLayout) => Promise<void>;
+  onUpdateTableLayout: (id: string, layout: SeatingTableLayout) => Promise<void>;
   onDeleteTable: (id: string) => Promise<void>;
   onCreateGroup: (name: string, memberEntryIds: string[]) => Promise<void>;
   onUpdateGroup: (id: string, name: string, memberEntryIds: string[]) => Promise<void>;
@@ -70,7 +76,19 @@ function entryName(entry: GuestRosterEntry): string {
   return `${entry.firstName} ${entry.lastName}`.trim() || '-';
 }
 
-const emptyTableForm = { name: '', seatCount: '8' };
+const emptyTableForm = { name: '', seatCount: '8', shape: 'round' as SeatingTableShape };
+
+// Cascades new tables across the canvas in a simple grid so they don't all
+// land exactly on top of each other - Gil can then drag each one wherever it
+// actually belongs.
+function nextTablePosition(existingCount: number): { x: number; y: number } {
+  const perRow = 8;
+  const spacing = 150;
+  return {
+    x: 40 + (existingCount % perRow) * spacing,
+    y: 40 + Math.floor(existingCount / perRow) * spacing,
+  };
+}
 const emptyGroupForm = { name: '', memberEntryIds: new Set<string>() };
 
 export function SeatingSection({
@@ -83,6 +101,7 @@ export function SeatingSection({
   labels,
   onCreateTable,
   onUpdateTable,
+  onUpdateTableLayout,
   onDeleteTable,
   onCreateGroup,
   onUpdateGroup,
@@ -102,6 +121,7 @@ export function SeatingSection({
   const [tableFormError, setTableFormError] = useState('');
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [editTableForm, setEditTableForm] = useState(emptyTableForm);
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
 
   const [isGroupFormOpen, setIsGroupFormOpen] = useState(false);
   const [groupForm, setGroupForm] = useState(emptyGroupForm);
@@ -260,7 +280,13 @@ export function SeatingSection({
     const seatCount = Number.parseInt(tableForm.seatCount, 10);
     setIsSavingTable(true);
     try {
-      await onCreateTable(tableForm.name.trim(), Number.isFinite(seatCount) && seatCount > 0 ? seatCount : 8);
+      const position = nextTablePosition(tables.length);
+      const size = tableForm.shape === 'round' ? { width: 110, height: 110 } : { width: 150, height: 90 };
+      await onCreateTable(tableForm.name.trim(), Number.isFinite(seatCount) && seatCount > 0 ? seatCount : 8, {
+        ...position,
+        ...size,
+        shape: tableForm.shape,
+      });
       setTableForm(emptyTableForm);
       setIsTableFormOpen(false);
     } catch (error) {
@@ -273,16 +299,22 @@ export function SeatingSection({
 
   const startEditingTable = (table: SeatingTable) => {
     setEditingTableId(table.id);
-    setEditTableForm({ name: table.name, seatCount: String(table.seatCount) });
+    setEditTableForm({ name: table.name, seatCount: String(table.seatCount), shape: table.shape });
   };
 
-  const handleSaveTableEdit = async (tableId: string) => {
+  const handleSaveTableEdit = async (table: SeatingTable) => {
     const seatCount = Number.parseInt(editTableForm.seatCount, 10);
-    const key = `table-${tableId}`;
+    const key = `table-${table.id}`;
     setBusyKey(key);
     setErrorByKey((prev) => ({ ...prev, [key]: '' }));
     try {
-      await onUpdateTable(tableId, editTableForm.name.trim() || labels.tableNamePlaceholder, Number.isFinite(seatCount) && seatCount > 0 ? seatCount : 1);
+      await onUpdateTable(table.id, editTableForm.name.trim() || labels.tableNamePlaceholder, Number.isFinite(seatCount) && seatCount > 0 ? seatCount : 1, {
+        x: table.x,
+        y: table.y,
+        width: table.width,
+        height: table.height,
+        shape: editTableForm.shape,
+      });
       setEditingTableId(null);
     } catch (error) {
       console.error('Failed to update table', error);
@@ -290,6 +322,12 @@ export function SeatingSection({
     } finally {
       setBusyKey(null);
     }
+  };
+
+  const handleLayoutChange = (tableId: string, layout: SeatingTableLayout) => {
+    onUpdateTableLayout(tableId, layout).catch((error) => {
+      console.error('Failed to update table layout', error);
+    });
   };
 
   const handleDeleteTable = async (table: SeatingTable) => {
@@ -664,7 +702,7 @@ export function SeatingSection({
 
           {isTableFormOpen && (
             <form onSubmit={handleCreateTableSubmit} className="mb-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
                 <input
                   type="text"
                   value={tableForm.name}
@@ -681,6 +719,14 @@ export function SeatingSection({
                   placeholder={labels.tableSeatsPlaceholder}
                   className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
                 />
+                <select
+                  value={tableForm.shape}
+                  onChange={(event) => setTableForm((prev) => ({ ...prev, shape: event.target.value as SeatingTableShape }))}
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                >
+                  <option value="round">{labels.shapeRound}</option>
+                  <option value="rect">{labels.shapeRect}</option>
+                </select>
                 <button
                   type="submit"
                   disabled={isSavingTable}
@@ -697,8 +743,23 @@ export function SeatingSection({
           {tables.length === 0 ? (
             <p className="text-sm text-gray-500">{labels.noTables}</p>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {sortedTables.map((table) => {
+            <>
+              <p className="mb-2 text-xs text-gray-500">{labels.canvasHint}</p>
+              <SeatingFloorPlan
+                tables={sortedTables}
+                seatsUsedByTable={seatsUsedByTable}
+                selectedTableId={selectedTableId}
+                onSelectTable={setSelectedTableId}
+                onLayoutChange={handleLayoutChange}
+                fullLabel={labels.tableFullBadge}
+              />
+
+              {(() => {
+                const table = selectedTableId ? tables.find((candidate) => candidate.id === selectedTableId) : null;
+                if (!table) {
+                  return <p className="mt-3 text-xs text-gray-400">{labels.tableDetailsHint}</p>;
+                }
+
                 const used = seatsUsedByTable.get(table.id) ?? 0;
                 const isFull = used >= table.seatCount;
                 const fillPct = table.seatCount > 0 ? Math.min(100, (used / table.seatCount) * 100) : 0;
@@ -711,9 +772,9 @@ export function SeatingSection({
                 const tableKey = `table-${table.id}`;
 
                 return (
-                  <div key={table.id} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <div className="mt-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
                     {isEditing ? (
-                      <div className="mb-2 flex items-center gap-1.5">
+                      <div className="mb-2 flex flex-wrap items-center gap-1.5">
                         <input
                           type="text"
                           value={editTableForm.name}
@@ -728,9 +789,17 @@ export function SeatingSection({
                           onChange={(event) => setEditTableForm((prev) => ({ ...prev, seatCount: event.target.value }))}
                           className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
                         />
+                        <select
+                          value={editTableForm.shape}
+                          onChange={(event) => setEditTableForm((prev) => ({ ...prev, shape: event.target.value as SeatingTableShape }))}
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                        >
+                          <option value="round">{labels.shapeRound}</option>
+                          <option value="rect">{labels.shapeRect}</option>
+                        </select>
                         <button
                           type="button"
-                          onClick={() => handleSaveTableEdit(table.id)}
+                          onClick={() => handleSaveTableEdit(table)}
                           disabled={busyKey === tableKey}
                           className="inline-flex shrink-0 items-center rounded-lg bg-gray-900 p-1.5 text-white hover:bg-gray-800 disabled:opacity-60"
                         >
@@ -811,8 +880,8 @@ export function SeatingSection({
                     )}
                   </div>
                 );
-              })}
-            </div>
+              })()}
+            </>
           )}
         </div>
       </div>

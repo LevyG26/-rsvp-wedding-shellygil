@@ -214,10 +214,18 @@ service cloud.firestore {
     // Seating chart: tables Gil defines himself (name + seat count), admin-only
     // like everything else guest-related.
     function isValidSeatingTable(data) {
-      return data.keys().hasAll(['name', 'seatCount', 'updatedAt']) &&
-             data.keys().hasOnly(['name', 'seatCount', 'updatedAt']) &&
+      return data.keys().hasAll(['name', 'seatCount', 'x', 'y', 'width', 'height', 'shape', 'updatedAt']) &&
+             data.keys().hasOnly(['name', 'seatCount', 'x', 'y', 'width', 'height', 'shape', 'updatedAt']) &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 60 &&
              data.seatCount is int && data.seatCount >= 1 && data.seatCount <= 40 &&
+             // Free-form floor-plan position/size Gil drags and resizes by
+             // hand to match the actual hall layout - generous bounds, not
+             // meant to be precisely validated, just kept sane.
+             data.x is number && data.x >= -2000 && data.x <= 5000 &&
+             data.y is number && data.y >= -2000 && data.y <= 5000 &&
+             data.width is number && data.width >= 20 && data.width <= 1000 &&
+             data.height is number && data.height >= 20 && data.height <= 1000 &&
+             (data.shape == 'round' || data.shape == 'rect') &&
              data.updatedAt == request.time;
     }
 
