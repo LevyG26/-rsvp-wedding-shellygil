@@ -2381,6 +2381,16 @@ export function AdminDashboard() {
                             createError: t.adminSeatingCreateError,
                             deleteError: t.adminSeatingDeleteError,
                             saving: t.adminSeatingSaving,
+                            zoomOutLabel: t.adminSeatingZoomOut,
+                            zoomInLabel: t.adminSeatingZoomIn,
+                            zoomResetLabel: t.adminSeatingZoomReset,
+                            exportListButton: t.adminSeatingExportListButton,
+                            exportImageButton: t.adminSeatingExportImageButton,
+                            exportError: t.adminSeatingExportError,
+                            exportGuestColumn: t.adminSeatingExportGuestColumn,
+                            exportCategoryColumn: t.adminSeatingExportCategoryColumn,
+                            exportSeatsColumn: t.adminSeatingExportSeatsColumn,
+                            exportRemainingColumn: t.adminSeatingExportRemainingColumn,
                         }}
                     />
                 </motion.section>

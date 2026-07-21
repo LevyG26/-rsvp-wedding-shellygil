@@ -1,10 +1,14 @@
-import { useRef, useState } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import { Maximize2, Minus, Plus } from 'lucide-react';
 import type { SeatingTable, SeatingTableLayout } from '../../services/seating';
 
 const CANVAS_WIDTH = 1400;
 const CANVAS_HEIGHT = 900;
 const MIN_SIZE = 50;
 const MAX_SIZE = 400;
+const MIN_SCALE = 0.35;
+const MAX_SCALE = 1.5;
+const SCALE_STEP = 0.15;
 // Anything less than this many pixels of total pointer travel counts as a
 // "click" (select the table) rather than a drag - otherwise every attempt to
 // just select a table would nudge it by a pixel or two first.
@@ -23,6 +27,14 @@ interface DragState {
   moved: boolean;
 }
 
+export interface SeatingFloorPlanHandle {
+  // Temporarily resets zoom to 100% (so the exported image is always
+  // consistent regardless of whatever zoom level Gil happens to be looking
+  // at), captures the canvas, downloads it as a PNG, then restores whatever
+  // zoom he had before.
+  exportImage: (fileName: string) => Promise<void>;
+}
+
 interface SeatingFloorPlanProps {
   tables: SeatingTable[];
   seatsUsedByTable: Map<string, number>;
@@ -30,15 +42,50 @@ interface SeatingFloorPlanProps {
   onSelectTable: (id: string | null) => void;
   onLayoutChange: (id: string, layout: SeatingTableLayout) => void;
   fullLabel: string;
+  zoomOutLabel: string;
+  zoomInLabel: string;
+  zoomResetLabel: string;
 }
 
-export function SeatingFloorPlan({ tables, seatsUsedByTable, selectedTableId, onSelectTable, onLayoutChange, fullLabel }: SeatingFloorPlanProps) {
+function waitForNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorPlanProps>(function SeatingFloorPlan(
+  { tables, seatsUsedByTable, selectedTableId, onSelectTable, onLayoutChange, fullLabel, zoomOutLabel, zoomInLabel, zoomResetLabel },
+  ref,
+) {
   const [dragState, setDragState] = useState<DragState | null>(null);
   // Only holds an override for the table currently being dragged/resized -
   // every other table just renders straight from the `tables` prop (which
   // comes from Firestore).
   const [draftLayout, setDraftLayout] = useState<{ tableId: string; layout: SeatingTableLayout } | null>(null);
+  const [scale, setScale] = useState(1);
   const dragStateRef = useRef<DragState | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    exportImage: async (fileName: string) => {
+      const previousScale = scale;
+      setScale(1);
+      await waitForNextPaint();
+      try {
+        const node = canvasRef.current;
+        if (!node) return;
+        const { default: html2canvas } = await import('html2canvas');
+        const canvas = await html2canvas(node, { backgroundColor: '#f9fafb', scale: 2 });
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = fileName;
+        link.click();
+      } finally {
+        setScale(previousScale);
+      }
+    },
+  }), [scale]);
 
   const layoutFor = (table: SeatingTable): SeatingTableLayout => {
     if (draftLayout && draftLayout.tableId === table.id) return draftLayout.layout;
@@ -68,8 +115,12 @@ export function SeatingFloorPlan({ tables, seatsUsedByTable, selectedTableId, on
     const current = dragStateRef.current;
     if (!current || event.pointerId !== current.pointerId) return;
 
-    const deltaX = event.clientX - current.startClientX;
-    const deltaY = event.clientY - current.startClientY;
+    // Screen-space pointer movement has to be divided by the current zoom
+    // level to get the equivalent movement in canvas coordinates - otherwise
+    // tables would drift faster/slower than the pointer at any zoom other
+    // than 100%.
+    const deltaX = (event.clientX - current.startClientX) / scale;
+    const deltaY = (event.clientY - current.startClientY) / scale;
     if (!current.moved && Math.hypot(deltaX, deltaY) > CLICK_THRESHOLD) {
       current.moved = true;
     }
@@ -107,46 +158,80 @@ export function SeatingFloorPlan({ tables, seatsUsedByTable, selectedTableId, on
     setDragState(null);
   };
 
-  return (
-    <div className="overflow-auto rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/40" style={{ height: 520 }}>
-      <div
-        className="relative"
-        style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, backgroundImage: 'radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)', backgroundSize: '24px 24px' }}
-        onPointerDown={() => onSelectTable(null)}
-      >
-        {tables.map((table) => {
-          const layout = layoutFor(table);
-          const used = seatsUsedByTable.get(table.id) ?? 0;
-          const isFull = used >= table.seatCount;
-          const isSelected = selectedTableId === table.id;
-          const isDragging = dragState?.tableId === table.id;
+  const zoomOut = () => setScale((prev) => Math.max(MIN_SCALE, Math.round((prev - SCALE_STEP) * 100) / 100));
+  const zoomIn = () => setScale((prev) => Math.min(MAX_SCALE, Math.round((prev + SCALE_STEP) * 100) / 100));
+  const zoomReset = () => setScale(1);
 
-          return (
-            <div
-              key={table.id}
-              onPointerDown={(event) => startDrag(event, table, 'move')}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              className={`absolute flex select-none flex-col items-center justify-center border-2 p-1 text-center shadow-sm ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${table.shape === 'round' ? 'rounded-full' : 'rounded-xl'} ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20' : isFull ? 'border-emerald-300 bg-emerald-50' : 'border-blue-200 bg-blue-50/90'}`}
-              style={{ left: layout.x, top: layout.y, width: layout.width, height: layout.height, touchAction: 'none' }}
-            >
-              <span className="max-w-full truncate px-1 text-xs font-semibold text-gray-900">{table.name}</span>
-              <span className="text-[11px] text-gray-600">
-                {used}/{table.seatCount}
-                {isFull ? ` · ${fullLabel}` : ''}
-              </span>
-              <div
-                onPointerDown={(event) => startDrag(event, table, 'resize')}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={handlePointerUp}
-                className="absolute bottom-0.5 right-0.5 h-4 w-4 cursor-nwse-resize rounded-tl-md bg-gray-400/70 hover:bg-gray-500"
-              />
-            </div>
-          );
-        })}
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-end gap-1">
+        <button type="button" onClick={zoomOut} title={zoomOutLabel} className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50">
+          <Minus size={14} />
+        </button>
+        <button type="button" onClick={zoomReset} title={zoomResetLabel} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
+          {Math.round(scale * 100)}%
+        </button>
+        <button type="button" onClick={zoomIn} title={zoomInLabel} className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50">
+          <Plus size={14} />
+        </button>
+        <button type="button" onClick={zoomReset} title={zoomResetLabel} className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50">
+          <Maximize2 size={14} />
+        </button>
+      </div>
+      <div
+        className="overflow-auto rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/40"
+        style={{ height: 480, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+      >
+        <div style={{ width: CANVAS_WIDTH * scale, height: CANVAS_HEIGHT * scale }}>
+          <div
+            ref={canvasRef}
+            className="relative"
+            style={{
+              width: CANVAS_WIDTH,
+              height: CANVAS_HEIGHT,
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left',
+              backgroundImage: 'radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)',
+              backgroundSize: '24px 24px',
+            }}
+            onPointerDown={() => onSelectTable(null)}
+          >
+            {tables.map((table) => {
+              const layout = layoutFor(table);
+              const used = seatsUsedByTable.get(table.id) ?? 0;
+              const isFull = used >= table.seatCount;
+              const isSelected = selectedTableId === table.id;
+              const isDragging = dragState?.tableId === table.id;
+
+              return (
+                <div
+                  key={table.id}
+                  onPointerDown={(event) => startDrag(event, table, 'move')}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  className={`absolute flex select-none flex-col items-center justify-center border-2 p-1 text-center shadow-sm ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${table.shape === 'round' ? 'rounded-full' : 'rounded-xl'} ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20' : isFull ? 'border-emerald-300 bg-emerald-50' : 'border-blue-200 bg-blue-50/90'}`}
+                  style={{ left: layout.x, top: layout.y, width: layout.width, height: layout.height, touchAction: 'none' }}
+                >
+                  <span className="max-w-full truncate px-1 text-xs font-semibold text-gray-900">{table.name}</span>
+                  <span className="text-[11px] text-gray-600">
+                    {used}/{table.seatCount}
+                    {isFull ? ` · ${fullLabel}` : ''}
+                  </span>
+                  <div
+                    onPointerDown={(event) => startDrag(event, table, 'resize')}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onPointerCancel={handlePointerUp}
+                    className="absolute bottom-0 right-0 h-6 w-6 cursor-nwse-resize rounded-tl-md bg-gray-400/70 hover:bg-gray-500"
+                    style={{ touchAction: 'none' }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
-}
+});

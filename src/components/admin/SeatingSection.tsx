@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Check, LayoutGrid, Loader2, Pencil, Plus, Trash2, UserCheck, Users, X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Camera, Check, Download, LayoutGrid, Loader2, Pencil, Plus, Trash2, UserCheck, Users, X } from 'lucide-react';
 import type { GuestRosterEntry } from '../../services/guestRoster';
 import type { SeatingAssignment, SeatingGroup, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
-import { SeatingFloorPlan } from './SeatingFloorPlan';
+import { exportSeatingChart, type SeatingExportGuest, type SeatingExportTable, type SeatingExportUnseatedGuest } from '../../admin/exportSeatingChart';
+import { SeatingFloorPlan, type SeatingFloorPlanHandle } from './SeatingFloorPlan';
 
 export interface SeatingLabels {
   title: string;
@@ -50,6 +51,16 @@ export interface SeatingLabels {
   createError: string;
   deleteError: string;
   saving: string;
+  zoomOutLabel: string;
+  zoomInLabel: string;
+  zoomResetLabel: string;
+  exportListButton: string;
+  exportImageButton: string;
+  exportError: string;
+  exportGuestColumn: string;
+  exportCategoryColumn: string;
+  exportSeatsColumn: string;
+  exportRemainingColumn: string;
 }
 
 interface SeatingSectionProps {
@@ -130,6 +141,12 @@ export function SeatingSection({
   const [groupFormError, setGroupFormError] = useState('');
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [groupAssignTableId, setGroupAssignTableId] = useState<Record<string, string>>({});
+
+  const [isExportingList, setIsExportingList] = useState(false);
+  const [isExportingImage, setIsExportingImage] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const floorPlanRef = useRef<SeatingFloorPlanHandle>(null);
+  const isRtl = locale === 'he';
 
   const entriesById = useMemo(() => new Map(confirmedEntries.map((entry) => [entry.id, entry])), [confirmedEntries]);
 
@@ -425,6 +442,68 @@ export function SeatingSection({
     }
   };
 
+  const handleExportList = async () => {
+    setIsExportingList(true);
+    setExportError('');
+    try {
+      const exportTables: SeatingExportTable[] = sortedTables.map((table) => {
+        const tableAssignments = assignmentsByTable.get(table.id) ?? [];
+        const guests: SeatingExportGuest[] = tableAssignments
+          .map((assignment) => {
+            const entry = entriesById.get(assignment.rosterEntryId);
+            if (!entry) return null;
+            return { name: entryName(entry), category: entry.category, seats: assignment.seatsCount };
+          })
+          .filter((guest): guest is SeatingExportGuest => guest !== null)
+          .sort((a, b) => a.name.localeCompare(b.name, locale));
+        return {
+          name: table.name,
+          seatCount: table.seatCount,
+          used: seatsUsedByTable.get(table.id) ?? 0,
+          guests,
+        };
+      });
+
+      const unseatedExport: SeatingExportUnseatedGuest[] = confirmedEntries
+        .filter((entry) => remainingForEntry(entry) > 0)
+        .map((entry) => ({ name: entryName(entry), category: entry.category, remaining: remainingForEntry(entry) }))
+        .sort((a, b) => a.name.localeCompare(b.name, locale));
+
+      await exportSeatingChart({
+        tables: exportTables,
+        unseated: unseatedExport,
+        labels: {
+          tablesSheet: labels.tablesHeading,
+          unseatedSheet: labels.unseatedHeading,
+          guestColumn: labels.exportGuestColumn,
+          categoryColumn: labels.exportCategoryColumn,
+          guestSeatsColumn: labels.exportSeatsColumn,
+          remainingColumn: labels.exportRemainingColumn,
+          tableFullBadge: labels.tableFullBadge,
+        },
+        isRtl,
+      });
+    } catch (error) {
+      console.error('Failed to export seating chart list', error);
+      setExportError(labels.exportError);
+    } finally {
+      setIsExportingList(false);
+    }
+  };
+
+  const handleExportImage = async () => {
+    setIsExportingImage(true);
+    setExportError('');
+    try {
+      await floorPlanRef.current?.exportImage(`seating-layout-${new Date().toISOString().slice(0, 10)}.png`);
+    } catch (error) {
+      console.error('Failed to export seating layout image', error);
+      setExportError(labels.exportError);
+    } finally {
+      setIsExportingImage(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md">
@@ -438,9 +517,32 @@ export function SeatingSection({
 
   return (
     <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md">
-      <div className="border-b border-gray-100 px-5 py-4">
-        <h2 className="text-lg font-semibold text-gray-900">{labels.title}</h2>
-        <p className="mt-1 text-sm text-gray-500">{labels.subtitle}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">{labels.title}</h2>
+          <p className="mt-1 text-sm text-gray-500">{labels.subtitle}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleExportList}
+            disabled={isExportingList || tables.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          >
+            {isExportingList ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {labels.exportListButton}
+          </button>
+          <button
+            type="button"
+            onClick={handleExportImage}
+            disabled={isExportingImage || tables.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          >
+            {isExportingImage ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+            {labels.exportImageButton}
+          </button>
+        </div>
+        {exportError && <p className="w-full text-xs text-rose-600">{exportError}</p>}
       </div>
 
       <div className="space-y-6 p-5">
@@ -746,12 +848,16 @@ export function SeatingSection({
             <>
               <p className="mb-2 text-xs text-gray-500">{labels.canvasHint}</p>
               <SeatingFloorPlan
+                ref={floorPlanRef}
                 tables={sortedTables}
                 seatsUsedByTable={seatsUsedByTable}
                 selectedTableId={selectedTableId}
                 onSelectTable={setSelectedTableId}
                 onLayoutChange={handleLayoutChange}
                 fullLabel={labels.tableFullBadge}
+                zoomOutLabel={labels.zoomOutLabel}
+                zoomInLabel={labels.zoomInLabel}
+                zoomResetLabel={labels.zoomResetLabel}
               />
 
               {(() => {
