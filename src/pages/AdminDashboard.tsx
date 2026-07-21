@@ -2391,6 +2391,7 @@ export function AdminDashboard() {
                             exportCategoryColumn: t.adminSeatingExportCategoryColumn,
                             exportSeatsColumn: t.adminSeatingExportSeatsColumn,
                             exportRemainingColumn: t.adminSeatingExportRemainingColumn,
+                            exportOccupiedLabel: t.adminSeatingExportOccupiedLabel,
                         }}
                     />
                 </motion.section>

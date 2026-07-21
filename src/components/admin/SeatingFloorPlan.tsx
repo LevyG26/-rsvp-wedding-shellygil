@@ -74,7 +74,11 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
       try {
         const node = canvasRef.current;
         if (!node) return;
-        const { default: html2canvas } = await import('html2canvas');
+        // Tailwind v4's default palette uses modern oklch()/oklab() color
+        // functions, which the original html2canvas can't parse - the
+        // "-pro" fork adds support for those, so the exported PNG doesn't
+        // throw on every element styled with a Tailwind color class.
+        const { default: html2canvas } = await import('html2canvas-pro');
         const canvas = await html2canvas(node, { backgroundColor: '#f9fafb', scale: 2 });
         const dataUrl = canvas.toDataURL('image/png');
         const link = document.createElement('a');

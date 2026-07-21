@@ -8,8 +8,11 @@ export interface SeatingExportGuest {
 
 export interface SeatingExportTable {
     name: string;
-    seatCount: number;
-    used: number;
+    // Pre-formatted, already-translated occupancy line, e.g.
+    // "6 out of 8 seats filled" - built by the caller (which has the
+    // translated template string) rather than assembled here.
+    occupiedText: string;
+    isFull: boolean;
     guests: SeatingExportGuest[];
 }
 
@@ -51,14 +54,21 @@ export async function exportSeatingChart({ tables, unseated, labels, isRtl }: Ex
     const tablesData: SheetData = [];
 
     tables.forEach((table) => {
-        const statusSuffix = table.used >= table.seatCount ? ` (${labels.tableFullBadge})` : '';
         tablesData.push([
             {
-                value: `${table.name} - ${table.used}/${table.seatCount}${statusSuffix}`,
+                value: table.name,
                 type: String,
                 fontWeight: 'bold',
-                fontSize: 13,
+                fontSize: 14,
                 textColor: '#1F2937',
+            },
+        ]);
+        tablesData.push([
+            {
+                value: table.isFull ? `${table.occupiedText} · ${labels.tableFullBadge}` : table.occupiedText,
+                type: String,
+                fontSize: 11,
+                textColor: '#4B5563',
             },
         ]);
         tablesData.push(

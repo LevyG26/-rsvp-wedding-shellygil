@@ -61,6 +61,7 @@ export interface SeatingLabels {
   exportCategoryColumn: string;
   exportSeatsColumn: string;
   exportRemainingColumn: string;
+  exportOccupiedLabel: string;
 }
 
 interface SeatingSectionProps {
@@ -146,7 +147,10 @@ export function SeatingSection({
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [exportError, setExportError] = useState('');
   const floorPlanRef = useRef<SeatingFloorPlanHandle>(null);
-  const isRtl = locale === 'he';
+  // `locale` here is a full BCP-47 tag like "he-IL"/"fr-FR"/"en-US", not a
+  // bare language code - matching it against just "he" would always be
+  // false and silently force every export to render left-to-right.
+  const isRtl = locale.startsWith('he');
 
   const entriesById = useMemo(() => new Map(confirmedEntries.map((entry) => [entry.id, entry])), [confirmedEntries]);
 
@@ -456,10 +460,11 @@ export function SeatingSection({
           })
           .filter((guest): guest is SeatingExportGuest => guest !== null)
           .sort((a, b) => a.name.localeCompare(b.name, locale));
+        const used = seatsUsedByTable.get(table.id) ?? 0;
         return {
           name: table.name,
-          seatCount: table.seatCount,
-          used: seatsUsedByTable.get(table.id) ?? 0,
+          occupiedText: labels.exportOccupiedLabel.replace('{used}', String(used)).replace('{total}', String(table.seatCount)),
+          isFull: used >= table.seatCount,
           guests,
         };
       });
