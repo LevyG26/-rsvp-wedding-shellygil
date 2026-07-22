@@ -46,6 +46,13 @@ interface SeatingFloorPlanProps {
   zoomInLabel: string;
   zoomResetLabel: string;
   dir: 'rtl' | 'ltr';
+  // Bulk-delete selection - separate from `selectedTableId` (which is for
+  // viewing/editing one table's details below the canvas). Checking a
+  // table's corner box marks it for deletion without disturbing whichever
+  // single table is currently open in the detail panel.
+  deleteSelection: Set<string>;
+  onToggleDeleteSelection: (id: string) => void;
+  deleteCheckboxLabel: string;
 }
 
 function waitForNextPaint(): Promise<void> {
@@ -55,7 +62,7 @@ function waitForNextPaint(): Promise<void> {
 }
 
 export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorPlanProps>(function SeatingFloorPlan(
-  { tables, seatsUsedByTable, selectedTableId, onSelectTable, onLayoutChange, fullLabel, zoomOutLabel, zoomInLabel, zoomResetLabel, dir },
+  { tables, seatsUsedByTable, selectedTableId, onSelectTable, onLayoutChange, fullLabel, zoomOutLabel, zoomInLabel, zoomResetLabel, dir, deleteSelection, onToggleDeleteSelection, deleteCheckboxLabel },
   ref,
 ) {
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -201,14 +208,12 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
           <div
             ref={canvasRef}
             dir={dir}
-            className="relative"
+            className="relative bg-[radial-gradient(circle,rgba(0,0,0,0.06)_1px,transparent_1px)] bg-[length:24px_24px] dark:bg-[radial-gradient(circle,rgba(255,255,255,0.12)_1px,transparent_1px)]"
             style={{
               width: CANVAS_WIDTH,
               height: CANVAS_HEIGHT,
               transform: `scale(${scale})`,
               transformOrigin: 'top left',
-              backgroundImage: 'radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)',
-              backgroundSize: '24px 24px',
             }}
             onPointerDown={() => onSelectTable(null)}
           >
@@ -226,9 +231,21 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
-                  className={`absolute flex select-none flex-col items-center justify-center border-2 p-1 text-center shadow-sm ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${table.shape === 'round' ? 'rounded-full' : 'rounded-xl'} ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20 dark:border-slate-200 dark:bg-slate-800 dark:ring-slate-200/20' : isFull ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950/50' : 'border-blue-200 bg-blue-50/90 dark:border-blue-800 dark:bg-blue-950/50'}`}
+                  className={`absolute flex select-none flex-col items-center justify-center border-2 p-1 text-center shadow-sm dark:shadow-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${table.shape === 'round' ? 'rounded-full' : 'rounded-xl'} ${deleteSelection.has(table.id) ? 'outline outline-2 outline-offset-2 outline-rose-500' : ''} ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20 dark:border-slate-100 dark:bg-slate-700 dark:ring-slate-100/30' : isFull ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-900' : 'border-blue-200 bg-blue-50/90 dark:border-blue-500 dark:bg-blue-900'}`}
                   style={{ left: layout.x, top: layout.y, width: layout.width, height: layout.height, touchAction: 'none' }}
                 >
+                  {!isCapturing && (
+                    <input
+                      type="checkbox"
+                      checked={deleteSelection.has(table.id)}
+                      onChange={() => onToggleDeleteSelection(table.id)}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      title={deleteCheckboxLabel}
+                      aria-label={deleteCheckboxLabel}
+                      className="absolute left-1 top-1 h-4 w-4 cursor-pointer accent-rose-600"
+                      style={{ touchAction: 'none' }}
+                    />
+                  )}
                   <span
                     className={`max-w-full px-1 text-xs font-semibold text-gray-900 dark:text-slate-100 ${isCapturing ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'}`}
                   >

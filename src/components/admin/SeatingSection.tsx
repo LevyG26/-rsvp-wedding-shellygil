@@ -99,6 +99,10 @@ export interface SeatingLabels {
   listColumnTables: string;
   listColumnGroups: string;
   listEmpty: string;
+  deleteCheckboxLabel: string;
+  deleteSelectedButton: string;
+  deleteSelectedTablesConfirm: string;
+  clearSelectionButton: string;
 }
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status';
@@ -200,6 +204,9 @@ export function SeatingSection({
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [editTableForm, setEditTableForm] = useState(emptyTableForm);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [tableDeleteSelection, setTableDeleteSelection] = useState<Set<string>>(new Set());
+  const [isBulkDeletingTables, setIsBulkDeletingTables] = useState(false);
+  const [bulkDeleteTablesError, setBulkDeleteTablesError] = useState('');
 
   const [isGroupFormOpen, setIsGroupFormOpen] = useState(false);
   const [groupForm, setGroupForm] = useState(emptyGroupForm);
@@ -665,6 +672,32 @@ export function SeatingSection({
     }
   };
 
+  const toggleTableDeleteSelection = (id: string) => {
+    setTableDeleteSelection((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDeleteTables = async () => {
+    if (tableDeleteSelection.size === 0) return;
+    const confirmMessage = labels.deleteSelectedTablesConfirm.replace('{count}', String(tableDeleteSelection.size));
+    if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) return;
+    setIsBulkDeletingTables(true);
+    setBulkDeleteTablesError('');
+    try {
+      await Promise.all(Array.from(tableDeleteSelection).map((id) => onDeleteTable(id)));
+      setTableDeleteSelection(new Set());
+    } catch (error) {
+      console.error('Failed to bulk-delete tables', error);
+      setBulkDeleteTablesError(labels.deleteError);
+    } finally {
+      setIsBulkDeletingTables(false);
+    }
+  };
+
   const handleGuestListSort = (key: GuestListSortKey) => {
     setListSort((previous) => (previous.key === key ? { key, direction: previous.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' }));
   };
@@ -979,6 +1012,28 @@ export function SeatingSection({
           </div>
           {generateVenueTablesError && <p className="mb-2 text-sm text-rose-600 dark:text-rose-400">{generateVenueTablesError}</p>}
 
+          {tableDeleteSelection.size > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 dark:border-rose-900/50 dark:bg-rose-950/30">
+              <button
+                type="button"
+                onClick={handleBulkDeleteTables}
+                disabled={isBulkDeletingTables}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60 dark:bg-rose-600 dark:hover:bg-rose-500"
+              >
+                {isBulkDeletingTables ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {labels.deleteSelectedButton} ({tableDeleteSelection.size})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTableDeleteSelection(new Set())}
+                className="text-sm font-medium text-rose-700 hover:underline dark:text-rose-300"
+              >
+                {labels.clearSelectionButton}
+              </button>
+            </div>
+          )}
+          {bulkDeleteTablesError && <p className="mb-2 text-sm text-rose-600 dark:text-rose-400">{bulkDeleteTablesError}</p>}
+
           {isTableFormOpen && (
             <form onSubmit={handleCreateTableSubmit} className="mb-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
@@ -1057,6 +1112,9 @@ export function SeatingSection({
                 zoomInLabel={labels.zoomInLabel}
                 zoomResetLabel={labels.zoomResetLabel}
                 dir={isRtl ? 'rtl' : 'ltr'}
+                deleteSelection={tableDeleteSelection}
+                onToggleDeleteSelection={toggleTableDeleteSelection}
+                deleteCheckboxLabel={labels.deleteCheckboxLabel}
               />
 
               {(() => {

@@ -1497,7 +1497,7 @@ export function AdminDashboard() {
                     </div>
 
                     <div className="flex items-center gap-3 pe-28 sm:pe-32">
-                        <div className="h-14 w-14 shrink-0" aria-hidden="true">
+                        <div className="h-20 w-20 shrink-0 sm:h-28 sm:w-28 lg:h-32 lg:w-32" aria-hidden="true">
                             {/* The source art is a transparent-background monogram, taller than
                                 it is wide (420x594) - object-cover in a mismatched box used to
                                 crop its sides off. object-contain keeps the whole mark intact,
@@ -1834,17 +1834,17 @@ export function AdminDashboard() {
                                         y1={TREND_CHART_HEIGHT - TREND_CHART_PADDING}
                                         x2={TREND_CHART_WIDTH - TREND_CHART_PADDING}
                                         y2={TREND_CHART_HEIGHT - TREND_CHART_PADDING}
-                                        stroke="#e5e7eb"
+                                        className="stroke-gray-200 dark:stroke-slate-700"
                                         strokeWidth="1"
                                     />
-                                    <polyline fill="none" stroke="#0f172a" strokeWidth="3" points={hourlyPolylinePoints} />
+                                    <polyline fill="none" className="stroke-gray-900 dark:stroke-slate-100" strokeWidth="3" points={hourlyPolylinePoints} />
                                     {hourlyChartPoints.map((point, hour) => (
                                         <g key={hour}>
                                             <circle
                                                 cx={point.x}
                                                 cy={point.y}
                                                 r={hour === peakResponseHour.hour ? 4.5 : 2}
-                                                fill={hour === peakResponseHour.hour ? '#e11d48' : '#0f172a'}
+                                                className={hour === peakResponseHour.hour ? 'fill-rose-600 dark:fill-rose-400' : 'fill-gray-900 dark:fill-slate-100'}
                                                 pointerEvents="none"
                                             />
                                             <circle
@@ -1873,12 +1873,12 @@ export function AdminDashboard() {
                                                     width="80"
                                                     height="22"
                                                     rx="6"
-                                                    fill="#111827"
+                                                    className="fill-gray-900 dark:fill-slate-100"
                                                 />
                                                 <text
                                                     x={tooltipX + 40}
                                                     y={tooltipY + 15}
-                                                    fill="white"
+                                                    className="fill-white dark:fill-slate-900"
                                                     fontSize="10"
                                                     fontWeight="600"
                                                     textAnchor="middle"
@@ -2438,6 +2438,10 @@ export function AdminDashboard() {
                             listColumnTables: t.adminSeatingListColumnTables,
                             listColumnGroups: t.adminSeatingListColumnGroups,
                             listEmpty: t.adminSeatingListEmpty,
+                            deleteCheckboxLabel: t.adminSeatingDeleteCheckboxLabel,
+                            deleteSelectedButton: t.adminSeatingDeleteSelectedButton,
+                            deleteSelectedTablesConfirm: t.adminSeatingDeleteSelectedTablesConfirm,
+                            clearSelectionButton: t.adminSeatingClearSelectionButton,
                         }}
                     />
                 </motion.section>
