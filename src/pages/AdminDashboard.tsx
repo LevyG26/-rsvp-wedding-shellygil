@@ -19,7 +19,8 @@ import {
     UserX,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import logoSg from '../assets/logo-sg-dark.png';
+import logoSgGold from '../assets/logo-sg-gold.png';
+import logoSgSilver from '../assets/logo-sg-silver.png';
 import { db } from '../firebase';
 import { useAdminTheme } from '../hooks/useAdminTheme';
 import { Language, translations } from '../i18n';
@@ -1487,11 +1488,14 @@ export function AdminDashboard() {
                     </div>
 
                     <div className="flex items-center gap-3 pe-28 sm:pe-32">
-                        <div
-                            className="h-14 w-12 shrink-0 overflow-hidden rounded-xl border border-rose-100"
-                            aria-hidden="true"
-                        >
-                            <img src={logoSg} alt="" className="h-full w-full object-cover" />
+                        <div className="h-14 w-14 shrink-0" aria-hidden="true">
+                            {/* The source art is a transparent-background monogram, taller than
+                                it is wide (420x594) - object-cover in a mismatched box used to
+                                crop its sides off. object-contain keeps the whole mark intact,
+                                and swapping to the silver version in dark mode keeps it legible
+                                against a dark card instead of the gold nearly disappearing. */}
+                            <img src={logoSgGold} alt="" className="h-full w-full object-contain dark:hidden" />
+                            <img src={logoSgSilver} alt="" className="hidden h-full w-full object-contain dark:block" />
                         </div>
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-rose-500">{t.adminDashboardTitle}</p>
