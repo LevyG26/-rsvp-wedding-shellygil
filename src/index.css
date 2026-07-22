@@ -1,6 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400;500;700;900&family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400&family=Miriam+Libre:wght@400;700&display=swap");
 @import "tailwindcss";
 
+/* By default Tailwind v4's `dark:` variant follows the OS/browser
+   `prefers-color-scheme`. Gil wants dark mode as a manual toggle scoped to
+   the admin area only (never the public guest-facing site), so this
+   redefines `dark:` to instead activate whenever the element sits inside an
+   ancestor carrying a `.dark` class - that class is only ever added by the
+   admin login/dashboard pages (see useAdminTheme.ts), so `dark:` classes
+   anywhere in the public site's own components simply never trigger. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Frank Ruhl Libre", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Frank Ruhl Libre", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;

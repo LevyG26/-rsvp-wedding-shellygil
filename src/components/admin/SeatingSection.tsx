@@ -511,9 +511,9 @@ export function SeatingSection({
 
   if (isLoading) {
     return (
-      <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md">
-        <div className="flex items-center justify-center gap-3 p-8 text-gray-600">
-          <span className="h-5 w-5 rounded-full border-2 border-gray-200 border-t-gray-700 animate-spin" />
+      <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
+        <div className="flex items-center justify-center gap-3 p-8 text-gray-600 dark:text-slate-400">
+          <span className="h-5 w-5 rounded-full border-2 border-gray-200 border-t-gray-700 animate-spin dark:border-slate-700 dark:border-t-slate-300" />
           <span>{labels.loading}</span>
         </div>
       </div>
@@ -521,18 +521,18 @@ export function SeatingSection({
   }
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+    <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-slate-700">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">{labels.title}</h2>
-          <p className="mt-1 text-sm text-gray-500">{labels.subtitle}</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{labels.title}</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={handleExportList}
             disabled={isExportingList || tables.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             {isExportingList ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             {labels.exportListButton}
@@ -541,34 +541,34 @@ export function SeatingSection({
             type="button"
             onClick={handleExportImage}
             disabled={isExportingImage || tables.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             {isExportingImage ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
             {labels.exportImageButton}
           </button>
         </div>
-        {exportError && <p className="w-full text-xs text-rose-600">{exportError}</p>}
+        {exportError && <p className="w-full text-xs text-rose-600 dark:text-rose-400">{exportError}</p>}
       </div>
 
       <div className="space-y-6 p-5">
         {/* Summary */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-blue-700">
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-300">
             <Users size={20} className="opacity-80" aria-hidden="true" />
             <p className="mt-2 text-xs font-medium uppercase tracking-wide opacity-70">{labels.statConfirmed}</p>
             <p className="mt-1 text-3xl font-semibold">{totalConfirmedPeople}</p>
           </div>
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-700">
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300">
             <UserCheck size={20} className="opacity-80" aria-hidden="true" />
             <p className="mt-2 text-xs font-medium uppercase tracking-wide opacity-70">{labels.statSeated}</p>
             <p className="mt-1 text-3xl font-semibold">{totalSeatedPeople}</p>
           </div>
-          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-amber-700">
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
             <Users size={20} className="opacity-80" aria-hidden="true" />
             <p className="mt-2 text-xs font-medium uppercase tracking-wide opacity-70">{labels.statUnseated}</p>
             <p className="mt-1 text-3xl font-semibold">{totalUnseatedPeople}</p>
           </div>
-          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-gray-700">
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
             <LayoutGrid size={20} className="opacity-80" aria-hidden="true" />
             <p className="mt-2 text-xs font-medium uppercase tracking-wide opacity-70">{labels.statTables}</p>
             <p className="mt-1 text-3xl font-semibold">{tables.length}</p>
@@ -578,18 +578,18 @@ export function SeatingSection({
 
         {/* Unseated pool */}
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-gray-700">{labels.unseatedHeading} ({unseatedEntries.length})</h3>
+          <h3 className="mb-2 text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.unseatedHeading} ({unseatedEntries.length})</h3>
           <input
             type="text"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={labels.searchPlaceholder}
-            className="mb-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+            className="mb-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
           />
           {unseatedEntries.length === 0 ? (
-            <p className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{labels.unseatedAllSeated}</p>
+            <p className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300">{labels.unseatedAllSeated}</p>
           ) : (
-            <div className="max-h-96 divide-y divide-gray-100 overflow-y-auto rounded-2xl border border-gray-100">
+            <div className="max-h-96 divide-y divide-gray-100 overflow-y-auto rounded-2xl border border-gray-100 dark:divide-slate-700 dark:border-slate-700">
               {unseatedEntries.map((entry) => {
                 const remaining = remainingForEntry(entry);
                 const state = getRowState(entry);
@@ -600,14 +600,14 @@ export function SeatingSection({
                 return (
                   <div key={entry.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-900">{entryName(entry)}</p>
-                      <p className="truncate text-xs text-gray-500">
+                      <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100">{entryName(entry)}</p>
+                      <p className="truncate text-xs text-gray-500 dark:text-slate-400">
                         {entry.side} · {entry.category} · {labels.remainingOf.replace('{remaining}', String(remaining)).replace('{total}', String(entry.invitedCount))}
                       </p>
-                      {rowError && <p className="text-xs text-rose-600">{rowError}</p>}
+                      {rowError && <p className="text-xs text-rose-600 dark:text-rose-400">{rowError}</p>}
                     </div>
                     {tablesWithRoom.length === 0 ? (
-                      <p className="shrink-0 text-xs text-gray-400">{labels.noTablesHint}</p>
+                      <p className="shrink-0 text-xs text-gray-400 dark:text-slate-500">{labels.noTablesHint}</p>
                     ) : (
                       <div className="flex shrink-0 items-center gap-1.5">
                         <input
@@ -617,13 +617,13 @@ export function SeatingSection({
                           value={state.seats}
                           onChange={(event) => setRowField(entry.id, 'seats', event.target.value)}
                           disabled={isBusy}
-                          className="w-14 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                          className="w-14 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                         />
                         <select
                           value={state.tableId}
                           onChange={(event) => setRowField(entry.id, 'tableId', event.target.value)}
                           disabled={isBusy}
-                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                         >
                           <option value="">{labels.chooseTable}</option>
                           {tablesWithRoom.map((table) => (
@@ -634,7 +634,7 @@ export function SeatingSection({
                           type="button"
                           onClick={() => handleAddToTable(entry)}
                           disabled={isBusy || !state.tableId}
-                          className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-gray-800 disabled:opacity-60"
+                          className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         >
                           {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                           {labels.addButton}
@@ -651,7 +651,7 @@ export function SeatingSection({
         {/* Seating groups */}
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700">{labels.groupsHeading} ({groups.length})</h3>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.groupsHeading} ({groups.length})</h3>
             <button
               type="button"
               onClick={() => {
@@ -663,7 +663,7 @@ export function SeatingSection({
                   setIsGroupFormOpen(true);
                 }
               }}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               <Plus size={14} />
               {labels.addGroupButton}
@@ -671,43 +671,43 @@ export function SeatingSection({
           </div>
 
           {isGroupFormOpen && (
-            <div className="mb-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+            <div className="mb-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <input
                 type="text"
                 value={groupForm.name}
                 onChange={(event) => setGroupForm((prev) => ({ ...prev, name: event.target.value }))}
                 placeholder={labels.groupNamePlaceholder}
-                className="mb-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                className="mb-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
               />
-              <p className="mb-1 text-xs text-gray-500">{labels.groupMembersHint}</p>
+              <p className="mb-1 text-xs text-gray-500 dark:text-slate-400">{labels.groupMembersHint}</p>
               <input
                 type="text"
                 value={groupSearch}
                 onChange={(event) => setGroupSearch(event.target.value)}
                 placeholder={labels.searchPlaceholder}
-                className="mb-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                className="mb-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
               />
-              <div className="max-h-56 divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-200 bg-white">
+              <div className="max-h-56 divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-200 bg-white dark:divide-slate-700 dark:border-slate-600 dark:bg-slate-800">
                 {filteredGroupCandidates.map((entry) => (
-                  <label key={entry.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50">
+                  <label key={entry.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-slate-700">
                     <input
                       type="checkbox"
                       checked={groupForm.memberEntryIds.has(entry.id)}
                       onChange={() => toggleGroupMember(entry.id)}
-                      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+                      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-slate-700"
                     />
-                    <span className="min-w-0 flex-1 truncate text-gray-900">{entryName(entry)}</span>
-                    <span className="shrink-0 text-xs text-gray-500">{entry.category}</span>
+                    <span className="min-w-0 flex-1 truncate text-gray-900 dark:text-slate-100">{entryName(entry)}</span>
+                    <span className="shrink-0 text-xs text-gray-500 dark:text-slate-400">{entry.category}</span>
                   </label>
                 ))}
               </div>
-              {groupFormError && <p className="mt-2 text-sm text-rose-600">{groupFormError}</p>}
+              {groupFormError && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{groupFormError}</p>}
               <div className="mt-3 flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleSaveGroup}
                   disabled={isSavingGroup}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                 >
                   {isSavingGroup && <Loader2 size={16} className="animate-spin" />}
                   {isSavingGroup ? labels.saving : labels.saveGroup}
@@ -719,7 +719,7 @@ export function SeatingSection({
                     setEditingGroupId(null);
                     setGroupForm(emptyGroupForm);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   <X size={16} />
                   {labels.cancelAction}
@@ -729,7 +729,7 @@ export function SeatingSection({
           )}
 
           {groups.length === 0 && !isGroupFormOpen ? (
-            <p className="text-sm text-gray-500">{labels.noGroups}</p>
+            <p className="text-sm text-gray-500 dark:text-slate-400">{labels.noGroups}</p>
           ) : (
             <div className="space-y-2">
               {sortedGroups.map((group) => {
@@ -737,17 +737,17 @@ export function SeatingSection({
                 const assignKey = `group-assign-${group.id}`;
                 const deleteKey = `group-${group.id}`;
                 return (
-                  <div key={group.id} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-3">
+                  <div key={group.id} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-3 dark:border-slate-700 dark:bg-slate-800/60">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-gray-900">{group.name}</p>
-                        <p className="text-xs text-gray-500">{group.memberEntryIds.length} {labels.membersCountLabel}</p>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">{group.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-slate-400">{group.memberEntryIds.length} {labels.membersCountLabel}</p>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => startEditingGroup(group)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
                           <Pencil size={12} />
                           {labels.editAction}
@@ -756,7 +756,7 @@ export function SeatingSection({
                           type="button"
                           onClick={() => handleDeleteGroup(group)}
                           disabled={busyKey === deleteKey}
-                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/60"
                         >
                           {busyKey === deleteKey ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                         </button>
@@ -767,7 +767,7 @@ export function SeatingSection({
                         <select
                           value={groupAssignTableId[group.id] ?? ''}
                           onChange={(event) => setGroupAssignTableId((prev) => ({ ...prev, [group.id]: event.target.value }))}
-                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                         >
                           <option value="">{labels.chooseTable}</option>
                           {tablesWithRoom.map((table) => (
@@ -778,14 +778,14 @@ export function SeatingSection({
                           type="button"
                           onClick={() => handleAssignGroup(group)}
                           disabled={busyKey === assignKey || !groupAssignTableId[group.id]}
-                          className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-gray-800 disabled:opacity-60"
+                          className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         >
                           {busyKey === assignKey ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                           {labels.assignButton}
                         </button>
                       </div>
                     )}
-                    {errorByKey[assignKey] && <p className="mt-1 text-xs text-rose-600">{errorByKey[assignKey]}</p>}
+                    {errorByKey[assignKey] && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errorByKey[assignKey]}</p>}
                   </div>
                 );
               })}
@@ -796,11 +796,11 @@ export function SeatingSection({
         {/* Tables */}
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700">{labels.tablesHeading} ({tables.length})</h3>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.tablesHeading} ({tables.length})</h3>
             <button
               type="button"
               onClick={() => setIsTableFormOpen((open) => !open)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               <Plus size={14} />
               {labels.addTableButton}
@@ -808,14 +808,14 @@ export function SeatingSection({
           </div>
 
           {isTableFormOpen && (
-            <form onSubmit={handleCreateTableSubmit} className="mb-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+            <form onSubmit={handleCreateTableSubmit} className="mb-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/60">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
                 <input
                   type="text"
                   value={tableForm.name}
                   onChange={(event) => setTableForm((prev) => ({ ...prev, name: event.target.value }))}
                   placeholder={labels.tableNamePlaceholder}
-                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                 />
                 <input
                   type="number"
@@ -824,12 +824,12 @@ export function SeatingSection({
                   value={tableForm.seatCount}
                   onChange={(event) => setTableForm((prev) => ({ ...prev, seatCount: event.target.value }))}
                   placeholder={labels.tableSeatsPlaceholder}
-                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                 />
                 <select
                   value={tableForm.shape}
                   onChange={(event) => setTableForm((prev) => ({ ...prev, shape: event.target.value as SeatingTableShape }))}
-                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                 >
                   <option value="round">{labels.shapeRound}</option>
                   <option value="rect">{labels.shapeRect}</option>
@@ -837,21 +837,21 @@ export function SeatingSection({
                 <button
                   type="submit"
                   disabled={isSavingTable}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                 >
                   {isSavingTable && <Loader2 size={16} className="animate-spin" />}
                   {isSavingTable ? labels.saving : labels.saveTable}
                 </button>
               </div>
-              {tableFormError && <p className="mt-2 text-sm text-rose-600">{tableFormError}</p>}
+              {tableFormError && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{tableFormError}</p>}
             </form>
           )}
 
           {tables.length === 0 ? (
-            <p className="text-sm text-gray-500">{labels.noTables}</p>
+            <p className="text-sm text-gray-500 dark:text-slate-400">{labels.noTables}</p>
           ) : (
             <>
-              <p className="mb-2 text-xs text-gray-500">{labels.canvasHint}</p>
+              <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">{labels.canvasHint}</p>
               <SeatingFloorPlan
                 ref={floorPlanRef}
                 tables={sortedTables}
@@ -863,12 +863,13 @@ export function SeatingSection({
                 zoomOutLabel={labels.zoomOutLabel}
                 zoomInLabel={labels.zoomInLabel}
                 zoomResetLabel={labels.zoomResetLabel}
+                dir={isRtl ? 'rtl' : 'ltr'}
               />
 
               {(() => {
                 const table = selectedTableId ? tables.find((candidate) => candidate.id === selectedTableId) : null;
                 if (!table) {
-                  return <p className="mt-3 text-xs text-gray-400">{labels.tableDetailsHint}</p>;
+                  return <p className="mt-3 text-xs text-gray-400 dark:text-slate-500">{labels.tableDetailsHint}</p>;
                 }
 
                 const used = seatsUsedByTable.get(table.id) ?? 0;
@@ -883,14 +884,14 @@ export function SeatingSection({
                 const tableKey = `table-${table.id}`;
 
                 return (
-                  <div className="mt-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <div className="mt-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
                     {isEditing ? (
                       <div className="mb-2 flex flex-wrap items-center gap-1.5">
                         <input
                           type="text"
                           value={editTableForm.name}
                           onChange={(event) => setEditTableForm((prev) => ({ ...prev, name: event.target.value }))}
-                          className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-semibold text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                          className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-semibold text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                         />
                         <input
                           type="number"
@@ -898,12 +899,12 @@ export function SeatingSection({
                           max={40}
                           value={editTableForm.seatCount}
                           onChange={(event) => setEditTableForm((prev) => ({ ...prev, seatCount: event.target.value }))}
-                          className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                          className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                         />
                         <select
                           value={editTableForm.shape}
                           onChange={(event) => setEditTableForm((prev) => ({ ...prev, shape: event.target.value as SeatingTableShape }))}
-                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                         >
                           <option value="round">{labels.shapeRound}</option>
                           <option value="rect">{labels.shapeRect}</option>
@@ -912,30 +913,30 @@ export function SeatingSection({
                           type="button"
                           onClick={() => handleSaveTableEdit(table)}
                           disabled={busyKey === tableKey}
-                          className="inline-flex shrink-0 items-center rounded-lg bg-gray-900 p-1.5 text-white hover:bg-gray-800 disabled:opacity-60"
+                          className="inline-flex shrink-0 items-center rounded-lg bg-gray-900 p-1.5 text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         >
                           {busyKey === tableKey ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                         </button>
                         <button
                           type="button"
                           onClick={() => setEditingTableId(null)}
-                          className="inline-flex shrink-0 items-center rounded-lg border border-gray-200 p-1.5 text-gray-600 hover:bg-gray-50"
+                          className="inline-flex shrink-0 items-center rounded-lg border border-gray-200 p-1.5 text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
                         >
                           <X size={14} />
                         </button>
                       </div>
                     ) : (
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-semibold text-gray-900">{table.name}</p>
+                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-slate-100">{table.name}</p>
                         <div className="flex shrink-0 items-center gap-1">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isFull ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isFull ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-300'}`}>
                             {used}/{table.seatCount}
                             {isFull ? ` · ${labels.tableFullBadge}` : ''}
                           </span>
                           <button
                             type="button"
                             onClick={() => startEditingTable(table)}
-                            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                           >
                             <Pencil size={13} />
                           </button>
@@ -943,7 +944,7 @@ export function SeatingSection({
                             type="button"
                             onClick={() => handleDeleteTable(table)}
                             disabled={busyKey === tableKey}
-                            className="rounded-lg p-1 text-rose-500 hover:bg-rose-50 disabled:opacity-60"
+                            className="rounded-lg p-1 text-rose-500 hover:bg-rose-50 disabled:opacity-60 dark:text-rose-400 dark:hover:bg-rose-950/40"
                           >
                             {busyKey === tableKey ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                           </button>
@@ -951,22 +952,22 @@ export function SeatingSection({
                       </div>
                     )}
 
-                    <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                    <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-slate-800">
                       <div className={`h-full ${isFull ? 'bg-emerald-500' : 'bg-blue-400'}`} style={{ width: `${fillPct}%` }} />
                     </div>
 
-                    {errorByKey[tableKey] && <p className="mb-2 text-xs text-rose-600">{errorByKey[tableKey]}</p>}
+                    {errorByKey[tableKey] && <p className="mb-2 text-xs text-rose-600 dark:text-rose-400">{errorByKey[tableKey]}</p>}
 
                     {tableAssignments.length === 0 ? (
-                      <p className="text-xs text-gray-400">{labels.unseatedEmpty}</p>
+                      <p className="text-xs text-gray-400 dark:text-slate-500">{labels.unseatedEmpty}</p>
                     ) : (
                       <div className="space-y-1.5">
                         {tableAssignments.map((assignment) => {
                           const entry = entriesById.get(assignment.rosterEntryId);
                           const assignmentKey = `assignment-${assignment.id}`;
                           return (
-                            <div key={assignment.id} className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5">
-                              <span className="min-w-0 flex-1 truncate text-sm text-gray-800">{entry ? entryName(entry) : '-'}</span>
+                            <div key={assignment.id} className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 dark:bg-slate-800">
+                              <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-slate-200">{entry ? entryName(entry) : '-'}</span>
                               <input
                                 type="number"
                                 min={0}
@@ -974,13 +975,13 @@ export function SeatingSection({
                                 key={`${assignment.id}-${assignment.seatsCount}`}
                                 disabled={busyKey === assignmentKey}
                                 onBlur={(event) => handleAssignmentSeatsChange(assignment, event.target.value)}
-                                className="w-12 shrink-0 rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-center text-xs text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                className="w-12 shrink-0 rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-center text-xs text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                               />
                               <button
                                 type="button"
                                 onClick={() => handleRemoveAssignment(assignment)}
                                 disabled={busyKey === assignmentKey}
-                                className="shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-200 hover:text-rose-600 disabled:opacity-60"
+                                className="shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-200 hover:text-rose-600 disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-700 dark:hover:text-rose-400"
                               >
                                 {busyKey === assignmentKey ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
                               </button>

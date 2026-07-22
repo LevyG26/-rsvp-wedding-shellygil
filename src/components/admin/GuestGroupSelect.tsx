@@ -83,12 +83,12 @@ export function GuestGroupSelect({
           maxLength={MAX_GROUP_NAME_LENGTH}
           disabled={isSaving || disabled}
           autoFocus
-          className="min-w-0 flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200 disabled:bg-gray-100"
+          className="min-w-0 flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200 disabled:bg-gray-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-400 dark:focus:ring-slate-700 dark:disabled:bg-slate-800"
         />
         <button
           type="submit"
           disabled={!newGroupName.trim() || isSaving || disabled}
-          className="shrink-0 rounded-xl bg-gray-900 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="shrink-0 rounded-xl bg-gray-900 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
         >
           {isSaving ? labels.saving : labels.save}
         </button>
@@ -99,7 +99,7 @@ export function GuestGroupSelect({
             setNewGroupName('');
           }}
           disabled={isSaving}
-          className="shrink-0 rounded-xl bg-gray-100 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed"
+          className="shrink-0 rounded-xl bg-gray-100 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
         >
           {labels.cancel}
         </button>
@@ -112,7 +112,7 @@ export function GuestGroupSelect({
       value={group}
       onChange={(event) => void handleSelectChange(event.target.value)}
       disabled={isSaving || disabled}
-      className="w-full min-w-0 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200 disabled:cursor-not-allowed disabled:bg-gray-100"
+      className="w-full min-w-0 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-400 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
     >
       <option value="">{labels.unassigned}</option>
       {groups.map((option) => (

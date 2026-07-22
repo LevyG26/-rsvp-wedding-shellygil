@@ -10,7 +10,9 @@ import {
     Download,
     Languages,
     LogOut,
+    Moon,
     RefreshCcw,
+    Sun,
     Trash2,
     UserCheck,
     Users,
@@ -19,6 +21,7 @@ import {
 import { motion } from 'motion/react';
 import logoSg from '../assets/logo-sg-dark.png';
 import { db } from '../firebase';
+import { useAdminTheme } from '../hooks/useAdminTheme';
 import { Language, translations } from '../i18n';
 import { logoutAdmin, onAdminAuthStateChanged } from '../admin/auth';
 import { exportRsvpWorkbook } from '../admin/exportRsvpWorkbook';
@@ -113,7 +116,7 @@ function SortableHeader({ activeSort, className = '', label, onSort, sortKey }: 
             <button
                 type="button"
                 onClick={() => onSort(sortKey)}
-                className="inline-flex items-center gap-1.5 rounded-md hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+                className="inline-flex items-center gap-1.5 rounded-md hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:hover:text-slate-100 dark:focus-visible:ring-slate-600"
             >
                 <span>{label}</span>
                 <SortIcon size={14} aria-hidden="true" />
@@ -148,17 +151,17 @@ interface RosterMatchInfo {
 function RosterMatchBadge({ info, manualLabel }: { info: RosterMatchInfo; manualLabel: string }) {
     if (info.status === 'none' || info.status === 'ambiguous') {
         return (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                 <AlertTriangle size={12} aria-hidden="true" />
                 {info.label}
             </span>
         );
     }
     return (
-        <span className="inline-flex items-center gap-1.5 text-gray-700">
+        <span className="inline-flex items-center gap-1.5 text-gray-700 dark:text-slate-300">
             {info.label}
             {info.isManual && (
-                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
                     {manualLabel}
                 </span>
             )}
@@ -229,7 +232,7 @@ function RosterMatchPicker({
             <button
                 type="button"
                 onClick={() => setIsExpanded(true)}
-                className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 underline underline-offset-2"
+                className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 underline underline-offset-2 dark:text-slate-400"
             >
                 <ChevronDown size={12} />
                 {toggleLabel}
@@ -250,25 +253,25 @@ function RosterMatchPicker({
     };
 
     const renderRow = (entry: GuestRosterEntry) => (
-        <label key={entry.id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-gray-700 hover:bg-gray-50">
+        <label key={entry.id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:text-slate-300 dark:hover:bg-slate-800">
             <input
                 type="checkbox"
                 checked={selectedIds.has(entry.id)}
                 onChange={() => toggleEntry(entry.id)}
-                className="h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+                className="h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
             />
             <span className="truncate">{rosterEntryLabel(entry)}</span>
         </label>
     );
 
     return (
-        <div className="mt-1 space-y-1.5 rounded-lg border border-gray-200 bg-white p-2">
+        <div className="mt-1 space-y-1.5 rounded-lg border border-gray-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between gap-1">
-                <p className="text-[11px] text-gray-500">{instructions}</p>
+                <p className="text-[11px] text-gray-500 dark:text-slate-400">{instructions}</p>
                 <button
                     type="button"
                     onClick={() => setIsExpanded(false)}
-                    className="shrink-0 text-gray-400 hover:text-gray-600"
+                    className="shrink-0 text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
                     aria-label={toggleLabel}
                 >
                     <ChevronDown size={14} className="rotate-180" />
@@ -277,7 +280,7 @@ function RosterMatchPicker({
 
             {sortedCandidates.length > 0 && (
                 <div>
-                    <p className="px-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{foundMatchesLabel}</p>
+                    <p className="px-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">{foundMatchesLabel}</p>
                     {sortedCandidates.map(renderRow)}
                 </div>
             )}
@@ -286,14 +289,14 @@ function RosterMatchPicker({
                 <div className="max-h-40 overflow-y-auto">{sortedRest.map(renderRow)}</div>
             ) : isFullListVisible ? (
                 <div>
-                    <p className="px-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{fullListLabel}</p>
+                    <p className="px-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">{fullListLabel}</p>
                     <div className="max-h-40 overflow-y-auto">{sortedRest.map(renderRow)}</div>
                 </div>
             ) : (
                 <button
                     type="button"
                     onClick={() => setIsFullListVisible(true)}
-                    className="px-1.5 text-[11px] font-medium text-gray-500 underline underline-offset-2"
+                    className="px-1.5 text-[11px] font-medium text-gray-500 underline underline-offset-2 dark:text-slate-400"
                 >
                     {showFullListLabel}
                 </button>
@@ -303,7 +306,7 @@ function RosterMatchPicker({
                 <button
                     type="button"
                     onClick={() => onChange(record.id, [])}
-                    className="px-1.5 text-[11px] font-medium text-rose-600 underline underline-offset-2"
+                    className="px-1.5 text-[11px] font-medium text-rose-600 underline underline-offset-2 dark:text-rose-400"
                 >
                     {clearLabel}
                 </button>
@@ -449,6 +452,7 @@ export function AdminDashboard() {
     const [seatingGroups, setSeatingGroups] = useState<SeatingGroup[]>([]);
     const [seatingAssignments, setSeatingAssignments] = useState<SeatingAssignment[]>([]);
     const [isLoadingSeating, setIsLoadingSeating] = useState(true);
+    const { theme, toggleTheme } = useAdminTheme();
 
     const isValidLang = lang === 'en' || lang === 'he' || lang === 'fr';
     const currentLang = (isValidLang ? lang : 'he') as Language;
@@ -1429,23 +1433,32 @@ export function AdminDashboard() {
         return <Navigate to={loginPath} replace />;
     }
     return (
-        <div className="min-h-screen relative overflow-hidden wedding-silk-background selection:bg-rose-200 selection:text-rose-900">
-            <div className="absolute inset-0 z-0 wedding-foliage-shadow" aria-hidden="true" />
-            <div className="absolute inset-0 z-0 wedding-paper-grain" aria-hidden="true" />
+        <div className={`min-h-screen relative overflow-hidden wedding-silk-background selection:bg-rose-200 selection:text-rose-900 dark:bg-slate-950 ${theme === 'dark' ? 'dark' : ''}`}>
+            <div className="absolute inset-0 z-0 wedding-foliage-shadow dark:hidden" aria-hidden="true" />
+            <div className="absolute inset-0 z-0 wedding-paper-grain dark:hidden" aria-hidden="true" />
 
             <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-8">
                 <motion.header
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="relative mb-6 rounded-3xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md"
+                    className="relative mb-6 rounded-3xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95"
                 >
                     <div className="absolute end-4 top-4 flex items-center gap-1.5 sm:gap-2">
+                        <button
+                            type="button"
+                            onClick={toggleTheme}
+                            title={theme === 'dark' ? t.adminThemeToLight : t.adminThemeToDark}
+                            aria-label={theme === 'dark' ? t.adminThemeToLight : t.adminThemeToDark}
+                            className="flex h-8 w-8 items-center justify-center rounded-xl bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200 sm:h-9 sm:w-9 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                        </button>
                         <button
                             type="button"
                             onClick={handleRefresh}
                             title={t.adminRefresh}
                             aria-label={t.adminRefresh}
-                            className="flex h-8 w-8 items-center justify-center rounded-xl bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200 sm:h-9 sm:w-9"
+                            className="flex h-8 w-8 items-center justify-center rounded-xl bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200 sm:h-9 sm:w-9 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
                             <RefreshCcw size={16} />
                         </button>
@@ -1482,18 +1495,18 @@ export function AdminDashboard() {
                         </div>
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-rose-500">{t.adminDashboardTitle}</p>
-                            <h1 className="text-3xl font-serif text-gray-900">חתונת שלי וגיל</h1>
-                            <p className="mt-1 text-gray-600">{t.adminDashboardSubtitle}</p>
+                            <h1 className="text-3xl font-serif text-gray-900 dark:text-slate-100">חתונת שלי וגיל</h1>
+                            <p className="mt-1 text-gray-600 dark:text-slate-400">{t.adminDashboardSubtitle}</p>
                         </div>
                     </div>
 
-                    <div className="mt-5 flex gap-2 border-b border-gray-100">
+                    <div className="mt-5 flex gap-2 border-b border-gray-100 dark:border-slate-700">
                         <button
                             type="button"
                             onClick={() => setActiveTab('roster')}
                             className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'roster'
-                                ? 'border-gray-900 text-gray-900'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                         >
                             {t.adminRosterTitle}
@@ -1502,8 +1515,8 @@ export function AdminDashboard() {
                             type="button"
                             onClick={() => setActiveTab('responses')}
                             className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'responses'
-                                ? 'border-gray-900 text-gray-900'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                         >
                             {t.adminTabResponses}
@@ -1512,8 +1525,8 @@ export function AdminDashboard() {
                             type="button"
                             onClick={() => setActiveTab('reminders')}
                             className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'reminders'
-                                ? 'border-gray-900 text-gray-900'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                         >
                             {t.adminTabReminders}
@@ -1522,8 +1535,8 @@ export function AdminDashboard() {
                             type="button"
                             onClick={() => setActiveTab('seating')}
                             className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'seating'
-                                ? 'border-gray-900 text-gray-900'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                         >
                             {t.adminTabSeating}
@@ -1640,36 +1653,36 @@ export function AdminDashboard() {
                     transition={{ delay: 0.05 }}
                     className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
                 >
-                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md">
-                        <div className="mb-3 flex items-center gap-2 text-gray-500">
+                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+                        <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
                             <Users size={16} />
                             <span className="text-sm font-medium">{t.adminTotalSubmissions}</span>
                         </div>
-                        <p dir="ltr" className="text-3xl font-semibold text-gray-900">{records.length}</p>
+                        <p dir="ltr" className="text-3xl font-semibold text-gray-900 dark:text-slate-100">{records.length}</p>
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md">
-                        <div className="mb-3 flex items-center gap-2 text-emerald-600">
+                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+                        <div className="mb-3 flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                             <UserCheck size={16} />
                             <span className="text-sm font-medium">{t.adminAttendingCount}</span>
                         </div>
-                        <p dir="ltr" className="text-3xl font-semibold text-gray-900">{attendingCount}</p>
+                        <p dir="ltr" className="text-3xl font-semibold text-gray-900 dark:text-slate-100">{attendingCount}</p>
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md">
-                        <div className="mb-3 flex items-center gap-2 text-rose-600">
+                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+                        <div className="mb-3 flex items-center gap-2 text-rose-600 dark:text-rose-400">
                             <UserX size={16} />
                             <span className="text-sm font-medium">{t.adminNotAttendingCount}</span>
                         </div>
-                        <p dir="ltr" className="text-3xl font-semibold text-gray-900">{notAttendingCount}</p>
+                        <p dir="ltr" className="text-3xl font-semibold text-gray-900 dark:text-slate-100">{notAttendingCount}</p>
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md">
-                        <div className="mb-3 flex items-center gap-2 text-gray-500">
+                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+                        <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
                             <Languages size={16} />
                             <span className="text-sm font-medium">{t.adminLanguageBreakdown}</span>
                         </div>
-                        <div className="space-y-1 text-sm text-gray-700">
+                        <div className="space-y-1 text-sm text-gray-700 dark:text-slate-300">
                             <p dir="ltr">HE: {languageBreakdown.he}</p>
                             <p dir="ltr">EN: {languageBreakdown.en}</p>
                             <p dir="ltr">FR: {languageBreakdown.fr}</p>
@@ -1725,27 +1738,27 @@ export function AdminDashboard() {
                     transition={{ delay: 0.08 }}
                     className="order-3 mb-6 grid gap-4 xl:grid-cols-2"
                 >
-                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md">
-                        <h3 className="mb-4 text-sm font-semibold text-gray-700">{t.adminChartFunnelTitle}</h3>
+                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
+                        <h3 className="mb-4 text-sm font-semibold text-gray-700 dark:text-slate-300">{t.adminChartFunnelTitle}</h3>
                         <div className="space-y-3">
                             {funnelSteps.map((step) => (
                                 <div key={step.label}>
-                                    <div className="mb-1 flex items-center justify-between text-xs text-gray-600">
+                                    <div className="mb-1 flex items-center justify-between text-xs text-gray-600 dark:text-slate-400">
                                         <span>{step.label}</span>
-                                        <span dir="ltr" className="font-semibold text-gray-900">{step.value}</span>
+                                        <span dir="ltr" className="font-semibold text-gray-900 dark:text-slate-100">{step.value}</span>
                                     </div>
-                                    <div className="h-2 rounded-full bg-gray-100">
-                                        <div className="h-2 rounded-full bg-gray-900/70" style={{ width: `${step.percent}%` }} />
+                                    <div className="h-2 rounded-full bg-gray-100 dark:bg-slate-800">
+                                        <div className="h-2 rounded-full bg-gray-900/70 dark:bg-slate-200/70" style={{ width: `${step.percent}%` }} />
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/95 p-4 shadow-lg backdrop-blur-md">
+                    <article className="rounded-3xl border border-white/30 bg-white/95 p-4 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
                         <div className="mb-2 flex items-center justify-between gap-2">
-                            <h3 className="text-sm font-semibold text-gray-700">{t.adminChartLanguageAttendanceTitle}</h3>
-                            <div className="flex shrink-0 items-center gap-2.5 text-[11px] text-gray-500">
+                            <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">{t.adminChartLanguageAttendanceTitle}</h3>
+                            <div className="flex shrink-0 items-center gap-2.5 text-[11px] text-gray-500 dark:text-slate-400">
                                 <span className="inline-flex items-center gap-1">
                                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                                     {t.adminChartLegendAttending}
@@ -1760,8 +1773,8 @@ export function AdminDashboard() {
                         <div className="space-y-1.5" dir="ltr">
                             {languageAttendanceData.map((item) => (
                                 <div key={item.label} className="flex items-center gap-2">
-                                    <span className="w-6 shrink-0 text-xs text-gray-600">{item.label}</span>
-                                    <div className="flex h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100">
+                                    <span className="w-6 shrink-0 text-xs text-gray-600 dark:text-slate-400">{item.label}</span>
+                                    <div className="flex h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-slate-800">
                                         <div
                                             className="h-full bg-emerald-400"
                                             style={{ width: `${(item.attending / maxLanguageAttendance) * 100}%` }}
@@ -1771,16 +1784,16 @@ export function AdminDashboard() {
                                             style={{ width: `${(item.notAttending / maxLanguageAttendance) * 100}%` }}
                                         />
                                     </div>
-                                    <span className="w-5 shrink-0 text-end text-xs font-semibold text-gray-900">{item.total}</span>
+                                    <span className="w-5 shrink-0 text-end text-xs font-semibold text-gray-900 dark:text-slate-100">{item.total}</span>
                                 </div>
                             ))}
                         </div>
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md">
-                        <h3 className="mb-3 text-sm font-semibold text-gray-700">{t.adminChartResponsesTimelineTitle}</h3>
+                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
+                        <h3 className="mb-3 text-sm font-semibold text-gray-700 dark:text-slate-300">{t.adminChartResponsesTimelineTitle}</h3>
                         {peakResponseHour.count === 0 ? (
-                            <p className="text-sm text-gray-500">{t.adminChartNoData}</p>
+                            <p className="text-sm text-gray-500 dark:text-slate-400">{t.adminChartNoData}</p>
                         ) : (
                             <div dir="ltr">
                                 <svg
@@ -1863,31 +1876,31 @@ export function AdminDashboard() {
                                         );
                                     })()}
                                 </svg>
-                                <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+                                <div className="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-slate-400">
                                     {[0, 6, 12, 18, 23].map((hour) => (
                                         <span key={hour}>{String(hour).padStart(2, '0')}:00</span>
                                     ))}
                                 </div>
-                                <p className="mt-3 text-center text-xs font-medium text-rose-600">
+                                <p className="mt-3 text-center text-xs font-medium text-rose-600 dark:text-rose-400">
                                     {t.adminChartPeakHour}: {String(peakResponseHour.hour).padStart(2, '0')}:00 ({peakResponseHour.count})
                                 </p>
                             </div>
                         )}
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md">
-                        <h3 className="mb-3 text-sm font-semibold text-gray-700">{t.adminChartSeatsTimelineTitle}</h3>
+                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
+                        <h3 className="mb-3 text-sm font-semibold text-gray-700 dark:text-slate-300">{t.adminChartSeatsTimelineTitle}</h3>
                         {groupDistributionData.length === 0 ? (
-                            <p className="text-sm text-gray-500">{t.adminChartNoData}</p>
+                            <p className="text-sm text-gray-500 dark:text-slate-400">{t.adminChartNoData}</p>
                         ) : (
                             <div className="max-h-48 space-y-3 overflow-y-auto pe-1">
                                 {groupDistributionData.map((group) => (
                                     <div key={group.label}>
                                         <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-                                            <span className="truncate text-gray-600" title={group.label}>{group.label}</span>
-                                            <span className="shrink-0 font-semibold text-gray-900" dir="ltr">{group.count}</span>
+                                            <span className="truncate text-gray-600 dark:text-slate-400" title={group.label}>{group.label}</span>
+                                            <span className="shrink-0 font-semibold text-gray-900 dark:text-slate-100" dir="ltr">{group.count}</span>
                                         </div>
-                                        <div className="h-3 overflow-hidden rounded-full bg-gray-100">
+                                        <div className="h-3 overflow-hidden rounded-full bg-gray-100 dark:bg-slate-800">
                                             <div
                                                 className="h-full rounded-full bg-blue-600"
                                                 style={{ width: `${(group.count / maxGroupCount) * 100}%` }}
@@ -1899,22 +1912,22 @@ export function AdminDashboard() {
                         )}
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md">
-                        <h3 className="mb-3 text-sm font-semibold text-gray-700">{t.adminChartGuestsDistributionTitle}</h3>
+                    <article className="rounded-3xl border border-white/30 bg-white/95 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
+                        <h3 className="mb-3 text-sm font-semibold text-gray-700 dark:text-slate-300">{t.adminChartGuestsDistributionTitle}</h3>
                         {guestsDistributionData.every((bucket) => bucket.count === 0) ? (
-                            <p className="text-sm text-gray-500">{t.adminChartNoData}</p>
+                            <p className="text-sm text-gray-500 dark:text-slate-400">{t.adminChartNoData}</p>
                         ) : (
                             <div className="mt-3 flex items-end gap-3" dir="ltr">
                                 {guestsDistributionData.map((bucket) => (
                                     <div key={bucket.label} className="flex flex-1 flex-col items-center gap-1">
                                         <div
-                                            className="w-full max-w-16 rounded-t-xl bg-gray-900/70"
+                                            className="w-full max-w-16 rounded-t-xl bg-gray-900/70 dark:bg-slate-200/70"
                                             style={{
                                                 height: `${Math.max((bucket.count / maxGuestsDistribution) * 120, bucket.count > 0 ? 10 : 2)}px`,
                                             }}
                                         />
-                                        <span className="text-xs text-gray-600">{bucket.label}</span>
-                                        <span dir="ltr" className="text-xs font-semibold text-gray-900">{bucket.count}</span>
+                                        <span className="text-xs text-gray-600 dark:text-slate-400">{bucket.label}</span>
+                                        <span dir="ltr" className="text-xs font-semibold text-gray-900 dark:text-slate-100">{bucket.count}</span>
                                     </div>
                                 ))}
                             </div>
@@ -1926,16 +1939,16 @@ export function AdminDashboard() {
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="order-2 mb-6 overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md"
+                    className="order-2 mb-6 overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95"
                 >
                     {selectedIds.length > 0 && (
-                        <div className="flex items-center justify-between gap-3 border-b border-rose-100 bg-rose-50 px-5 py-2.5">
-                            <span className="text-sm font-medium text-rose-700">{selectedIds.length} {t.adminSelectedCount}</span>
+                        <div className="flex items-center justify-between gap-3 border-b border-rose-100 bg-rose-50 px-5 py-2.5 dark:border-rose-900/40 dark:bg-rose-950/40">
+                            <span className="text-sm font-medium text-rose-700 dark:text-rose-300">{selectedIds.length} {t.adminSelectedCount}</span>
                             <button
                                 type="button"
                                 onClick={handleDeleteSelected}
                                 disabled={isDeletingSelected}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-100 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-200 disabled:opacity-60"
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-100 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-200 disabled:opacity-60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/40"
                             >
                                 <Trash2 size={14} />
                                 {isDeletingSelected ? t.adminDeletingSelectedAction : t.adminDeleteSelectedAction}
@@ -1943,18 +1956,18 @@ export function AdminDashboard() {
                         </div>
                     )}
                     {isLoading ? (
-                        <div className="flex items-center justify-center gap-3 p-10 text-gray-600">
-                            <span className="h-5 w-5 rounded-full border-2 border-gray-200 border-t-gray-700 animate-spin" />
+                        <div className="flex items-center justify-center gap-3 p-10 text-gray-600 dark:text-slate-400">
+                            <span className="h-5 w-5 rounded-full border-2 border-gray-200 border-t-gray-700 animate-spin dark:border-slate-700 dark:border-t-slate-300" />
                             <span>{t.adminLoading}</span>
                         </div>
                     ) : error ? (
-                        <div className="p-6 text-center text-rose-600">{error}</div>
+                        <div className="p-6 text-center text-rose-600 dark:text-rose-400">{error}</div>
                     ) : records.length === 0 ? (
-                        <div className="p-8 text-center text-gray-600">{t.adminNoRecords}</div>
+                        <div className="p-8 text-center text-gray-600 dark:text-slate-400">{t.adminNoRecords}</div>
                     ) : (
                         <>
                         {/* Mobile card list (below md breakpoint) */}
-                        <div className="divide-y divide-gray-100 md:hidden">
+                        <div className="divide-y divide-gray-100 md:hidden dark:divide-slate-700">
                             {sortedRecords.map((record, index) => {
                                 const isExpanded = expandedRecordIds.has(record.id);
                                 return (
@@ -1966,7 +1979,7 @@ export function AdminDashboard() {
                                             onChange={() => handleToggleRecordSelection(record.id)}
                                             disabled={isDeletingSelected || deletingId === record.id}
                                             aria-label={t.adminSelectRow}
-                                            className="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+                                            className="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                                         />
                                         <button
                                             type="button"
@@ -1976,11 +1989,11 @@ export function AdminDashboard() {
                                         >
                                             <ChevronDown
                                                 size={16}
-                                                className={`shrink-0 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                                className={`shrink-0 text-gray-400 transition-transform dark:text-slate-500 ${isExpanded ? 'rotate-180' : ''}`}
                                             />
                                             <span className="min-w-0 flex-1">
-                                                <span className="block truncate font-medium text-gray-900">
-                                                    <span className="text-gray-400 me-1" dir="ltr">#{index + 1}</span>
+                                                <span className="block truncate font-medium text-gray-900 dark:text-slate-100">
+                                                    <span className="text-gray-400 me-1 dark:text-slate-500" dir="ltr">#{index + 1}</span>
                                                     {record.fullName || t.adminUnknownName}
                                                 </span>
                                                 <span className="mt-0.5 block">
@@ -1990,11 +2003,11 @@ export function AdminDashboard() {
                                                     />
                                                 </span>
                                             </span>
-                                            <span className="shrink-0 text-xs font-medium text-gray-500" dir="ltr">×{record.guestsCount}</span>
+                                            <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400" dir="ltr">×{record.guestsCount}</span>
                                             <span
                                                 className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${record.isAttending
-                                                    ? 'bg-emerald-100 text-emerald-700'
-                                                    : 'bg-rose-100 text-rose-700'
+                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                                    : 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
                                                     }`}
                                             >
                                                 {record.isAttending ? t.adminStatusAttending : t.adminStatusNotAttending}
@@ -2003,12 +2016,12 @@ export function AdminDashboard() {
                                     </div>
 
                                     {isExpanded && (
-                                    <div className="mt-3 border-t border-gray-100 pt-3">
-                                        <p className="text-xs text-gray-500" dir="ltr">{record.phone || t.adminNoPhone}</p>
+                                    <div className="mt-3 border-t border-gray-100 pt-3 dark:border-slate-700">
+                                        <p className="text-xs text-gray-500 dark:text-slate-400" dir="ltr">{record.phone || t.adminNoPhone}</p>
 
                                         <div className="mt-3 grid grid-cols-2 gap-3">
                                             <div className="col-span-2">
-                                                <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableName}</p>
+                                                <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{t.adminTableName}</p>
                                                 <EditableTextField
                                                     value={record.fullName}
                                                     disabled={isDeletingSelected || deletingId === record.id}
@@ -2020,7 +2033,7 @@ export function AdminDashboard() {
                                                 />
                                             </div>
                                             <div>
-                                                <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableGuests}</p>
+                                                <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{t.adminTableGuests}</p>
                                                 <GuestCountInput
                                                     count={record.guestsCount}
                                                     disabled={isDeletingSelected || deletingId === record.id}
@@ -2031,7 +2044,7 @@ export function AdminDashboard() {
                                                 />
                                             </div>
                                             <div>
-                                                <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableGroup}</p>
+                                                <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{t.adminTableGroup}</p>
                                                 <GuestGroupSelect
                                                     group={record.group}
                                                     groups={guestGroups}
@@ -2048,7 +2061,7 @@ export function AdminDashboard() {
                                                 />
                                             </div>
                                             <div className="col-span-2">
-                                                <p className="mb-1 text-xs font-medium text-gray-500">{t.adminTableSideCategory}</p>
+                                                <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{t.adminTableSideCategory}</p>
                                                 <RosterMatchPicker
                                                     record={record}
                                                     info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false, candidates: [] }}
@@ -2065,10 +2078,10 @@ export function AdminDashboard() {
                                         </div>
 
                                         {record.note && (
-                                            <p className="mt-3 rounded-xl bg-gray-50 p-2.5 text-sm text-gray-700">{record.note}</p>
+                                            <p className="mt-3 rounded-xl bg-gray-50 p-2.5 text-sm text-gray-700 dark:bg-slate-800 dark:text-slate-300">{record.note}</p>
                                         )}
 
-                                        <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                                        <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-slate-400">
                                             <span dir="ltr">{record.lang.toUpperCase()}</span>
                                             <span dir="ltr">{formatDate(record.createdAt)}</span>
                                         </div>
@@ -2078,8 +2091,8 @@ export function AdminDashboard() {
                                             onClick={() => handleDelete(record.id)}
                                             disabled={deletingId === record.id || isDeletingSelected}
                                             className={`mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${deletingId === record.id || isDeletingSelected
-                                                ? 'cursor-not-allowed bg-gray-100 text-gray-400'
-                                                : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                                                ? 'cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-slate-800 dark:text-slate-600'
+                                                : 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/40'
                                                 }`}
                                         >
                                             <Trash2 size={14} />
@@ -2094,8 +2107,8 @@ export function AdminDashboard() {
 
                         {/* Desktop table (md breakpoint and up) */}
                         <div className="hidden overflow-x-auto md:block">
-                            <table className="min-w-[1600px] table-fixed divide-y divide-gray-200 text-sm">
-                                <thead className="bg-gray-50/80 text-gray-600">
+                            <table className="min-w-[1600px] table-fixed divide-y divide-gray-200 text-sm dark:divide-slate-700">
+                                <thead className="bg-gray-50/80 text-gray-600 dark:bg-slate-800/60 dark:text-slate-400">
                                     <tr>
                                         <th className="w-24 px-4 py-3 text-start font-semibold">
                                             <div className="flex items-center gap-2">
@@ -2105,7 +2118,7 @@ export function AdminDashboard() {
                                                     onChange={handleToggleAllSelection}
                                                     disabled={isDeletingSelected || deletingId !== null}
                                                     aria-label={t.adminSelectAllRows}
-                                                    className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+                                                    className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                                                 />
                                                 <span>{t.adminTableSelect}</span>
                                             </div>
@@ -2158,7 +2171,7 @@ export function AdminDashboard() {
                                         <th className="w-32 px-4 py-3 text-start font-semibold">{t.adminTableActions}</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100 bg-white">
+                                <tbody className="divide-y divide-gray-100 bg-white dark:divide-slate-700 dark:bg-slate-900">
                                     {sortedRecords.map((record, index) => (
                                         <tr key={record.id} className="align-top">
                                             <td className="w-24 px-4 py-3">
@@ -2168,11 +2181,11 @@ export function AdminDashboard() {
                                                     onChange={() => handleToggleRecordSelection(record.id)}
                                                     disabled={isDeletingSelected || deletingId === record.id}
                                                     aria-label={t.adminSelectRow}
-                                                    className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300"
+                                                    className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                                                 />
                                             </td>
-                                            <td className="w-20 px-4 py-3 text-center text-gray-700" dir="ltr">{index + 1}</td>
-                                            <td className="w-48 px-4 py-3 font-medium text-gray-900">
+                                            <td className="w-20 px-4 py-3 text-center text-gray-700 dark:text-slate-300" dir="ltr">{index + 1}</td>
+                                            <td className="w-48 px-4 py-3 font-medium text-gray-900 dark:text-slate-100">
                                                 <EditableTextField
                                                     value={record.fullName}
                                                     disabled={isDeletingSelected || deletingId === record.id}
@@ -2183,8 +2196,8 @@ export function AdminDashboard() {
                                                     onChange={(fullName) => handleFullNameChange(record.id, fullName)}
                                                 />
                                             </td>
-                                            <td className="w-40 px-4 py-3 text-center text-gray-700 whitespace-nowrap" dir="ltr">{record.phone || t.adminNoPhone}</td>
-                                            <td className="w-40 px-4 py-3 text-center text-gray-700">
+                                            <td className="w-40 px-4 py-3 text-center text-gray-700 whitespace-nowrap dark:text-slate-300" dir="ltr">{record.phone || t.adminNoPhone}</td>
+                                            <td className="w-40 px-4 py-3 text-center text-gray-700 dark:text-slate-300">
                                                 <GuestCountInput
                                                     count={record.guestsCount}
                                                     disabled={isDeletingSelected || deletingId === record.id}
@@ -2210,7 +2223,7 @@ export function AdminDashboard() {
                                                     }}
                                                 />
                                             </td>
-                                            <td className="w-40 px-4 py-3 text-gray-700">
+                                            <td className="w-40 px-4 py-3 text-gray-700 dark:text-slate-300">
                                                 <RosterMatchBadge
                                                     info={rosterMatchInfoByRecordId.get(record.id) ?? { status: 'empty', label: '-', isManual: false, candidates: [] }}
                                                     manualLabel={t.adminManualMatchBadge}
@@ -2231,23 +2244,23 @@ export function AdminDashboard() {
                                             <td className="px-4 py-3">
                                                 <span
                                                     className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${record.isAttending
-                                                        ? 'bg-emerald-100 text-emerald-700'
-                                                        : 'bg-rose-100 text-rose-700'
+                                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                                        : 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
                                                         }`}
                                                 >
                                                     {record.isAttending ? t.adminStatusAttending : t.adminStatusNotAttending}
                                                 </span>
                                             </td>
-                                            <td className="w-24 px-4 py-3 text-center text-gray-700" dir="ltr">{record.lang}</td>
-                                            <td className="w-44 px-4 py-3 text-center text-gray-700 whitespace-nowrap" dir="ltr">{formatDate(record.createdAt)}</td>
+                                            <td className="w-24 px-4 py-3 text-center text-gray-700 dark:text-slate-300" dir="ltr">{record.lang}</td>
+                                            <td className="w-44 px-4 py-3 text-center text-gray-700 whitespace-nowrap dark:text-slate-300" dir="ltr">{formatDate(record.createdAt)}</td>
                                             <td className="w-32 px-4 py-3">
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDelete(record.id)}
                                                     disabled={deletingId === record.id || isDeletingSelected}
                                                     className={`inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-medium transition-colors ${deletingId === record.id || isDeletingSelected
-                                                        ? 'cursor-not-allowed bg-gray-100 text-gray-400'
-                                                        : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                                                        ? 'cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-slate-800 dark:text-slate-600'
+                                                        : 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/40'
                                                         }`}
                                                 >
                                                     <Trash2 size={14} />

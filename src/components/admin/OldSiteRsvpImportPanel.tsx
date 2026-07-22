@@ -58,27 +58,27 @@ export function OldSiteRsvpImportPanel({ entries, onApplied }: OldSiteRsvpImport
   };
 
   return (
-    <div className="rounded-3xl border border-white/30 bg-white/90 shadow-xl backdrop-blur-md">
+    <div className="rounded-3xl border border-white/30 bg-white/90 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         className="flex w-full items-center justify-between px-5 py-4 text-start"
       >
         <div>
-          <p className="font-semibold text-gray-900">ייבוא תשובות מהאתר הקודם</p>
-          <p className="text-xs text-gray-500">התאמת שמות מהגיליון הישן והשלמת תשובות חסרות בלבד</p>
+          <p className="font-semibold text-gray-900 dark:text-slate-100">ייבוא תשובות מהאתר הקודם</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">התאמת שמות מהגיליון הישן והשלמת תשובות חסרות בלבד</p>
         </div>
-        <ChevronDown size={18} className={`text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown size={18} className={`text-gray-500 dark:text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="space-y-4 border-t border-gray-100 px-5 py-4">
+        <div className="space-y-4 border-t border-gray-100 px-5 py-4 dark:border-slate-700">
           <div className="flex flex-wrap items-center gap-2">
-            <label className="text-sm text-gray-600">צד:</label>
+            <label className="text-sm text-gray-600 dark:text-slate-400">צד:</label>
             <select
               value={side}
               onChange={(event) => setSide(event.target.value)}
-              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-400 dark:focus:ring-slate-700"
             >
               {sides.map((s) => (
                 <option key={s} value={s}>{s}</option>
@@ -88,15 +88,15 @@ export function OldSiteRsvpImportPanel({ entries, onApplied }: OldSiteRsvpImport
               type="button"
               onClick={handlePreview}
               disabled={isLoading || !side}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
               {isLoading ? 'טוען...' : 'הצג תצוגה מקדימה'}
             </button>
           </div>
 
-          {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
-          {appliedMessage && <div className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{appliedMessage}</div>}
+          {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300">{error}</div>}
+          {appliedMessage && <div className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300">{appliedMessage}</div>}
 
           {preview && (
             <div className="space-y-3">
@@ -110,9 +110,9 @@ export function OldSiteRsvpImportPanel({ entries, onApplied }: OldSiteRsvpImport
               </div>
 
               {preview.toUpdate.length > 0 && (
-                <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-100">
+                <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-100 dark:border-slate-700">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-xs text-gray-500">
+                    <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-slate-800/60 dark:text-slate-400">
                       <tr>
                         <th className="px-3 py-2 text-start">שם באתר הישן</th>
                         <th className="px-3 py-2 text-start">התאמה ברשימה</th>
@@ -122,13 +122,13 @@ export function OldSiteRsvpImportPanel({ entries, onApplied }: OldSiteRsvpImport
                     </thead>
                     <tbody>
                       {preview.toUpdate.map((item, index) => (
-                        <tr key={`${item.entry.id}-${index}`} className="border-t border-gray-100">
-                          <td className="px-3 py-1.5 text-gray-700">{item.oldSiteName}</td>
-                          <td className="px-3 py-1.5 text-gray-900">{item.entry.firstName} {item.entry.lastName}</td>
-                          <td className={`px-3 py-1.5 font-medium ${item.status === 'yes' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        <tr key={`${item.entry.id}-${index}`} className="border-t border-gray-100 dark:border-slate-700">
+                          <td className="px-3 py-1.5 text-gray-700 dark:text-slate-300">{item.oldSiteName}</td>
+                          <td className="px-3 py-1.5 text-gray-900 dark:text-slate-100">{item.entry.firstName} {item.entry.lastName}</td>
+                          <td className={`px-3 py-1.5 font-medium ${item.status === 'yes' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                             {item.status === 'yes' ? 'מגיע/ה' : 'לא מגיע/ה'}
                           </td>
-                          <td className="px-3 py-1.5 text-gray-700">{item.count}</td>
+                          <td className="px-3 py-1.5 text-gray-700 dark:text-slate-300">{item.count}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -137,7 +137,7 @@ export function OldSiteRsvpImportPanel({ entries, onApplied }: OldSiteRsvpImport
               )}
 
               {preview.otherSide.length > 0 && (
-                <details className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                <details className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   <summary className="cursor-pointer font-medium">{preview.otherSide.length} שייכים לצד אחר (פירוט)</summary>
                   <ul className="mt-2 space-y-1">
                     {preview.otherSide.map((item, index) => (
@@ -148,7 +148,7 @@ export function OldSiteRsvpImportPanel({ entries, onApplied }: OldSiteRsvpImport
               )}
 
               {preview.ambiguous.length > 0 && (
-                <details className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <details className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
                   <summary className="cursor-pointer font-medium">{preview.ambiguous.length} שמות מעורפלים (לבדיקה ידנית)</summary>
                   <ul className="mt-2 space-y-1">
                     {preview.ambiguous.map((item, index) => (
@@ -159,7 +159,7 @@ export function OldSiteRsvpImportPanel({ entries, onApplied }: OldSiteRsvpImport
               )}
 
               {preview.unmatched.length > 0 && (
-                <details className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                <details className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   <summary className="cursor-pointer font-medium">{preview.unmatched.length} שמות לא נמצאו ברשימת צד {side}</summary>
                   <ul className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
                     {preview.unmatched.map((name, index) => <li key={index}>{name}</li>)}
@@ -172,7 +172,7 @@ export function OldSiteRsvpImportPanel({ entries, onApplied }: OldSiteRsvpImport
                   type="button"
                   onClick={handleApply}
                   disabled={isApplying}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                 >
                   {isApplying ? <Loader2 size={16} className="animate-spin" /> : null}
                   {isApplying ? 'מעדכן...' : `אשר ועדכן ${preview.toUpdate.length} רשומות`}
@@ -187,11 +187,11 @@ export function OldSiteRsvpImportPanel({ entries, onApplied }: OldSiteRsvpImport
 }
 
 function StatBox({ label, value, tone }: { label: string; value: number; tone?: 'emerald' | 'amber' | 'rose' }) {
-  const toneClass = tone === 'emerald' ? 'text-emerald-600' : tone === 'amber' ? 'text-amber-600' : tone === 'rose' ? 'text-rose-600' : 'text-gray-700';
+  const toneClass = tone === 'emerald' ? 'text-emerald-600 dark:text-emerald-400' : tone === 'amber' ? 'text-amber-600 dark:text-amber-400' : tone === 'rose' ? 'text-rose-600 dark:text-rose-400' : 'text-gray-700 dark:text-slate-300';
   return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-2 text-center">
+    <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-2 text-center dark:border-slate-700 dark:bg-slate-800/60">
       <p className={`text-lg font-semibold ${toneClass}`}>{value}</p>
-      <p className="text-[11px] text-gray-500">{label}</p>
+      <p className="text-[11px] text-gray-500 dark:text-slate-400">{label}</p>
     </div>
   );
 }

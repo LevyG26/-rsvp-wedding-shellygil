@@ -100,10 +100,10 @@ function addEntry(totals: Totals, entry: GuestRosterEntry): void {
 }
 
 const bigStatTones = {
-  blue: 'border-blue-100 bg-blue-50 text-blue-700',
-  emerald: 'border-emerald-100 bg-emerald-50 text-emerald-700',
-  rose: 'border-rose-100 bg-rose-50 text-rose-700',
-  gray: 'border-gray-100 bg-gray-50 text-gray-700',
+  blue: 'border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-300',
+  emerald: 'border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300',
+  rose: 'border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300',
+  gray: 'border-gray-100 bg-gray-50 text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
 };
 
 function BigStatCard({ icon: Icon, label, value, tone }: { icon: typeof Users; label: string; value: number; tone: keyof typeof bigStatTones }) {
@@ -118,8 +118,8 @@ function BigStatCard({ icon: Icon, label, value, tone }: { icon: typeof Users; l
 
 function StatCard({ label, value, accentClassName }: { label: string; value: number; accentClassName: string }) {
   return (
-    <div className="rounded-2xl border border-white/40 bg-white/80 p-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+    <div className="rounded-2xl border border-white/40 bg-white/80 p-4 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/80">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">{label}</p>
       <p className={`mt-1 text-2xl font-semibold ${accentClassName}`}>{value}</p>
     </div>
   );
@@ -313,12 +313,12 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
 
   const statusBadge = (response: GuestRosterEntry['knownResponse']) => {
     if (response === 'yes') {
-      return <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">{labels.statusConfirmed}</span>;
+      return <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{labels.statusConfirmed}</span>;
     }
     if (response === 'no') {
-      return <span className="inline-flex rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-700">{labels.statusDeclined}</span>;
+      return <span className="inline-flex rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{labels.statusDeclined}</span>;
     }
-    return <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">{labels.statusPending}</span>;
+    return <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 dark:bg-slate-800 dark:text-slate-300">{labels.statusPending}</span>;
   };
 
   const handleSync = async () => {
@@ -520,18 +520,18 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
   };
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md">
-      <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
+      <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">{labels.title}</h2>
-          <p className="mt-1 text-sm text-gray-500">{labels.subtitle}</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{labels.title}</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={handleSync}
             disabled={isSyncing}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
             {isSyncing ? labels.syncing : labels.syncButton}
@@ -540,7 +540,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
             type="button"
             onClick={handleLink}
             disabled={isLinking}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             {isLinking ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />}
             {isLinking ? labels.linking : labels.linkButton}
@@ -549,35 +549,35 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
       </div>
 
       {syncMessage && (
-        <div className={`px-5 py-2 text-sm ${syncIsError ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
+        <div className={`px-5 py-2 text-sm ${syncIsError ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
           {syncMessage}
         </div>
       )}
 
       {linkMessage && (
-        <div className={`px-5 py-2 text-sm ${linkIsError ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
+        <div className={`px-5 py-2 text-sm ${linkIsError ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
           {linkMessage}
         </div>
       )}
 
       {resetSideMessage && (
-        <div className={`px-5 py-2 text-sm ${resetSideIsError ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
+        <div className={`px-5 py-2 text-sm ${resetSideIsError ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
           {resetSideMessage}
         </div>
       )}
 
       {isLoading ? (
-        <div className="flex items-center justify-center gap-3 p-8 text-gray-600">
-          <span className="h-5 w-5 rounded-full border-2 border-gray-200 border-t-gray-700 animate-spin" />
+        <div className="flex items-center justify-center gap-3 p-8 text-gray-600 dark:text-slate-400">
+          <span className="h-5 w-5 rounded-full border-2 border-gray-200 border-t-gray-700 animate-spin dark:border-slate-700 dark:border-t-slate-300" />
           <span>{labels.loading}</span>
         </div>
       ) : entries.length === 0 ? (
-        <div className="p-8 text-center text-gray-600">{labels.noRecords}</div>
+        <div className="p-8 text-center text-gray-600 dark:text-slate-400">{labels.noRecords}</div>
       ) : (
         <div className="space-y-6 p-5">
           {/* 1. Overall totals */}
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-gray-700">{labels.overallHeading}</h3>
+            <h3 className="mb-2 text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.overallHeading}</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <BigStatCard icon={Users} label={labels.totalInvited} value={overallTotals.invited} tone="blue" />
               <BigStatCard icon={UserCheck} label={labels.confirmed} value={overallTotals.confirmed} tone="emerald" />
@@ -589,7 +589,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
           {/* 2. Side-by-side comparison */}
           {sides.length > 1 && (
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-gray-700">{labels.sideBreakdown}</h3>
+              <h3 className="mb-2 text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.sideBreakdown}</h3>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {sides.map((side) => {
                   const totals = sideTotals.get(side) ?? emptyTotals();
@@ -598,28 +598,28 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                   const declinedPct = (totals.declined / total) * 100;
                   const pendingPct = (totals.pending / total) * 100;
                   return (
-                    <div key={side} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+                    <div key={side} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/60">
                       <div className="mb-2 flex items-baseline justify-between">
-                        <p className="font-semibold text-gray-900">{side}</p>
-                        <p className="text-xs text-gray-500">{totals.invited} {labels.totalInvited}</p>
+                        <p className="font-semibold text-gray-900 dark:text-slate-100">{side}</p>
+                        <p className="text-xs text-gray-500 dark:text-slate-400">{totals.invited} {labels.totalInvited}</p>
                       </div>
-                      <div className="mb-3 flex h-2.5 w-full overflow-hidden rounded-full bg-gray-200">
+                      <div className="mb-3 flex h-2.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-slate-700">
                         <div className="h-full bg-emerald-500" style={{ width: `${confirmedPct}%` }} />
                         <div className="h-full bg-rose-400" style={{ width: `${declinedPct}%` }} />
                         <div className="h-full bg-slate-400" style={{ width: `${pendingPct}%` }} />
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-center">
                         <div>
-                          <p className="text-lg font-semibold text-emerald-600">{totals.confirmed}</p>
-                          <p className="text-xs text-gray-500">{labels.confirmed}</p>
+                          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{totals.confirmed}</p>
+                          <p className="text-xs text-gray-500 dark:text-slate-400">{labels.confirmed}</p>
                         </div>
                         <div>
-                          <p className="text-lg font-semibold text-rose-600">{totals.declined}</p>
-                          <p className="text-xs text-gray-500">{labels.declined}</p>
+                          <p className="text-lg font-semibold text-rose-600 dark:text-rose-400">{totals.declined}</p>
+                          <p className="text-xs text-gray-500 dark:text-slate-400">{labels.declined}</p>
                         </div>
                         <div>
-                          <p className="text-lg font-semibold text-slate-600">{totals.pending}</p>
-                          <p className="text-xs text-gray-500">{labels.pending}</p>
+                          <p className="text-lg font-semibold text-slate-600 dark:text-slate-300">{totals.pending}</p>
+                          <p className="text-xs text-gray-500 dark:text-slate-400">{labels.pending}</p>
                         </div>
                       </div>
                     </div>
@@ -631,14 +631,14 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
 
           {/* 3. Search, filter, add */}
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-gray-700">{labels.filterHeading}</h3>
+            <h3 className="mb-2 text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.filterHeading}</h3>
             <div className="space-y-2">
               <input
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={labels.searchPlaceholder}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-700"
               />
               <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                 <select
@@ -649,7 +649,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                     // now-irrelevant category can't stay selected silently.
                     setCategoryFilter('');
                   }}
-                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                 >
                   <option value="">{labels.allSides}</option>
                   {sides.map((side) => (
@@ -659,7 +659,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                 <select
                   value={categoryFilter}
                   onChange={(event) => setCategoryFilter(event.target.value)}
-                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                 >
                   <option value="">{labels.allCategories}</option>
                   {categories.map((category) => (
@@ -669,7 +669,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                 <select
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value)}
-                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                 >
                   <option value="">{labels.allStatuses}</option>
                   <option value="yes">{labels.statusConfirmed}</option>
@@ -679,7 +679,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                 <button
                   type="button"
                   onClick={() => setIsAddFormOpen((open) => !open)}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   <Plus size={16} />
                   {labels.addGuest}
@@ -691,7 +691,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                     type="button"
                     onClick={handleResetSide}
                     disabled={isResettingSide}
-                    className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60 sm:col-span-1"
+                    className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60 sm:col-span-1 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/60"
                   >
                     {isResettingSide ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                     {isResettingSide ? labels.resettingSide : labels.resetSideButton}
@@ -701,14 +701,14 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
             </div>
 
             {isAddFormOpen && (
-              <form onSubmit={handleAddSubmit} className="mt-3 rounded-2xl border border-gray-100 bg-gray-50/60 px-4 py-4">
+              <form onSubmit={handleAddSubmit} className="mt-3 rounded-2xl border border-gray-100 bg-gray-50/60 px-4 py-4 dark:border-slate-700 dark:bg-slate-800/60">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                   <input
                     list="guest-roster-sides"
                     value={addForm.side}
                     onChange={(event) => setAddForm((prev) => ({ ...prev, side: event.target.value }))}
                     placeholder={labels.side}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                   />
                   <datalist id="guest-roster-sides">
                     {sides.map((side) => <option key={side} value={side} />)}
@@ -718,7 +718,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                     value={addForm.category}
                     onChange={(event) => setAddForm((prev) => ({ ...prev, category: event.target.value }))}
                     placeholder={labels.category}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                   />
                   <datalist id="guest-roster-categories">
                     {categories.map((category) => <option key={category} value={category} />)}
@@ -727,13 +727,13 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                     value={addForm.firstName}
                     onChange={(event) => setAddForm((prev) => ({ ...prev, firstName: event.target.value }))}
                     placeholder={labels.firstName}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                   />
                   <input
                     value={addForm.lastName}
                     onChange={(event) => setAddForm((prev) => ({ ...prev, lastName: event.target.value }))}
                     placeholder={labels.lastName}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                   />
                   <input
                     type="number"
@@ -741,12 +741,12 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                     value={addForm.invitedCount}
                     onChange={(event) => setAddForm((prev) => ({ ...prev, invitedCount: event.target.value }))}
                     placeholder={labels.invitedCount}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                   />
                   <select
                     value={addForm.knownResponse}
                     onChange={(event) => setAddForm((prev) => ({ ...prev, knownResponse: event.target.value as '' | KnownResponse }))}
-                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                   >
                     <option value="">{labels.statusPending}</option>
                     <option value="yes">{labels.statusConfirmed}</option>
@@ -754,13 +754,13 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                   </select>
                 </div>
 
-                {addError && <p className="mt-2 text-sm text-rose-600">{addError}</p>}
+                {addError && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{addError}</p>}
 
                 <div className="mt-3 flex items-center gap-2">
                   <button
                     type="submit"
                     disabled={isAdding}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                   >
                     {isAdding && <Loader2 size={16} className="animate-spin" />}
                     {isAdding ? labels.saving : labels.addSubmit}
@@ -772,7 +772,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                       setAddForm(emptyForm);
                       setAddError('');
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     <X size={16} />
                     {labels.cancel}
@@ -789,7 +789,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                 <button
                   type="button"
                   onClick={handleShareWhatsApp}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600"
                 >
                   <MessageCircle size={16} />
                   שלח רשימה בווטסאפ
@@ -797,9 +797,9 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                 <button
                   type="button"
                   onClick={handleCopyList}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
-                  {isCopied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+                  {isCopied ? <Check size={16} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={16} />}
                   {isCopied ? 'הועתק' : 'העתק טקסט'}
                 </button>
               </div>
@@ -807,7 +807,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
             <button
               type="button"
               onClick={() => setIsListOpen((open) => !open)}
-              className="flex w-full items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+              className="flex w-full items-center justify-between rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700"
             >
               <span>{labels.fullList} ({filteredEntries.length} {labels.records} · {filteredInvitedTotal} {labels.totalInvited})</span>
               <ChevronDown size={16} className={`transition-transform ${isListVisible ? 'rotate-180' : ''}`} />
@@ -816,7 +816,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
             {isListVisible && (
               <div className="mt-2">
                 {/* Mobile card list */}
-                <div className="max-h-96 divide-y divide-gray-100 overflow-y-auto rounded-2xl border border-gray-100 md:hidden">
+                <div className="max-h-96 divide-y divide-gray-100 overflow-y-auto rounded-2xl border border-gray-100 md:hidden dark:divide-slate-700 dark:border-slate-700">
                   {filteredEntries.map((entry) => {
                     const isSaving = savingId === entry.id;
                     const rowError = rowErrors[entry.id];
@@ -832,18 +832,18 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                         >
                           <ChevronDown
                             size={16}
-                            className={`shrink-0 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            className={`shrink-0 text-gray-400 transition-transform dark:text-slate-500 ${isExpanded ? 'rotate-180' : ''}`}
                           />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium text-gray-900">{fullName}</span>
-                            <span className="block truncate text-xs text-gray-500">{entry.side} · {entry.category}</span>
+                            <span className="block truncate text-sm font-medium text-gray-900 dark:text-slate-100">{fullName}</span>
+                            <span className="block truncate text-xs text-gray-500 dark:text-slate-400">{entry.side} · {entry.category}</span>
                           </span>
-                          <span className="shrink-0 text-xs font-medium text-gray-500" dir="ltr">×{entry.invitedCount}</span>
+                          <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400" dir="ltr">×{entry.invitedCount}</span>
                           <span className="shrink-0">{statusBadge(entry.knownResponse)}</span>
                         </button>
 
                         {isExpanded && (
-                          <div className="mt-3 border-t border-gray-100 pt-3">
+                          <div className="mt-3 border-t border-gray-100 pt-3 dark:border-slate-700">
                             <div className="flex gap-1.5">
                               <input
                                 type="text"
@@ -852,7 +852,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                 disabled={isSaving}
                                 placeholder={labels.firstName}
                                 onBlur={(event) => handleNameChange(entry, event.target.value, entry.lastName)}
-                                className="w-full min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                className="w-full min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                               />
                               <input
                                 type="text"
@@ -861,12 +861,12 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                 disabled={isSaving}
                                 placeholder={labels.lastName}
                                 onBlur={(event) => handleNameChange(entry, entry.firstName, event.target.value)}
-                                className="w-full min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                className="w-full min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                               />
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-3">
                               <div>
-                                <p className="mb-1 text-xs font-medium text-gray-500">{labels.invitedCount}</p>
+                                <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{labels.invitedCount}</p>
                                 <input
                                   type="number"
                                   min={1}
@@ -874,16 +874,16 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                   key={`${entry.id}-${entry.invitedCount}`}
                                   disabled={isSaving}
                                   onBlur={(event) => handleCountChange(entry, event.target.value)}
-                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                                 />
                               </div>
                               <div>
-                                <p className="mb-1 text-xs font-medium text-gray-500">{labels.status}</p>
+                                <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{labels.status}</p>
                                 <select
                                   value={entry.knownResponse ?? ''}
                                   disabled={isSaving}
                                   onChange={(event) => handleStatusChange(entry, event.target.value)}
-                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                                 >
                                   <option value="">{labels.statusPending}</option>
                                   <option value="yes">{labels.statusConfirmed}</option>
@@ -891,12 +891,12 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                 </select>
                               </div>
                             </div>
-                            {rowError && <p className="mt-2 text-xs text-rose-600">{rowError}</p>}
+                            {rowError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{rowError}</p>}
                             <button
                               type="button"
                               onClick={() => handleDelete(entry)}
                               disabled={isSaving}
-                              className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-rose-100 px-3 py-2 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-rose-100 px-3 py-2 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/60"
                             >
                               {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                               {labels.deleteAction}
@@ -909,9 +909,9 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                 </div>
 
                 {/* Desktop table */}
-                <div className="hidden max-h-96 overflow-y-auto overflow-x-auto rounded-2xl border border-gray-100 md:block">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="sticky top-0 bg-gray-50/95 text-gray-600 backdrop-blur">
+                <div className="hidden max-h-96 overflow-y-auto overflow-x-auto rounded-2xl border border-gray-100 md:block dark:border-slate-700">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-slate-700">
+                    <thead className="sticky top-0 bg-gray-50/95 text-gray-600 backdrop-blur dark:bg-slate-800/95 dark:text-slate-400">
                       <tr>
                         <th className="px-4 py-2 text-start font-semibold">{labels.name}</th>
                         <th className="px-4 py-2 text-start font-semibold">{labels.side}</th>
@@ -921,13 +921,13 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                         <th className="px-4 py-2 text-center font-semibold">{labels.actions}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
+                    <tbody className="divide-y divide-gray-100 bg-white dark:divide-slate-700 dark:bg-slate-900">
                       {filteredEntries.map((entry) => {
                         const isSaving = savingId === entry.id;
                         const rowError = rowErrors[entry.id];
                         return (
                           <tr key={entry.id}>
-                            <td className="px-4 py-2 font-medium text-gray-900">
+                            <td className="px-4 py-2 font-medium text-gray-900 dark:text-slate-100">
                               <div className="flex gap-1.5">
                                 <input
                                   type="text"
@@ -936,7 +936,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                   disabled={isSaving}
                                   placeholder={labels.firstName}
                                   onBlur={(event) => handleNameChange(entry, event.target.value, entry.lastName)}
-                                  className="w-24 min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                  className="w-24 min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                                 />
                                 <input
                                   type="text"
@@ -945,12 +945,12 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                   disabled={isSaving}
                                   placeholder={labels.lastName}
                                   onBlur={(event) => handleNameChange(entry, entry.firstName, event.target.value)}
-                                  className="w-24 min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                  className="w-24 min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                                 />
                               </div>
                             </td>
-                            <td className="px-4 py-2 text-gray-700">{entry.side}</td>
-                            <td className="px-4 py-2 text-gray-700">{entry.category}</td>
+                            <td className="px-4 py-2 text-gray-700 dark:text-slate-300">{entry.side}</td>
+                            <td className="px-4 py-2 text-gray-700 dark:text-slate-300">{entry.category}</td>
                             <td className="px-4 py-2 text-center">
                               <input
                                 type="number"
@@ -959,7 +959,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                 key={`${entry.id}-${entry.invitedCount}`}
                                 disabled={isSaving}
                                 onBlur={(event) => handleCountChange(entry, event.target.value)}
-                                className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 text-center text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                               />
                             </td>
                             <td className="px-4 py-2">
@@ -967,13 +967,13 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                 value={entry.knownResponse ?? ''}
                                 disabled={isSaving}
                                 onChange={(event) => handleStatusChange(entry, event.target.value)}
-                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60"
+                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                               >
                                 <option value="">{labels.statusPending}</option>
                                 <option value="yes">{labels.statusConfirmed}</option>
                                 <option value="no">{labels.statusDeclined}</option>
                               </select>
-                              {rowError && <p className="mt-1 text-xs text-rose-600">{rowError}</p>}
+                              {rowError && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{rowError}</p>}
                             </td>
                             <td className="px-4 py-2 text-center">
                               <button
@@ -981,7 +981,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                 onClick={() => handleDelete(entry)}
                                 disabled={isSaving}
                                 title={labels.deleteAction}
-                                className="inline-flex items-center justify-center rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+                                className="inline-flex items-center justify-center rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:text-rose-400 dark:hover:bg-rose-950/40"
                               >
                                 {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                               </button>
