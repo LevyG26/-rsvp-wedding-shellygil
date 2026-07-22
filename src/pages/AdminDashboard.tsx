@@ -54,6 +54,7 @@ import {
     assignGroupToTable,
     createSeatingGroup,
     createSeatingTable,
+    createSeatingTablesBulk,
     deleteSeatingGroup,
     deleteSeatingTable,
     removeSeatingAssignment,
@@ -69,6 +70,7 @@ import {
     type SeatingTable,
     type SeatingTableLayout,
 } from '../services/seating';
+import { RONIT_FARM_DINNER_TABLES } from '../admin/venueSeatingLayout';
 
 interface RSVPRecord {
     id: string;
@@ -1021,6 +1023,13 @@ export function AdminDashboard() {
             .reduce((sum, assignment) => sum + assignment.seatsCount, 0);
 
         await assignGroupToTable(group, tableId, remainingByEntryId, table.seatCount - used);
+    };
+
+    // One-click seed of the 14 dinner tables from the venue's own floor plan
+    // (see src/admin/venueSeatingLayout.ts) - purely additive, never touches
+    // whatever tables already exist.
+    const handleGenerateVenueTables = async (): Promise<void> => {
+        await createSeatingTablesBulk(RONIT_FARM_DINNER_TABLES);
     };
 
     // Wipes every roster entry for one side and immediately re-pulls it from
@@ -2352,6 +2361,7 @@ export function AdminDashboard() {
                         onSetAssignment={handleSetSeatingAssignment}
                         onRemoveAssignment={handleRemoveSeatingAssignment}
                         onAssignGroupToTable={handleAssignSeatingGroupToTable}
+                        onGenerateVenueTables={handleGenerateVenueTables}
                         labels={{
                             title: t.adminSeatingTitle,
                             subtitle: t.adminSeatingSubtitle,
@@ -2409,6 +2419,25 @@ export function AdminDashboard() {
                             exportSeatsColumn: t.adminSeatingExportSeatsColumn,
                             exportRemainingColumn: t.adminSeatingExportRemainingColumn,
                             exportOccupiedLabel: t.adminSeatingExportOccupiedLabel,
+                            generateFromSketchButton: t.adminSeatingGenerateFromSketchButton,
+                            generateFromSketchConfirm: t.adminSeatingGenerateFromSketchConfirm,
+                            generateFromSketchError: t.adminSeatingGenerateFromSketchError,
+                            viewToggleMap: t.adminSeatingViewToggleMap,
+                            viewToggleList: t.adminSeatingViewToggleList,
+                            listSearchPlaceholder: t.adminSeatingListSearchPlaceholder,
+                            listTableFilterAll: t.adminSeatingListTableFilterAll,
+                            listStatusFilterAll: t.adminSeatingListStatusFilterAll,
+                            listStatusFilterSeated: t.adminSeatingListStatusFilterSeated,
+                            listStatusFilterPartial: t.adminSeatingListStatusFilterPartial,
+                            listStatusFilterUnseated: t.adminSeatingListStatusFilterUnseated,
+                            listColumnName: t.adminSeatingListColumnName,
+                            listColumnSide: t.adminSeatingListColumnSide,
+                            listColumnCategory: t.adminSeatingListColumnCategory,
+                            listColumnInvited: t.adminSeatingListColumnInvited,
+                            listColumnStatus: t.adminSeatingListColumnStatus,
+                            listColumnTables: t.adminSeatingListColumnTables,
+                            listColumnGroups: t.adminSeatingListColumnGroups,
+                            listEmpty: t.adminSeatingListEmpty,
                         }}
                     />
                 </motion.section>

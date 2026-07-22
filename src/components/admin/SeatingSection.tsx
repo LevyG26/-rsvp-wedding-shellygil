@@ -1,5 +1,23 @@
 import { useMemo, useRef, useState } from 'react';
-import { Camera, Check, Download, LayoutGrid, Loader2, Pencil, Plus, Trash2, UserCheck, Users, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Camera,
+  Check,
+  Download,
+  LayoutGrid,
+  List,
+  Loader2,
+  Map as MapIcon,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  UserCheck,
+  Users,
+  X,
+} from 'lucide-react';
 import type { GuestRosterEntry } from '../../services/guestRoster';
 import type { SeatingAssignment, SeatingGroup, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
 import { exportSeatingChart, type SeatingExportGuest, type SeatingExportTable, type SeatingExportUnseatedGuest } from '../../admin/exportSeatingChart';
@@ -62,6 +80,52 @@ export interface SeatingLabels {
   exportSeatsColumn: string;
   exportRemainingColumn: string;
   exportOccupiedLabel: string;
+  generateFromSketchButton: string;
+  generateFromSketchConfirm: string;
+  generateFromSketchError: string;
+  viewToggleMap: string;
+  viewToggleList: string;
+  listSearchPlaceholder: string;
+  listTableFilterAll: string;
+  listStatusFilterAll: string;
+  listStatusFilterSeated: string;
+  listStatusFilterPartial: string;
+  listStatusFilterUnseated: string;
+  listColumnName: string;
+  listColumnSide: string;
+  listColumnCategory: string;
+  listColumnInvited: string;
+  listColumnStatus: string;
+  listColumnTables: string;
+  listColumnGroups: string;
+  listEmpty: string;
+}
+
+type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status';
+type GuestListStatusFilter = 'all' | 'seated' | 'partial' | 'unseated';
+
+interface GuestListSortableHeaderProps {
+  label: string;
+  sortKey: GuestListSortKey;
+  activeSort: { key: GuestListSortKey; direction: 'asc' | 'desc' };
+  onSort: (key: GuestListSortKey) => void;
+}
+
+function GuestListSortableHeader({ label, sortKey, activeSort, onSort }: GuestListSortableHeaderProps) {
+  const isActive = activeSort.key === sortKey;
+  const SortIcon = !isActive ? ArrowUpDown : activeSort.direction === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <th className="px-3 py-2 text-start font-semibold" aria-sort={isActive ? (activeSort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 rounded-md hover:text-gray-900 dark:hover:text-slate-100"
+      >
+        <span>{label}</span>
+        <SortIcon size={12} aria-hidden="true" />
+      </button>
+    </th>
+  );
 }
 
 interface SeatingSectionProps {
@@ -82,6 +146,7 @@ interface SeatingSectionProps {
   onSetAssignment: (rosterEntryId: string, tableId: string, seatsCount: number) => Promise<void>;
   onRemoveAssignment: (rosterEntryId: string, tableId: string) => Promise<void>;
   onAssignGroupToTable: (group: SeatingGroup, tableId: string) => Promise<void>;
+  onGenerateVenueTables: () => Promise<void>;
 }
 
 function entryName(entry: GuestRosterEntry): string {
@@ -121,6 +186,7 @@ export function SeatingSection({
   onSetAssignment,
   onRemoveAssignment,
   onAssignGroupToTable,
+  onGenerateVenueTables,
 }: SeatingSectionProps) {
   const [search, setSearch] = useState('');
   const [rowState, setRowState] = useState<Record<string, { seats: string; tableId: string }>>({});
@@ -147,6 +213,15 @@ export function SeatingSection({
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [exportError, setExportError] = useState('');
   const floorPlanRef = useRef<SeatingFloorPlanHandle>(null);
+
+  const [isGeneratingVenueTables, setIsGeneratingVenueTables] = useState(false);
+  const [generateVenueTablesError, setGenerateVenueTablesError] = useState('');
+
+  const [tablesView, setTablesView] = useState<'map' | 'list'>('map');
+  const [listSearch, setListSearch] = useState('');
+  const [listTableFilter, setListTableFilter] = useState('');
+  const [listStatusFilter, setListStatusFilter] = useState<GuestListStatusFilter>('all');
+  const [listSort, setListSort] = useState<{ key: GuestListSortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   // `locale` here is a full BCP-47 tag like "he-IL"/"fr-FR"/"en-US", not a
   // bare language code - matching it against just "he" would always be
   // false and silently force every export to render left-to-right.
@@ -191,6 +266,73 @@ export function SeatingSection({
 
   const sortedTables = useMemo(() => [...tables].sort((a, b) => a.name.localeCompare(b.name, locale)), [tables, locale]);
   const sortedGroups = useMemo(() => [...groups].sort((a, b) => a.name.localeCompare(b.name, locale)), [groups, locale]);
+
+  const tablesById = useMemo(() => new Map(tables.map((table) => [table.id, table])), [tables]);
+
+  const assignmentsByEntry = useMemo(() => {
+    const map = new Map<string, SeatingAssignment[]>();
+    assignments.forEach((assignment) => {
+      const list = map.get(assignment.rosterEntryId) ?? [];
+      list.push(assignment);
+      map.set(assignment.rosterEntryId, list);
+    });
+    return map;
+  }, [assignments]);
+
+  // One row per confirmed guest, for the "list view" of the tables section -
+  // a searchable/filterable/sortable alternative to the floor-plan canvas,
+  // for quickly answering "who's at which table" without dragging anything.
+  const guestListRows = useMemo(() => {
+    return confirmedEntries.map((entry) => {
+      const entryAssignments = assignmentsByEntry.get(entry.id) ?? [];
+      const seatsAssigned = entryAssignments.reduce((sum, assignment) => sum + assignment.seatsCount, 0);
+      const remaining = entry.invitedCount - seatsAssigned;
+      const status: 'seated' | 'partial' | 'unseated' = seatsAssigned <= 0 ? 'unseated' : remaining > 0 ? 'partial' : 'seated';
+      const tableSummary = entryAssignments
+        .map((assignment) => {
+          const table = tablesById.get(assignment.tableId);
+          return table ? `${table.name} (${assignment.seatsCount})` : null;
+        })
+        .filter((value): value is string => value !== null)
+        .join(', ');
+      const groupSummary = groups
+        .filter((group) => group.memberEntryIds.includes(entry.id))
+        .map((group) => group.name)
+        .join(', ');
+      return { entry, name: entryName(entry), status, tableSummary, groupSummary, assignedTableIds: entryAssignments.map((a) => a.tableId) };
+    });
+  }, [confirmedEntries, assignmentsByEntry, tablesById, groups]);
+
+  const filteredSortedGuestListRows = useMemo(() => {
+    const query = listSearch.trim().toLowerCase();
+    const direction = listSort.direction === 'asc' ? 1 : -1;
+
+    const filtered = guestListRows.filter((row) => {
+      if (query && !(row.name.toLowerCase().includes(query) || row.entry.category.toLowerCase().includes(query) || row.entry.side.toLowerCase().includes(query))) {
+        return false;
+      }
+      if (listTableFilter && !row.assignedTableIds.includes(listTableFilter)) return false;
+      if (listStatusFilter !== 'all' && row.status !== listStatusFilter) return false;
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      switch (listSort.key) {
+        case 'name':
+          return a.name.localeCompare(b.name, locale) * direction;
+        case 'side':
+          return a.entry.side.localeCompare(b.entry.side, locale) * direction;
+        case 'category':
+          return a.entry.category.localeCompare(b.entry.category, locale) * direction;
+        case 'invitedCount':
+          return (a.entry.invitedCount - b.entry.invitedCount) * direction;
+        case 'status':
+          return a.status.localeCompare(b.status) * direction;
+        default:
+          return 0;
+      }
+    });
+  }, [guestListRows, listSearch, listTableFilter, listStatusFilter, listSort, locale]);
 
   const unseatedEntries = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -509,6 +651,24 @@ export function SeatingSection({
     }
   };
 
+  const handleGenerateVenueTables = async () => {
+    if (typeof window !== 'undefined' && !window.confirm(labels.generateFromSketchConfirm)) return;
+    setIsGeneratingVenueTables(true);
+    setGenerateVenueTablesError('');
+    try {
+      await onGenerateVenueTables();
+    } catch (error) {
+      console.error('Failed to generate venue tables', error);
+      setGenerateVenueTablesError(labels.generateFromSketchError);
+    } finally {
+      setIsGeneratingVenueTables(false);
+    }
+  };
+
+  const handleGuestListSort = (key: GuestListSortKey) => {
+    setListSort((previous) => (previous.key === key ? { key, direction: previous.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' }));
+  };
+
   if (isLoading) {
     return (
       <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
@@ -795,17 +955,29 @@ export function SeatingSection({
 
         {/* Tables */}
         <div>
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.tablesHeading} ({tables.length})</h3>
-            <button
-              type="button"
-              onClick={() => setIsTableFormOpen((open) => !open)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            >
-              <Plus size={14} />
-              {labels.addTableButton}
-            </button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleGenerateVenueTables}
+                disabled={isGeneratingVenueTables}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                {isGeneratingVenueTables ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {labels.generateFromSketchButton}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsTableFormOpen((open) => !open)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                <Plus size={14} />
+                {labels.addTableButton}
+              </button>
+            </div>
           </div>
+          {generateVenueTablesError && <p className="mb-2 text-sm text-rose-600 dark:text-rose-400">{generateVenueTablesError}</p>}
 
           {isTableFormOpen && (
             <form onSubmit={handleCreateTableSubmit} className="mb-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/60">
@@ -851,6 +1023,27 @@ export function SeatingSection({
             <p className="text-sm text-gray-500 dark:text-slate-400">{labels.noTables}</p>
           ) : (
             <>
+              <div className="mb-3 inline-flex rounded-xl border border-gray-200 bg-white p-0.5 dark:border-slate-600 dark:bg-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setTablesView('map')}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${tablesView === 'map' ? 'bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'text-gray-600 hover:bg-gray-50 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+                >
+                  <MapIcon size={14} />
+                  {labels.viewToggleMap}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTablesView('list')}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${tablesView === 'list' ? 'bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'text-gray-600 hover:bg-gray-50 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+                >
+                  <List size={14} />
+                  {labels.viewToggleList}
+                </button>
+              </div>
+
+              {tablesView === 'map' && (
+              <>
               <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">{labels.canvasHint}</p>
               <SeatingFloorPlan
                 ref={floorPlanRef}
@@ -993,6 +1186,87 @@ export function SeatingSection({
                   </div>
                 );
               })()}
+              </>
+              )}
+
+              {tablesView === 'list' && (
+                <div>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={listSearch}
+                      onChange={(event) => setListSearch(event.target.value)}
+                      placeholder={labels.listSearchPlaceholder}
+                      className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                    />
+                    <select
+                      value={listTableFilter}
+                      onChange={(event) => setListTableFilter(event.target.value)}
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                    >
+                      <option value="">{labels.listTableFilterAll}</option>
+                      {sortedTables.map((table) => (
+                        <option key={table.id} value={table.id}>{table.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={listStatusFilter}
+                      onChange={(event) => setListStatusFilter(event.target.value as GuestListStatusFilter)}
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                    >
+                      <option value="all">{labels.listStatusFilterAll}</option>
+                      <option value="seated">{labels.listStatusFilterSeated}</option>
+                      <option value="partial">{labels.listStatusFilterPartial}</option>
+                      <option value="unseated">{labels.listStatusFilterUnseated}</option>
+                    </select>
+                  </div>
+
+                  {filteredSortedGuestListRows.length === 0 ? (
+                    <p className="rounded-2xl border border-gray-100 bg-gray-50/60 px-4 py-3 text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">{labels.listEmpty}</p>
+                  ) : (
+                    <div className="max-h-[520px] overflow-auto rounded-2xl border border-gray-100 dark:border-slate-700">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500 dark:bg-slate-800/90 dark:text-slate-400">
+                          <tr>
+                            <GuestListSortableHeader label={labels.listColumnName} sortKey="name" activeSort={listSort} onSort={handleGuestListSort} />
+                            <GuestListSortableHeader label={labels.listColumnSide} sortKey="side" activeSort={listSort} onSort={handleGuestListSort} />
+                            <GuestListSortableHeader label={labels.listColumnCategory} sortKey="category" activeSort={listSort} onSort={handleGuestListSort} />
+                            <GuestListSortableHeader label={labels.listColumnInvited} sortKey="invitedCount" activeSort={listSort} onSort={handleGuestListSort} />
+                            <GuestListSortableHeader label={labels.listColumnStatus} sortKey="status" activeSort={listSort} onSort={handleGuestListSort} />
+                            <th className="px-3 py-2 text-start font-semibold">{labels.listColumnTables}</th>
+                            <th className="px-3 py-2 text-start font-semibold">{labels.listColumnGroups}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 bg-white dark:divide-slate-700 dark:bg-slate-900">
+                          {filteredSortedGuestListRows.map((row) => (
+                            <tr key={row.entry.id} className="hover:bg-gray-50 dark:hover:bg-slate-800">
+                              <td className="px-3 py-2 font-medium text-gray-900 dark:text-slate-100">{row.name}</td>
+                              <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{row.entry.side}</td>
+                              <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{row.entry.category}</td>
+                              <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{row.entry.invitedCount}</td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    row.status === 'seated'
+                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                      : row.status === 'partial'
+                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                                        : 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-300'
+                                  }`}
+                                >
+                                  {row.status === 'seated' ? labels.listStatusFilterSeated : row.status === 'partial' ? labels.listStatusFilterPartial : labels.listStatusFilterUnseated}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{row.tableSummary || '-'}</td>
+                              <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{row.groupSummary || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

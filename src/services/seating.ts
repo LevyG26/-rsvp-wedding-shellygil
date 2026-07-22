@@ -146,6 +146,30 @@ export async function createSeatingTable(name: string, seatCount: number, layout
   return id;
 }
 
+export interface SeatingTableSeed {
+  name: string;
+  seatCount: number;
+  layout: SeatingTableLayout;
+}
+
+// Creates many tables in one Firestore batch - used for one-click "generate
+// from the venue sketch" imports so Gil doesn't have to open the add-table
+// form and fill it in by hand a dozen-plus times. Purely additive: never
+// touches any table that already exists.
+export async function createSeatingTablesBulk(seeds: SeatingTableSeed[]): Promise<void> {
+  const batch = writeBatch(db);
+  seeds.forEach((seed) => {
+    const id = makeId();
+    batch.set(doc(db, SEATING_TABLES_COLLECTION, id), {
+      name: seed.name.trim(),
+      seatCount: seed.seatCount,
+      ...seed.layout,
+      updatedAt: serverTimestamp(),
+    });
+  });
+  await batch.commit();
+}
+
 // Full update (rename / change seat count) - keeps whatever layout is passed
 // in, so callers editing just the name/seatCount should pass the table's
 // current layout back through unchanged.
