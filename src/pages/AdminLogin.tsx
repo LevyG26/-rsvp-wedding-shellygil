@@ -71,8 +71,12 @@ export function AdminLogin() {
         }
     };
 
+    // See the matching comment in AdminDashboard.tsx: a `dark:` utility on
+    // the same element as the `.dark` class itself never applies (that
+    // selector only matches descendants of `.dark`), so the background is
+    // chosen directly in JS instead.
     return (
-        <div className={`min-h-screen relative overflow-hidden wedding-silk-background selection:bg-rose-200 selection:text-rose-900 dark:bg-slate-950 ${theme === 'dark' ? 'dark' : ''}`}>
+        <div className={`min-h-screen relative overflow-hidden selection:bg-rose-200 selection:text-rose-900 ${theme === 'dark' ? 'dark bg-slate-950' : 'wedding-silk-background'}`}>
             <div className="absolute inset-0 z-0 wedding-foliage-shadow dark:hidden" aria-hidden="true" />
             <div className="absolute inset-0 z-0 wedding-paper-grain dark:hidden" aria-hidden="true" />
 

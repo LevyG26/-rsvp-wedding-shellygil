@@ -1442,8 +1442,16 @@ export function AdminDashboard() {
     if (!isSignedIn) {
         return <Navigate to={loginPath} replace />;
     }
+    // The `dark` class marks this element as the dark-mode ancestor for
+    // every `dark:` utility inside it (see index.css's `@custom-variant
+    // dark`), which only matches on DESCENDANTS of `.dark` - a `dark:`
+    // utility placed on this same element as the `.dark` class itself never
+    // actually applies (there's no element that's a descendant of itself),
+    // which is why the background used to stay light in the gaps around the
+    // cards. The background color below is therefore chosen directly in JS
+    // instead of via a `dark:` utility.
     return (
-        <div className={`min-h-screen relative overflow-hidden wedding-silk-background selection:bg-rose-200 selection:text-rose-900 dark:bg-slate-950 ${theme === 'dark' ? 'dark' : ''}`}>
+        <div className={`min-h-screen relative overflow-hidden selection:bg-rose-200 selection:text-rose-900 ${theme === 'dark' ? 'dark bg-slate-950' : 'wedding-silk-background'}`}>
             <div className="absolute inset-0 z-0 wedding-foliage-shadow dark:hidden" aria-hidden="true" />
             <div className="absolute inset-0 z-0 wedding-paper-grain dark:hidden" aria-hidden="true" />
 
@@ -1496,7 +1504,12 @@ export function AdminDashboard() {
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-3 pe-28 sm:pe-32">
+                    {/* pe-* reserves room for the icon-button row (theme
+                        toggle/refresh/export/logout - 4 buttons now that the
+                        toggle was added) so the title block never runs
+                        underneath it, which is what was happening on mobile
+                        before this was widened. */}
+                    <div className="flex items-center gap-3 pe-44 sm:pe-48">
                         <div className="h-20 w-20 shrink-0 sm:h-28 sm:w-28 lg:h-32 lg:w-32" aria-hidden="true">
                             {/* The source art is a transparent-background monogram, taller than
                                 it is wide (420x594) - object-cover in a mismatched box used to
