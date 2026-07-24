@@ -113,10 +113,31 @@ function buildMessage(template: string, name: string, link: string): string {
     return template.replace(/\{\{\s*name\s*\}\}/gi, name).replace(/\{\{\s*link\s*\}\}/gi, link);
 }
 
+// Deliberately builds the api.whatsapp.com/send URL directly instead of the
+// shorter wa.me/<phone>?text=<encoded> shortcut. Confirmed by inspecting the
+// actual outgoing URL (Gil captured it from the browser's own address bar):
+// clicking a wa.me link from inside a loaded webpage (as opposed to a direct
+// OS-level tap/navigation, which lets phones route it straight to the native
+// app via a universal link) makes the browser hit WhatsApp's own wa.me
+// redirect server, which forwards to api.whatsapp.com/send/?phone=...&text=...
+// - and it's THAT server-side redirect step that was silently replacing
+// certain multi-byte emoji with the Unicode replacement character (confirmed
+// via the %EF%BF%BD bytes - literal U+FFFD - showing up in place of the
+// hearts in the redirected URL, even though the exact same text encoded and
+// decoded correctly in plain Node.js, and even though a hand-built link to
+// the very same endpoint worked perfectly). Building the final
+// api.whatsapp.com/send URL ourselves skips that redirect hop entirely, so
+// there's nothing left for WhatsApp's server to silently rewrite.
 function buildWaHref(guest: NormalizedBaseListEntry, template: string, siteOrigin: string): string {
     const link = `${siteOrigin}/link/${guest.phone}`;
     const message = buildMessage(template, guest.name, link);
-    return `https://wa.me/${toWhatsappDialableNumber(guest.phone)}?text=${encodeURIComponent(message)}`;
+    const params = new URLSearchParams({
+        phone: toWhatsappDialableNumber(guest.phone),
+        text: message,
+        type: 'phone_number',
+        app_absent: '0',
+    });
+    return `https://api.whatsapp.com/send/?${params.toString()}`;
 }
 
 // On phones, a wa.me link hands the whole browser tab off to the WhatsApp
