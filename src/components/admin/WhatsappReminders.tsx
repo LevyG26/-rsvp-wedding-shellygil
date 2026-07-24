@@ -65,41 +65,22 @@ interface WhatsappRemindersProps {
 
 const TEMPLATE_STORAGE_KEY = 'wedding-admin-wa-reminder-template';
 
-// Specific, real, valid emoji that are still "too new" to count on:
-// standard Unicode characters (not corrupted, not private-use), but added to
-// the Emoji standard recently enough (2019-2023) that older phones/OS
-// versions/WhatsApp builds don't have a picture for them yet, and fall back
-// to the same broken "◆?" placeholder - this is a device-side gap, not
-// something any app can fix, so the only real fix is not using them. This is
-// exactly what caught out a plain red-heart-and-white-heart message: red
-// heart (❤️) is from 2010 and works everywhere, white heart (🤍) is from
-// 2019 and doesn't yet. Deliberately a short, hand-picked list of the ones
-// actually likely to show up in a wedding message, not every recent emoji in
-// existence.
-const RISKY_NEWER_EMOJI_CODEPOINTS = new Set<number>([
-    0x1f90d, // white heart (Emoji 12.0, 2019)
-    0x1f90e, // brown heart (Emoji 12.0, 2019)
-    0x1fa75, // light blue heart (Emoji 15.0, 2023)
-    0x1fa76, // grey heart (Emoji 15.0, 2023)
-    0x1fa77, // pink heart (Emoji 15.0, 2023)
-    0x1faf6, // heart hands (Emoji 14.0, 2022)
-]);
-
 // Catches characters that will look fine right here (this browser has a font
-// that happens to cover them) but are likely to render as a broken "◆?"
-// placeholder once the message actually reaches WhatsApp on a guest's phone.
-// Three causes, all lumped into one check since the fix (remove/replace) is
-// the same for each: (1) the Unicode REPLACEMENT CHARACTER itself, meaning
-// some earlier copy/paste already silently destroyed the original bytes
-// before they ever reached this textarea; (2) Private Use Area codepoints -
+// that happens to cover them) but would show up as a broken "◆?" placeholder
+// wherever they're displayed with a font that doesn't cover them. Only two
+// real causes: (1) the Unicode REPLACEMENT CHARACTER itself, meaning some
+// earlier copy/paste already silently destroyed the original bytes before
+// they ever reached this textarea, and (2) Private Use Area codepoints -
 // these have no universal meaning, they only display as an emoji/symbol when
 // the exact font that defined them is loaded (common when text is copied out
-// of a PDF or a custom icon font), and every other device just shows a
-// placeholder; (3) real, valid emoji that are simply too recently added to
-// Unicode for every guest's phone to have caught up yet (see
-// RISKY_NEWER_EMOJI_CODEPOINTS above). Iterating with `for...of` (not
-// `.split('')`) is important so a real emoji's surrogate pair is checked as
-// one codepoint instead of two meaningless halves.
+// of a PDF or a custom icon font), and every other font just shows a
+// placeholder. Deliberately does NOT flag ordinary, valid, recently-added
+// emoji (e.g. white heart) - those display correctly on any device with an
+// up-to-date emoji font (which is true of essentially every phone), so
+// treating them as "broken" would wrongly tell Gil to delete a perfectly
+// good character. Iterating with `for...of` (not `.split('')`) is important
+// so a real emoji's surrogate pair is checked as one codepoint instead of
+// two meaningless halves.
 function findSuspiciousTemplateCharacters(template: string): string[] {
     const found = new Set<string>();
     for (const char of template) {
@@ -110,8 +91,7 @@ function findSuspiciousTemplateCharacters(template: string): string[] {
             (codePoint >= 0xe000 && codePoint <= 0xf8ff) ||
             (codePoint >= 0xf0000 && codePoint <= 0xffffd) ||
             (codePoint >= 0x100000 && codePoint <= 0x10fffd);
-        const isRiskyNewerEmoji = RISKY_NEWER_EMOJI_CODEPOINTS.has(codePoint);
-        if (isReplacementChar || isPrivateUseArea || isRiskyNewerEmoji) {
+        if (isReplacementChar || isPrivateUseArea) {
             found.add(char);
         }
     }
