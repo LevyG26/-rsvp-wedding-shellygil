@@ -1,8 +1,13 @@
 import { useMemo, useState } from 'react';
-import { Loader2, MessageCircle, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, Loader2, MessageCircle, RefreshCw, Search, X } from 'lucide-react';
 import type { NormalizedBaseListEntry } from '../../utils/baseList';
 import type { BaseListSyncResult } from '../../services/baseList';
 import { toWhatsappDialableNumber } from '../../utils/phoneNumbers';
+
+export interface WhatsappRemindersMissingPhoneGuest {
+    name: string;
+    category: string;
+}
 
 export interface WhatsappRemindersLabels {
     title: string;
@@ -35,6 +40,8 @@ export interface WhatsappRemindersLabels {
     openAllButton: string;
     openAllHelp: string;
     openAllMobileNote: string;
+    missingPhoneHeading: string;
+    missingPhoneHint: string;
 }
 
 interface WhatsappRemindersProps {
@@ -43,6 +50,15 @@ interface WhatsappRemindersProps {
     isLoading: boolean;
     onSync: () => Promise<BaseListSyncResult>;
     labels: WhatsappRemindersLabels;
+    // Roster entries that still haven't answered but have no matching phone
+    // number in baseList at all - the reason this tab's counts never quite
+    // match the roster's own "still pending" total by side: baseList counts
+    // unique phone/name rows (a couple sharing one phone is one row here but
+    // two invited people in the roster's headcount), and on top of that,
+    // anyone missing from the phone sheet entirely is invisible to this whole
+    // tab. Surfacing them here is what actually explains the gap, instead of
+    // leaving Gil to wonder why the numbers disagree.
+    missingPhoneGuests: WhatsappRemindersMissingPhoneGuest[];
 }
 
 const TEMPLATE_STORAGE_KEY = 'wedding-admin-wa-reminder-template';
@@ -87,7 +103,8 @@ function isMobileUserAgent(): boolean {
 // short of full automation: WhatsApp bans accounts that message people at
 // scale in an "unauthorized" (bot-driven) way, and a real human clicking
 // through a list of pre-filled links is the compliant, safe version of that.
-export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync, labels }: WhatsappRemindersProps) {
+export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync, labels, missingPhoneGuests }: WhatsappRemindersProps) {
+    const [isMissingPhoneOpen, setIsMissingPhoneOpen] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncMessage, setSyncMessage] = useState('');
     const [syncIsError, setSyncIsError] = useState(false);
@@ -253,6 +270,33 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
                 <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
                     {labels.tip}
                 </div>
+
+                {missingPhoneGuests.length > 0 && (
+                    <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300">
+                        <button
+                            type="button"
+                            onClick={() => setIsMissingPhoneOpen((open) => !open)}
+                            className="flex w-full items-center justify-between gap-2 text-start font-medium"
+                        >
+                            <span className="flex items-center gap-2">
+                                <AlertTriangle size={15} className="shrink-0" />
+                                {labels.missingPhoneHeading.replace('{count}', String(missingPhoneGuests.length))}
+                            </span>
+                            <span className="shrink-0 text-xs underline underline-offset-2">{isMissingPhoneOpen ? '−' : '+'}</span>
+                        </button>
+                        <p className="mt-1 text-xs opacity-90">{labels.missingPhoneHint}</p>
+                        {isMissingPhoneOpen && (
+                            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs">
+                                {missingPhoneGuests.map((guest, index) => (
+                                    <li key={`${guest.name}-${index}`} className="flex items-center justify-between gap-2 rounded-lg bg-white/60 px-2 py-1 dark:bg-slate-900/40">
+                                        <span className="truncate">{guest.name}</span>
+                                        {guest.category && <span className="shrink-0 opacity-70">{guest.category}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                )}
 
                 <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">{labels.templateLabel}</label>

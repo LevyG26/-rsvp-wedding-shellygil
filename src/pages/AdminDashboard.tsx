@@ -854,6 +854,24 @@ export function AdminDashboard() {
         return result;
     }, [baseList, records, guestRoster]);
 
+    // Roster entries still marked "not yet responded" that don't match ANY
+    // baseList (phone-list) entry by name - these are exactly why this tab's
+    // "still pending" count never lines up with the roster's own pending
+    // total for a side: baseList counts unique phone/name rows (a couple
+    // sharing one phone is one row here, but two invited people in the
+    // roster's headcount), and anyone missing from the phone sheet entirely
+    // never shows up in this tab at all, in either direction. Surfacing them
+    // explicitly turns "why don't these numbers match" into an actionable
+    // list of exactly who still needs a phone number added.
+    const rosterEntriesMissingPhone = useMemo(
+        () => guestRoster
+            .filter((entry) => entry.knownResponse === null)
+            .filter((entry) => !baseList.some((baseEntry) => fullNamesMatch(`${entry.firstName} ${entry.lastName}`, baseEntry.name)))
+            .map((entry) => ({ name: `${entry.firstName} ${entry.lastName}`.trim(), category: entry.category }))
+            .sort((a, b) => a.name.localeCompare(b.name, locale)),
+        [guestRoster, baseList, locale],
+    );
+
     // Only confirmed ("yes") roster entries are seatable - per Gil's choice,
     // the seating tab deliberately doesn't show guests who haven't responded
     // yet or declined, to keep it focused on people who are actually coming.
@@ -2383,6 +2401,7 @@ export function AdminDashboard() {
                         respondedPhones={respondedPhones}
                         isLoading={isLoadingBaseList}
                         onSync={handleSyncBaseList}
+                        missingPhoneGuests={rosterEntriesMissingPhone}
                         labels={{
                             title: t.adminRemindersTitle,
                             subtitle: t.adminRemindersSubtitle,
@@ -2414,6 +2433,8 @@ export function AdminDashboard() {
                             openAllButton: t.adminRemindersOpenAllButton,
                             openAllHelp: t.adminRemindersOpenAllHelp,
                             openAllMobileNote: t.adminRemindersOpenAllMobileNote,
+                            missingPhoneHeading: t.adminRemindersMissingPhoneHeading,
+                            missingPhoneHint: t.adminRemindersMissingPhoneHint,
                         }}
                     />
                 </motion.section>
