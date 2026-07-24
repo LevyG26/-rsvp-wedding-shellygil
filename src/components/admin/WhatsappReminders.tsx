@@ -42,6 +42,8 @@ export interface WhatsappRemindersLabels {
     openAllMobileNote: string;
     missingPhoneHeading: string;
     missingPhoneHint: string;
+    suspiciousCharsWarning: string;
+    removeSuspiciousCharsButton: string;
 }
 
 interface WhatsappRemindersProps {
@@ -62,6 +64,35 @@ interface WhatsappRemindersProps {
 }
 
 const TEMPLATE_STORAGE_KEY = 'wedding-admin-wa-reminder-template';
+
+// Catches characters that will look fine right here (this browser has a font
+// that happens to cover them) but are likely to render as a broken "◆?"
+// placeholder once the message actually reaches WhatsApp on a guest's phone.
+// The two usual causes: (1) the Unicode REPLACEMENT CHARACTER itself, which
+// means some earlier copy/paste already silently destroyed the original
+// bytes before they ever reached this textarea, and (2) Private Use Area
+// codepoints - these have no universal meaning; they only display as an
+// emoji/symbol when the exact font that defined them is loaded (common when
+// text is copied out of a PDF or a custom icon font), and every other device
+// just shows a placeholder for them. Iterating with `for...of` (not
+// `.split('')`) is important so a real emoji's surrogate pair is checked as
+// one codepoint instead of two meaningless halves.
+function findSuspiciousTemplateCharacters(template: string): string[] {
+    const found = new Set<string>();
+    for (const char of template) {
+        const codePoint = char.codePointAt(0);
+        if (codePoint === undefined) continue;
+        const isReplacementChar = codePoint === 0xfffd;
+        const isPrivateUseArea =
+            (codePoint >= 0xe000 && codePoint <= 0xf8ff) ||
+            (codePoint >= 0xf0000 && codePoint <= 0xffffd) ||
+            (codePoint >= 0x100000 && codePoint <= 0x10fffd);
+        if (isReplacementChar || isPrivateUseArea) {
+            found.add(char);
+        }
+    }
+    return Array.from(found);
+}
 
 function formatPhoneForDisplay(digits: string): string {
     // Purely cosmetic grouping for a typical 10-digit Israeli mobile
@@ -116,6 +147,8 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
             return labels.templateDefault;
         }
     });
+    const suspiciousTemplateCharacters = useMemo(() => findSuspiciousTemplateCharacters(template), [template]);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [filterMode, setFilterMode] = useState<'all' | 'pending'>('pending');
     // Empty string means "every group" - lets Gil narrow the list down to one
@@ -147,6 +180,21 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
             // Not critical if this fails (e.g. private browsing) - the
             // template just won't be remembered next time.
         }
+    };
+
+    // One click fixes the ONE shared template, not each guest - every "Send"
+    // afterward (for every guest, forever) already pulls from this same
+    // corrected text, since {{name}}/{{link}} substitution is the only thing
+    // that changes per guest. There's nothing sensible to put back in place
+    // of a stripped character (a Private Use Area codepoint or the Unicode
+    // replacement character carries no real meaning to recover), so this
+    // just removes it - Gil can retype a real emoji there afterward if he
+    // wants one, but the message is safe to send either way.
+    const handleRemoveSuspiciousCharacters = () => {
+        const cleaned = Array.from(template)
+            .filter((char) => !suspiciousTemplateCharacters.includes(char))
+            .join('');
+        handleTemplateChange(cleaned);
     };
 
     const toggleSelected = (phone: string) => {
@@ -308,6 +356,23 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
                         className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-700"
                     />
                     <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">{labels.templateHelp}</p>
+                    {suspiciousTemplateCharacters.length > 0 && (
+                        <div className="mt-2 flex items-start gap-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300">
+                            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                            <div className="flex-1">
+                                <p>
+                                    {labels.suspiciousCharsWarning} <span dir="ltr" className="font-mono">{suspiciousTemplateCharacters.join(' ')}</span>
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={handleRemoveSuspiciousCharacters}
+                                    className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-700 dark:bg-rose-600 dark:hover:bg-rose-500"
+                                >
+                                    {labels.removeSuspiciousCharsButton}
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div>

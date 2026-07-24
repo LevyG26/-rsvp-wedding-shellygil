@@ -2435,6 +2435,8 @@ export function AdminDashboard() {
                             openAllMobileNote: t.adminRemindersOpenAllMobileNote,
                             missingPhoneHeading: t.adminRemindersMissingPhoneHeading,
                             missingPhoneHint: t.adminRemindersMissingPhoneHint,
+                            suspiciousCharsWarning: t.adminRemindersSuspiciousCharsWarning,
+                            removeSuspiciousCharsButton: t.adminRemindersRemoveSuspiciousCharsButton,
                         }}
                     />
                 </motion.section>
