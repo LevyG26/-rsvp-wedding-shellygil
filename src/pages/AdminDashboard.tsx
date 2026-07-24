@@ -821,24 +821,38 @@ export function AdminDashboard() {
     // submit from a different number, or use it in a different format - so
     // matching by phone alone silently misses real responses (that's exactly
     // what happened with a guest who had confirmed but still showed as "לא
-    // ענה"). To fix that, a baseList guest also counts as responded when
-    // their name fuzzy-matches an RSVP's fullName, using the exact same
-    // tolerant matching the guest-roster auto-linker relies on - so this list
-    // and the main guest list can never disagree about who's answered.
+    // ענה"). Matching by the RSVP's own typed name helps, but still misses
+    // anyone whose response needed a MANUAL roster-match override in the
+    // responses table (that override exists precisely because the automatic
+    // name match failed or was ambiguous - so re-deriving from the raw RSVP
+    // name here would fail too). The guest roster's own knownResponse is the
+    // one place that already reflects every resolution path (automatic
+    // match, manual override, or a status Gil set by hand) - so it's checked
+    // here too, and is what actually closed the gap for guests like "אבי
+    // וזיוה חודרה" who needed a manual match. All three signals only ever
+    // ADD matches, never remove one, so this can only reduce false "pending"
+    // guests - it can never wrongly mark someone as responded who isn't.
     const respondedPhones = useMemo(() => {
         const respondedPhoneDigits = new Set(records.map((record) => record.phone.replace(/\D/g, '')).filter(Boolean));
         const respondedFullNames = records.map((record) => record.fullName.trim()).filter(Boolean);
+        const resolvedRosterNames = guestRoster
+            .filter((entry) => entry.knownResponse !== null)
+            .map((entry) => `${entry.firstName} ${entry.lastName}`.trim())
+            .filter(Boolean);
 
         const result = new Set<string>();
         baseList.forEach((entry) => {
             const matchesByPhone = respondedPhoneDigits.has(entry.phone);
-            const matchesByName = !matchesByPhone && respondedFullNames.some((fullName) => fullNamesMatch(fullName, entry.name));
+            const matchesByName = !matchesByPhone && (
+                respondedFullNames.some((fullName) => fullNamesMatch(fullName, entry.name)) ||
+                resolvedRosterNames.some((rosterName) => fullNamesMatch(rosterName, entry.name))
+            );
             if (matchesByPhone || matchesByName) {
                 result.add(entry.phone);
             }
         });
         return result;
-    }, [baseList, records]);
+    }, [baseList, records, guestRoster]);
 
     // Only confirmed ("yes") roster entries are seatable - per Gil's choice,
     // the seating tab deliberately doesn't show guests who haven't responded
