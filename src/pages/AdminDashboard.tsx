@@ -48,7 +48,7 @@ import {
     type GuestRosterEntry,
     type GuestRosterEntryInput,
 } from '../services/guestRoster';
-import { findRosterMatches, linkGuestRosterWithRsvps, resolveRosterMatches, type RosterLinkResult } from '../services/rsvpRosterLink';
+import { findRosterMatches, fullNamesMatch, linkGuestRosterWithRsvps, resolveRosterMatches, type RosterLinkResult } from '../services/rsvpRosterLink';
 import { SeatingSection } from '../components/admin/SeatingSection';
 import {
     assignGroupToTable,
@@ -71,6 +71,15 @@ import {
     type SeatingTableLayout,
 } from '../services/seating';
 import { RONIT_FARM_DINNER_TABLES } from '../admin/venueSeatingLayout';
+import {
+    createVenueObject,
+    deleteVenueObject,
+    subscribeToVenueObjects,
+    updateVenueObject,
+    updateVenueObjectLayout,
+    type VenueObject,
+    type VenueObjectType,
+} from '../services/venueObjects';
 
 interface RSVPRecord {
     id: string;
@@ -454,6 +463,7 @@ export function AdminDashboard() {
     const [seatingTables, setSeatingTables] = useState<SeatingTable[]>([]);
     const [seatingGroups, setSeatingGroups] = useState<SeatingGroup[]>([]);
     const [seatingAssignments, setSeatingAssignments] = useState<SeatingAssignment[]>([]);
+    const [venueObjects, setVenueObjects] = useState<VenueObject[]>([]);
     const [isLoadingSeating, setIsLoadingSeating] = useState(true);
     const { theme, toggleTheme } = useAdminTheme();
 
@@ -573,8 +583,9 @@ export function AdminDashboard() {
         let tablesLoaded = false;
         let groupsLoaded = false;
         let assignmentsLoaded = false;
+        let venueObjectsLoaded = false;
         const markSeatingLoadedIfReady = () => {
-            if (tablesLoaded && groupsLoaded && assignmentsLoaded) {
+            if (tablesLoaded && groupsLoaded && assignmentsLoaded && venueObjectsLoaded) {
                 setIsLoadingSeating(false);
             }
         };
@@ -611,6 +622,17 @@ export function AdminDashboard() {
                 markSeatingLoadedIfReady();
             },
         );
+        const unsubscribeVenueObjects = subscribeToVenueObjects(
+            (loaded) => {
+                setVenueObjects(loaded);
+                venueObjectsLoaded = true;
+                markSeatingLoadedIfReady();
+            },
+            () => {
+                venueObjectsLoaded = true;
+                markSeatingLoadedIfReady();
+            },
+        );
 
         return () => {
             unsubscribeRsvps();
@@ -618,6 +640,7 @@ export function AdminDashboard() {
             unsubscribeSeatingTables();
             unsubscribeSeatingGroups();
             unsubscribeSeatingAssignments();
+            unsubscribeVenueObjects();
         };
     }, [isAuthChecked, isSignedIn, t.adminLoadError]);
 
@@ -790,17 +813,32 @@ export function AdminDashboard() {
         [locale, records],
     );
 
-    // Phone numbers (digits-only) that have already submitted an RSVP -
-    // matched directly by phone rather than by name, since that's exact and
-    // free of any fuzzy-matching edge cases. Used by the WhatsApp reminders
-    // tab to tag/hide guests who don't need a reminder any more. Only
-    // guests who came in through their own personalized link (or typed a
-    // phone in the form) are recoverable this way - the phone field is
-    // optional, so this is a best-effort hint, not a guarantee.
-    const respondedPhones = useMemo(
-        () => new Set(records.map((record) => record.phone.replace(/\D/g, '')).filter(Boolean)),
-        [records],
-    );
+    // baseList phone numbers (digits-only) whose guest has already submitted
+    // an RSVP - the WhatsApp reminders tab uses this to hide/tag guests who
+    // don't need a reminder any more, so it has to be as accurate as the main
+    // guest list, not just "best effort". A guest's RSVP phone rarely matches
+    // their baseList phone exactly: the field is optional, guests often
+    // submit from a different number, or use it in a different format - so
+    // matching by phone alone silently misses real responses (that's exactly
+    // what happened with a guest who had confirmed but still showed as "לא
+    // ענה"). To fix that, a baseList guest also counts as responded when
+    // their name fuzzy-matches an RSVP's fullName, using the exact same
+    // tolerant matching the guest-roster auto-linker relies on - so this list
+    // and the main guest list can never disagree about who's answered.
+    const respondedPhones = useMemo(() => {
+        const respondedPhoneDigits = new Set(records.map((record) => record.phone.replace(/\D/g, '')).filter(Boolean));
+        const respondedFullNames = records.map((record) => record.fullName.trim()).filter(Boolean);
+
+        const result = new Set<string>();
+        baseList.forEach((entry) => {
+            const matchesByPhone = respondedPhoneDigits.has(entry.phone);
+            const matchesByName = !matchesByPhone && respondedFullNames.some((fullName) => fullNamesMatch(fullName, entry.name));
+            if (matchesByPhone || matchesByName) {
+                result.add(entry.phone);
+            }
+        });
+        return result;
+    }, [baseList, records]);
 
     // Only confirmed ("yes") roster entries are seatable - per Gil's choice,
     // the seating tab deliberately doesn't show guests who haven't responded
@@ -1030,6 +1068,22 @@ export function AdminDashboard() {
     // whatever tables already exist.
     const handleGenerateVenueTables = async (): Promise<void> => {
         await createSeatingTablesBulk(RONIT_FARM_DINNER_TABLES);
+    };
+
+    const handleCreateVenueObject = async (type: VenueObjectType, label: string, layout: SeatingTableLayout): Promise<void> => {
+        await createVenueObject(type, label, layout);
+    };
+
+    const handleUpdateVenueObject = async (id: string, type: VenueObjectType, label: string, layout: SeatingTableLayout): Promise<void> => {
+        await updateVenueObject(id, type, label, layout);
+    };
+
+    const handleUpdateVenueObjectLayout = async (id: string, layout: SeatingTableLayout): Promise<void> => {
+        await updateVenueObjectLayout(id, layout);
+    };
+
+    const handleDeleteVenueObject = async (id: string): Promise<void> => {
+        await deleteVenueObject(id);
     };
 
     // Wipes every roster entry for one side and immediately re-pulls it from
@@ -2360,6 +2414,7 @@ export function AdminDashboard() {
                     <SeatingSection
                         confirmedEntries={confirmedRosterEntries}
                         tables={seatingTables}
+                        venueObjects={venueObjects}
                         groups={seatingGroups}
                         assignments={seatingAssignments}
                         isLoading={isLoadingSeating}
@@ -2368,6 +2423,10 @@ export function AdminDashboard() {
                         onUpdateTable={handleUpdateSeatingTable}
                         onUpdateTableLayout={handleUpdateSeatingTableLayout}
                         onDeleteTable={handleDeleteSeatingTable}
+                        onCreateObject={handleCreateVenueObject}
+                        onUpdateObject={handleUpdateVenueObject}
+                        onUpdateObjectLayout={handleUpdateVenueObjectLayout}
+                        onDeleteObject={handleDeleteVenueObject}
                         onCreateGroup={handleCreateSeatingGroup}
                         onUpdateGroup={handleUpdateSeatingGroup}
                         onDeleteGroup={handleDeleteSeatingGroup}
@@ -2455,6 +2514,18 @@ export function AdminDashboard() {
                             deleteSelectedButton: t.adminSeatingDeleteSelectedButton,
                             deleteSelectedTablesConfirm: t.adminSeatingDeleteSelectedTablesConfirm,
                             clearSelectionButton: t.adminSeatingClearSelectionButton,
+                            objectsHeading: t.adminSeatingObjectsHeading,
+                            addObjectButton: t.adminSeatingAddObjectButton,
+                            objectLabelPlaceholder: t.adminSeatingObjectLabelPlaceholder,
+                            objectTypeStage: t.adminSeatingObjectTypeStage,
+                            objectTypeBar: t.adminSeatingObjectTypeBar,
+                            objectTypeEntrance: t.adminSeatingObjectTypeEntrance,
+                            objectTypeDanceFloor: t.adminSeatingObjectTypeDanceFloor,
+                            objectTypeCustom: t.adminSeatingObjectTypeCustom,
+                            saveObject: t.adminSeatingSaveObject,
+                            deleteObjectConfirm: t.adminSeatingDeleteObjectConfirm,
+                            deleteSelectedObjectsConfirm: t.adminSeatingDeleteSelectedObjectsConfirm,
+                            duplicateSuffix: t.adminSeatingDuplicateSuffix,
                         }}
                     />
                 </motion.section>

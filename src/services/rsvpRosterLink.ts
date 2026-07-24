@@ -198,6 +198,20 @@ export function findRosterMatches(rsvpFullName: string, entries: GuestRosterEntr
   return entries.filter((entry) => namesMatch(rsvpTokens, tokenize(`${entry.firstName} ${entry.lastName}`)));
 }
 
+// True if two free-text full names refer to the same person, using the same
+// tolerant, order-independent token matching as the roster auto-linker above
+// (handles hyphen/space variants, vowel-letter spelling differences, etc.).
+// Used to check whether someone has actually submitted an RSVP even when a
+// phone-number match alone would miss it - e.g. the baseList/WhatsApp
+// reminders tab tracks guests by phone, but a guest can submit the RSVP form
+// with a different phone than the one on file (or none at all, since it's
+// optional), while still typing their real name. Relying on phone alone in
+// that case would keep nagging someone who already answered, which is worse
+// than a rare false match here.
+export function fullNamesMatch(nameA: string, nameB: string): boolean {
+  return namesMatch(tokenize(nameA), tokenize(nameB));
+}
+
 export interface ResolvedRosterMatches {
   matches: GuestRosterEntry[];
   // True when `matches` came from an admin's manual pick(s) rather than the

@@ -273,5 +273,29 @@ service cloud.firestore {
       allow update: if isAdmin() && isValidSeatingAssignment(incoming());
       allow delete: if isAdmin();
     }
+
+    // Non-seating decor on the floor-plan canvas (stage, bar, entrance, dance
+    // floor, or a free-text custom label) - lets Gil actually lay out the
+    // hall, not just the dinner tables. Same free-form position/size bounds
+    // as seatingTables; no seatCount since these aren't seatable.
+    function isValidVenueObject(data) {
+      return data.keys().hasAll(['type', 'label', 'x', 'y', 'width', 'height', 'shape', 'updatedAt']) &&
+             data.keys().hasOnly(['type', 'label', 'x', 'y', 'width', 'height', 'shape', 'updatedAt']) &&
+             data.type in ['stage', 'bar', 'entrance', 'danceFloor', 'custom'] &&
+             data.label is string && data.label.size() > 0 && data.label.size() <= 60 &&
+             data.x is number && data.x >= -2000 && data.x <= 5000 &&
+             data.y is number && data.y >= -2000 && data.y <= 5000 &&
+             data.width is number && data.width >= 20 && data.width <= 1000 &&
+             data.height is number && data.height >= 20 && data.height <= 1000 &&
+             (data.shape == 'round' || data.shape == 'rect') &&
+             data.updatedAt == request.time;
+    }
+
+    match /venueObjects/{objectId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidId(objectId) && isValidVenueObject(incoming());
+      allow update: if isAdmin() && isValidVenueObject(incoming());
+      allow delete: if isAdmin();
+    }
   }
 }

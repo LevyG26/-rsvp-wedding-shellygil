@@ -1,6 +1,7 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
-import { Maximize2, Minus, Plus } from 'lucide-react';
-import type { SeatingTable, SeatingTableLayout } from '../../services/seating';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { Disc3, DoorOpen, Maximize2, Minus, Music, Plus, Tag, Wine } from 'lucide-react';
+import type { SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
+import type { VenueObject, VenueObjectType } from '../../services/venueObjects';
 
 const CANVAS_WIDTH = 1400;
 const CANVAS_HEIGHT = 900;
@@ -10,12 +11,19 @@ const MIN_SCALE = 0.35;
 const MAX_SCALE = 1.5;
 const SCALE_STEP = 0.15;
 // Anything less than this many pixels of total pointer travel counts as a
-// "click" (select the table) rather than a drag - otherwise every attempt to
-// just select a table would nudge it by a pixel or two first.
+// "click" (select the item) rather than a drag - otherwise every attempt to
+// just select something would nudge it by a pixel or two first.
 const CLICK_THRESHOLD = 4;
+// How far (in canvas units) a Ctrl+V duplicate is offset from the original,
+// so the copy doesn't land exactly on top of it and look like nothing
+// happened.
+const DUPLICATE_OFFSET = 30;
+
+type ItemKind = 'table' | 'object';
 
 interface DragState {
-  tableId: string;
+  kind: ItemKind;
+  itemId: string;
   mode: 'move' | 'resize';
   pointerId: number;
   startClientX: number;
@@ -25,6 +33,12 @@ interface DragState {
   originWidth: number;
   originHeight: number;
   moved: boolean;
+}
+
+interface DraftLayout {
+  kind: ItemKind;
+  itemId: string;
+  layout: SeatingTableLayout;
 }
 
 export interface SeatingFloorPlanHandle {
@@ -37,21 +51,29 @@ export interface SeatingFloorPlanHandle {
 
 interface SeatingFloorPlanProps {
   tables: SeatingTable[];
+  venueObjects: VenueObject[];
   seatsUsedByTable: Map<string, number>;
   selectedTableId: string | null;
   onSelectTable: (id: string | null) => void;
+  selectedObjectId: string | null;
+  onSelectObject: (id: string | null) => void;
   onLayoutChange: (id: string, layout: SeatingTableLayout) => void;
+  onObjectLayoutChange: (id: string, layout: SeatingTableLayout) => void;
+  onDuplicateTable: (table: SeatingTable, layout: SeatingTableLayout) => void;
+  onDuplicateObject: (object: VenueObject, layout: SeatingTableLayout) => void;
   fullLabel: string;
   zoomOutLabel: string;
   zoomInLabel: string;
   zoomResetLabel: string;
   dir: 'rtl' | 'ltr';
-  // Bulk-delete selection - separate from `selectedTableId` (which is for
-  // viewing/editing one table's details below the canvas). Checking a
-  // table's corner box marks it for deletion without disturbing whichever
-  // single table is currently open in the detail panel.
+  // Bulk-delete selection - separate from `selectedTableId`/`selectedObjectId`
+  // (which are for viewing/editing one item's details below the canvas).
+  // Checking an item's corner box marks it for deletion without disturbing
+  // whichever single item is currently open in the detail panel.
   deleteSelection: Set<string>;
   onToggleDeleteSelection: (id: string) => void;
+  deleteObjectSelection: Set<string>;
+  onToggleDeleteObjectSelection: (id: string) => void;
   deleteCheckboxLabel: string;
 }
 
@@ -61,23 +83,67 @@ function waitForNextPaint(): Promise<void> {
   });
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+const OBJECT_ICONS: Record<VenueObjectType, typeof Music> = {
+  stage: Music,
+  bar: Wine,
+  entrance: DoorOpen,
+  danceFloor: Disc3,
+  custom: Tag,
+};
+
+const OBJECT_COLOR_CLASSES: Record<VenueObjectType, string> = {
+  stage: 'border-violet-400 bg-violet-50/90 text-violet-900 dark:border-violet-500 dark:bg-violet-950/60 dark:text-violet-100',
+  bar: 'border-amber-400 bg-amber-50/90 text-amber-900 dark:border-amber-500 dark:bg-amber-950/60 dark:text-amber-100',
+  entrance: 'border-cyan-400 bg-cyan-50/90 text-cyan-900 dark:border-cyan-500 dark:bg-cyan-950/60 dark:text-cyan-100',
+  danceFloor: 'border-pink-400 bg-pink-50/90 text-pink-900 dark:border-pink-500 dark:bg-pink-950/60 dark:text-pink-100',
+  custom: 'border-gray-400 bg-gray-50/90 text-gray-900 dark:border-slate-400 dark:bg-slate-800/90 dark:text-slate-100',
+};
+
 export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorPlanProps>(function SeatingFloorPlan(
-  { tables, seatsUsedByTable, selectedTableId, onSelectTable, onLayoutChange, fullLabel, zoomOutLabel, zoomInLabel, zoomResetLabel, dir, deleteSelection, onToggleDeleteSelection, deleteCheckboxLabel },
+  {
+    tables,
+    venueObjects,
+    seatsUsedByTable,
+    selectedTableId,
+    onSelectTable,
+    selectedObjectId,
+    onSelectObject,
+    onLayoutChange,
+    onObjectLayoutChange,
+    onDuplicateTable,
+    onDuplicateObject,
+    fullLabel,
+    zoomOutLabel,
+    zoomInLabel,
+    zoomResetLabel,
+    dir,
+    deleteSelection,
+    onToggleDeleteSelection,
+    deleteObjectSelection,
+    onToggleDeleteObjectSelection,
+    deleteCheckboxLabel,
+  },
   ref,
 ) {
   const [dragState, setDragState] = useState<DragState | null>(null);
-  // Only holds an override for the table currently being dragged/resized -
-  // every other table just renders straight from the `tables` prop (which
-  // comes from Firestore).
-  const [draftLayout, setDraftLayout] = useState<{ tableId: string; layout: SeatingTableLayout } | null>(null);
+  // Only holds an override for the item currently being dragged/resized -
+  // every other item just renders straight from its own prop (which comes
+  // from Firestore).
+  const [draftLayout, setDraftLayout] = useState<DraftLayout | null>(null);
   const [scale, setScale] = useState(1);
-  // While true, table-name labels render without truncation/ellipsis.
-  // html2canvas mis-renders Hebrew text combined with CSS text-overflow:
-  // ellipsis (it garbles/reorders the characters), so we briefly switch to
-  // full, wrapped text just for the capture and switch back right after.
+  // While true, labels render without truncation/ellipsis. html2canvas
+  // mis-renders Hebrew text combined with CSS text-overflow: ellipsis (it
+  // garbles/reorders the characters), so we briefly switch to full, wrapped
+  // text just for the capture and switch back right after.
   const [isCapturing, setIsCapturing] = useState(false);
   const dragStateRef = useRef<DragState | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const clipboardRef = useRef<{ kind: ItemKind; item: SeatingTable | VenueObject } | null>(null);
 
   useImperativeHandle(ref, () => ({
     exportImage: async (fileName: string) => {
@@ -109,28 +175,44 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     },
   }), [scale]);
 
-  const layoutFor = (table: SeatingTable): SeatingTableLayout => {
-    if (draftLayout && draftLayout.tableId === table.id) return draftLayout.layout;
+  const layoutForTable = (table: SeatingTable): SeatingTableLayout => {
+    if (draftLayout && draftLayout.kind === 'table' && draftLayout.itemId === table.id) return draftLayout.layout;
     return { x: table.x, y: table.y, width: table.width, height: table.height, shape: table.shape };
   };
 
-  const startDrag = (event: React.PointerEvent, table: SeatingTable, mode: 'move' | 'resize') => {
+  const layoutForObject = (object: VenueObject): SeatingTableLayout => {
+    if (draftLayout && draftLayout.kind === 'object' && draftLayout.itemId === object.id) return draftLayout.layout;
+    return { x: object.x, y: object.y, width: object.width, height: object.height, shape: object.shape };
+  };
+
+  const startDrag = (
+    event: React.PointerEvent,
+    kind: ItemKind,
+    item: { id: string; x: number; y: number; width: number; height: number },
+    mode: 'move' | 'resize',
+  ) => {
     event.stopPropagation();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     const next: DragState = {
-      tableId: table.id,
+      kind,
+      itemId: item.id,
       mode,
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
-      originX: table.x,
-      originY: table.y,
-      originWidth: table.width,
-      originHeight: table.height,
+      originX: item.x,
+      originY: item.y,
+      originWidth: item.width,
+      originHeight: item.height,
       moved: false,
     };
     dragStateRef.current = next;
     setDragState(next);
+  };
+
+  const shapeFor = (kind: ItemKind, itemId: string): SeatingTableShape => {
+    if (kind === 'table') return tables.find((t) => t.id === itemId)?.shape ?? 'round';
+    return venueObjects.find((o) => o.id === itemId)?.shape ?? 'rect';
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
@@ -139,7 +221,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
 
     // Screen-space pointer movement has to be divided by the current zoom
     // level to get the equivalent movement in canvas coordinates - otherwise
-    // tables would drift faster/slower than the pointer at any zoom other
+    // items would drift faster/slower than the pointer at any zoom other
     // than 100%.
     const deltaX = (event.clientX - current.startClientX) / scale;
     const deltaY = (event.clientY - current.startClientY) / scale;
@@ -147,14 +229,16 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
       current.moved = true;
     }
 
+    const shape = shapeFor(current.kind, current.itemId);
+
     if (current.mode === 'move') {
-      const x = Math.max(0, Math.min(CANVAS_WIDTH - current.originWidth, current.originX + deltaX));
-      const y = Math.max(0, Math.min(CANVAS_HEIGHT - current.originHeight, current.originY + deltaY));
-      setDraftLayout({ tableId: current.tableId, layout: { x, y, width: current.originWidth, height: current.originHeight, shape: tables.find((t) => t.id === current.tableId)?.shape ?? 'round' } });
+      const x = clamp(current.originX + deltaX, 0, CANVAS_WIDTH - current.originWidth);
+      const y = clamp(current.originY + deltaY, 0, CANVAS_HEIGHT - current.originHeight);
+      setDraftLayout({ kind: current.kind, itemId: current.itemId, layout: { x, y, width: current.originWidth, height: current.originHeight, shape } });
     } else {
-      const width = Math.max(MIN_SIZE, Math.min(MAX_SIZE, current.originWidth + deltaX));
-      const height = Math.max(MIN_SIZE, Math.min(MAX_SIZE, current.originHeight + deltaY));
-      setDraftLayout({ tableId: current.tableId, layout: { x: current.originX, y: current.originY, width, height, shape: tables.find((t) => t.id === current.tableId)?.shape ?? 'round' } });
+      const width = clamp(current.originWidth + deltaX, MIN_SIZE, MAX_SIZE);
+      const height = clamp(current.originHeight + deltaY, MIN_SIZE, MAX_SIZE);
+      setDraftLayout({ kind: current.kind, itemId: current.itemId, layout: { x: current.originX, y: current.originY, width, height, shape } });
     }
   };
 
@@ -163,15 +247,23 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     if (!current || event.pointerId !== current.pointerId) return;
 
     if (!current.moved) {
-      // A plain click/tap - select this table instead of moving it.
-      onSelectTable(current.tableId);
+      // A plain click/tap - select this item instead of moving it. Table and
+      // object selection are mutually exclusive, since only one detail panel
+      // can be open at a time.
+      if (current.kind === 'table') {
+        onSelectTable(current.itemId);
+        onSelectObject(null);
+      } else {
+        onSelectObject(current.itemId);
+        onSelectTable(null);
+      }
       setDraftLayout(null);
     } else {
-      const table = tables.find((t) => t.id === current.tableId);
-      const finalLayout = draftLayout?.tableId === current.tableId
+      const finalLayout = draftLayout && draftLayout.kind === current.kind && draftLayout.itemId === current.itemId
         ? draftLayout.layout
-        : { x: current.originX, y: current.originY, width: current.originWidth, height: current.originHeight, shape: table?.shape ?? 'round' };
-      onLayoutChange(current.tableId, finalLayout);
+        : { x: current.originX, y: current.originY, width: current.originWidth, height: current.originHeight, shape: shapeFor(current.kind, current.itemId) };
+      if (current.kind === 'table') onLayoutChange(current.itemId, finalLayout);
+      else onObjectLayoutChange(current.itemId, finalLayout);
       // Keep showing the drafted position until the next Firestore snapshot
       // catches up, so the shape doesn't jump back and then forward again.
     }
@@ -180,9 +272,66 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     setDragState(null);
   };
 
-  const zoomOut = () => setScale((prev) => Math.max(MIN_SCALE, Math.round((prev - SCALE_STEP) * 100) / 100));
-  const zoomIn = () => setScale((prev) => Math.min(MAX_SCALE, Math.round((prev + SCALE_STEP) * 100) / 100));
+  const zoomOut = () => setScale((prev) => clamp(Math.round((prev - SCALE_STEP) * 100) / 100, MIN_SCALE, MAX_SCALE));
+  const zoomIn = () => setScale((prev) => clamp(Math.round((prev + SCALE_STEP) * 100) / 100, MIN_SCALE, MAX_SCALE));
   const zoomReset = () => setScale(1);
+
+  // Ctrl+scroll (or a trackpad pinch, which browsers report as a wheel event
+  // with ctrlKey set) zooms the canvas - an addition to the +/- buttons so
+  // Gil doesn't have to move his hand off the mouse while exploring a large
+  // plan. Needs a real (non-React) event listener with { passive: false } so
+  // preventDefault can actually stop the page itself from zooming/scrolling.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      setScale((prev) => clamp(Math.round((prev + (event.deltaY < 0 ? SCALE_STEP : -SCALE_STEP)) * 100) / 100, MIN_SCALE, MAX_SCALE));
+    };
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  // Ctrl+C / Ctrl+V duplicates whichever table or object is currently
+  // selected - an in-app "clipboard" (not the real OS clipboard, which
+  // wouldn't mean anything for a canvas shape) so Gil can quickly stamp out
+  // copies instead of re-creating them from the add-table/add-object forms
+  // each time. Ignored while typing in any input/textarea, and ignored
+  // entirely when nothing on the canvas is selected, so normal text
+  // copy/paste elsewhere on the page is never affected.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+
+      const key = event.key.toLowerCase();
+      if (key === 'c') {
+        if (selectedTableId) {
+          const table = tables.find((t) => t.id === selectedTableId);
+          if (table) clipboardRef.current = { kind: 'table', item: table };
+        } else if (selectedObjectId) {
+          const object = venueObjects.find((o) => o.id === selectedObjectId);
+          if (object) clipboardRef.current = { kind: 'object', item: object };
+        }
+      } else if (key === 'v' && clipboardRef.current) {
+        event.preventDefault();
+        const { kind, item } = clipboardRef.current;
+        const layout = {
+          x: clamp(item.x + DUPLICATE_OFFSET, 0, CANVAS_WIDTH - item.width),
+          y: clamp(item.y + DUPLICATE_OFFSET, 0, CANVAS_HEIGHT - item.height),
+          width: item.width,
+          height: item.height,
+          shape: item.shape,
+        };
+        if (kind === 'table') onDuplicateTable(item as SeatingTable, layout);
+        else onDuplicateObject(item as VenueObject, layout);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTableId, selectedObjectId, tables, venueObjects, onDuplicateTable, onDuplicateObject]);
 
   return (
     <div>
@@ -201,6 +350,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
         </button>
       </div>
       <div
+        ref={scrollContainerRef}
         className="overflow-auto rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/40 dark:border-slate-700 dark:bg-slate-800/40"
         style={{ height: 480, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
       >
@@ -215,19 +365,22 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
               transform: `scale(${scale})`,
               transformOrigin: 'top left',
             }}
-            onPointerDown={() => onSelectTable(null)}
+            onPointerDown={() => {
+              onSelectTable(null);
+              onSelectObject(null);
+            }}
           >
             {tables.map((table) => {
-              const layout = layoutFor(table);
+              const layout = layoutForTable(table);
               const used = seatsUsedByTable.get(table.id) ?? 0;
               const isFull = used >= table.seatCount;
               const isSelected = selectedTableId === table.id;
-              const isDragging = dragState?.tableId === table.id;
+              const isDragging = dragState?.kind === 'table' && dragState.itemId === table.id;
 
               return (
                 <div
                   key={table.id}
-                  onPointerDown={(event) => startDrag(event, table, 'move')}
+                  onPointerDown={(event) => startDrag(event, 'table', table, 'move')}
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
@@ -256,7 +409,51 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                     {isFull ? ` · ${fullLabel}` : ''}
                   </span>
                   <div
-                    onPointerDown={(event) => startDrag(event, table, 'resize')}
+                    onPointerDown={(event) => startDrag(event, 'table', table, 'resize')}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onPointerCancel={handlePointerUp}
+                    className="absolute bottom-0 right-0 h-6 w-6 cursor-nwse-resize rounded-tl-md bg-gray-400/70 hover:bg-gray-500 dark:bg-slate-500/70 dark:hover:bg-slate-400"
+                    style={{ touchAction: 'none' }}
+                  />
+                </div>
+              );
+            })}
+
+            {venueObjects.map((object) => {
+              const layout = layoutForObject(object);
+              const isSelected = selectedObjectId === object.id;
+              const isDragging = dragState?.kind === 'object' && dragState.itemId === object.id;
+              const Icon = OBJECT_ICONS[object.type];
+
+              return (
+                <div
+                  key={object.id}
+                  onPointerDown={(event) => startDrag(event, 'object', object, 'move')}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  className={`absolute flex select-none flex-col items-center justify-center gap-0.5 border-2 border-dashed p-1 text-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${object.shape === 'round' ? 'rounded-full' : 'rounded-lg'} ${deleteObjectSelection.has(object.id) ? 'outline outline-2 outline-offset-2 outline-rose-500' : ''} ${isSelected ? 'ring-2 ring-gray-900/30 dark:ring-slate-100/30' : ''} ${OBJECT_COLOR_CLASSES[object.type]}`}
+                  style={{ left: layout.x, top: layout.y, width: layout.width, height: layout.height, touchAction: 'none' }}
+                >
+                  {!isCapturing && (
+                    <input
+                      type="checkbox"
+                      checked={deleteObjectSelection.has(object.id)}
+                      onChange={() => onToggleDeleteObjectSelection(object.id)}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      title={deleteCheckboxLabel}
+                      aria-label={deleteCheckboxLabel}
+                      className="absolute left-1 top-1 h-4 w-4 cursor-pointer accent-rose-600"
+                      style={{ touchAction: 'none' }}
+                    />
+                  )}
+                  <Icon size={14} />
+                  <span className={`max-w-full px-1 text-[11px] font-semibold ${isCapturing ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'}`}>
+                    {object.label}
+                  </span>
+                  <div
+                    onPointerDown={(event) => startDrag(event, 'object', object, 'resize')}
                     onPointerMove={handlePointerMove}
                     onPointerUp={handlePointerUp}
                     onPointerCancel={handlePointerUp}

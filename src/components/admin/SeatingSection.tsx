@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import type { GuestRosterEntry } from '../../services/guestRoster';
 import type { SeatingAssignment, SeatingGroup, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
+import type { VenueObject, VenueObjectType } from '../../services/venueObjects';
 import { exportSeatingChart, type SeatingExportGuest, type SeatingExportTable, type SeatingExportUnseatedGuest } from '../../admin/exportSeatingChart';
 import { SeatingFloorPlan, type SeatingFloorPlanHandle } from './SeatingFloorPlan';
 
@@ -103,6 +104,18 @@ export interface SeatingLabels {
   deleteSelectedButton: string;
   deleteSelectedTablesConfirm: string;
   clearSelectionButton: string;
+  objectsHeading: string;
+  addObjectButton: string;
+  objectLabelPlaceholder: string;
+  objectTypeStage: string;
+  objectTypeBar: string;
+  objectTypeEntrance: string;
+  objectTypeDanceFloor: string;
+  objectTypeCustom: string;
+  saveObject: string;
+  deleteObjectConfirm: string;
+  deleteSelectedObjectsConfirm: string;
+  duplicateSuffix: string;
 }
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status';
@@ -135,6 +148,7 @@ function GuestListSortableHeader({ label, sortKey, activeSort, onSort }: GuestLi
 interface SeatingSectionProps {
   confirmedEntries: GuestRosterEntry[];
   tables: SeatingTable[];
+  venueObjects: VenueObject[];
   groups: SeatingGroup[];
   assignments: SeatingAssignment[];
   isLoading: boolean;
@@ -144,6 +158,10 @@ interface SeatingSectionProps {
   onUpdateTable: (id: string, name: string, seatCount: number, layout: SeatingTableLayout) => Promise<void>;
   onUpdateTableLayout: (id: string, layout: SeatingTableLayout) => Promise<void>;
   onDeleteTable: (id: string) => Promise<void>;
+  onCreateObject: (type: VenueObjectType, label: string, layout: SeatingTableLayout) => Promise<void>;
+  onUpdateObject: (id: string, type: VenueObjectType, label: string, layout: SeatingTableLayout) => Promise<void>;
+  onUpdateObjectLayout: (id: string, layout: SeatingTableLayout) => Promise<void>;
+  onDeleteObject: (id: string) => Promise<void>;
   onCreateGroup: (name: string, memberEntryIds: string[]) => Promise<void>;
   onUpdateGroup: (id: string, name: string, memberEntryIds: string[]) => Promise<void>;
   onDeleteGroup: (id: string) => Promise<void>;
@@ -172,9 +190,28 @@ function nextTablePosition(existingCount: number): { x: number; y: number } {
 }
 const emptyGroupForm = { name: '', memberEntryIds: new Set<string>() };
 
+const emptyObjectForm = { type: 'stage' as VenueObjectType, label: '' };
+
+// New objects cascade down a column on the right side of the canvas (x=1000)
+// - deliberately far from where nextTablePosition places tables, since
+// that's the area the venue-sketch import leaves open for the dance
+// floor/bar/entrance anyway.
+function nextObjectPosition(existingCount: number): { x: number; y: number } {
+  return { x: 1000, y: 40 + existingCount * 110 };
+}
+
+const OBJECT_DEFAULT_SIZE: Record<VenueObjectType, { width: number; height: number; shape: SeatingTableShape }> = {
+  stage: { width: 200, height: 110, shape: 'rect' },
+  bar: { width: 160, height: 90, shape: 'rect' },
+  entrance: { width: 120, height: 70, shape: 'rect' },
+  danceFloor: { width: 220, height: 220, shape: 'round' },
+  custom: { width: 140, height: 90, shape: 'rect' },
+};
+
 export function SeatingSection({
   confirmedEntries,
   tables,
+  venueObjects,
   groups,
   assignments,
   isLoading,
@@ -184,6 +221,10 @@ export function SeatingSection({
   onUpdateTable,
   onUpdateTableLayout,
   onDeleteTable,
+  onCreateObject,
+  onUpdateObject,
+  onUpdateObjectLayout,
+  onDeleteObject,
   onCreateGroup,
   onUpdateGroup,
   onDeleteGroup,
@@ -207,6 +248,17 @@ export function SeatingSection({
   const [tableDeleteSelection, setTableDeleteSelection] = useState<Set<string>>(new Set());
   const [isBulkDeletingTables, setIsBulkDeletingTables] = useState(false);
   const [bulkDeleteTablesError, setBulkDeleteTablesError] = useState('');
+
+  const [isObjectFormOpen, setIsObjectFormOpen] = useState(false);
+  const [objectForm, setObjectForm] = useState(emptyObjectForm);
+  const [isSavingObject, setIsSavingObject] = useState(false);
+  const [objectFormError, setObjectFormError] = useState('');
+  const [editingObjectId, setEditingObjectId] = useState<string | null>(null);
+  const [editObjectForm, setEditObjectForm] = useState(emptyObjectForm);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [objectDeleteSelection, setObjectDeleteSelection] = useState<Set<string>>(new Set());
+  const [isBulkDeletingObjects, setIsBulkDeletingObjects] = useState(false);
+  const [bulkDeleteObjectsError, setBulkDeleteObjectsError] = useState('');
 
   const [isGroupFormOpen, setIsGroupFormOpen] = useState(false);
   const [groupForm, setGroupForm] = useState(emptyGroupForm);
@@ -698,6 +750,118 @@ export function SeatingSection({
     }
   };
 
+  const handleCreateObjectSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setObjectFormError('');
+    if (!objectForm.label.trim()) {
+      setObjectFormError(labels.createError);
+      return;
+    }
+    setIsSavingObject(true);
+    try {
+      const position = nextObjectPosition(venueObjects.length);
+      const size = OBJECT_DEFAULT_SIZE[objectForm.type];
+      await onCreateObject(objectForm.type, objectForm.label.trim(), { ...position, ...size });
+      setObjectForm(emptyObjectForm);
+      setIsObjectFormOpen(false);
+    } catch (error) {
+      console.error('Failed to create venue object', error);
+      setObjectFormError(labels.createError);
+    } finally {
+      setIsSavingObject(false);
+    }
+  };
+
+  const startEditingObject = (object: VenueObject) => {
+    setEditingObjectId(object.id);
+    setEditObjectForm({ type: object.type, label: object.label });
+  };
+
+  const handleSaveObjectEdit = async (object: VenueObject) => {
+    const key = `object-${object.id}`;
+    setBusyKey(key);
+    setErrorByKey((prev) => ({ ...prev, [key]: '' }));
+    try {
+      await onUpdateObject(object.id, editObjectForm.type, editObjectForm.label.trim() || object.label, {
+        x: object.x,
+        y: object.y,
+        width: object.width,
+        height: object.height,
+        shape: object.shape,
+      });
+      setEditingObjectId(null);
+    } catch (error) {
+      console.error('Failed to update venue object', error);
+      setErrorByKey((prev) => ({ ...prev, [key]: labels.updateError }));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const handleObjectLayoutChange = (objectId: string, layout: SeatingTableLayout) => {
+    onUpdateObjectLayout(objectId, layout).catch((error) => {
+      console.error('Failed to update venue object layout', error);
+    });
+  };
+
+  const handleDeleteObject = async (object: VenueObject) => {
+    if (typeof window !== 'undefined' && !window.confirm(labels.deleteObjectConfirm)) return;
+    const key = `object-${object.id}`;
+    setBusyKey(key);
+    try {
+      await onDeleteObject(object.id);
+      if (selectedObjectId === object.id) setSelectedObjectId(null);
+    } catch (error) {
+      console.error('Failed to delete venue object', error);
+      setErrorByKey((prev) => ({ ...prev, [key]: labels.deleteError }));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const toggleObjectDeleteSelection = (id: string) => {
+    setObjectDeleteSelection((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDeleteObjects = async () => {
+    if (objectDeleteSelection.size === 0) return;
+    const confirmMessage = labels.deleteSelectedObjectsConfirm.replace('{count}', String(objectDeleteSelection.size));
+    if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) return;
+    setIsBulkDeletingObjects(true);
+    setBulkDeleteObjectsError('');
+    try {
+      await Promise.all(Array.from(objectDeleteSelection).map((id) => onDeleteObject(id)));
+      setObjectDeleteSelection(new Set());
+      setSelectedObjectId(null);
+    } catch (error) {
+      console.error('Failed to bulk-delete venue objects', error);
+      setBulkDeleteObjectsError(labels.deleteError);
+    } finally {
+      setIsBulkDeletingObjects(false);
+    }
+  };
+
+  // Ctrl+V duplicate handlers - SeatingFloorPlan already computed the offset
+  // layout (clamped to canvas bounds), this just persists a new
+  // table/object with that layout and a name/label that makes clear it's a
+  // copy, so Gil isn't left with two identically-named items on the canvas.
+  const handleDuplicateTable = (table: SeatingTable, layout: SeatingTableLayout) => {
+    onCreateTable(`${table.name}${labels.duplicateSuffix}`, table.seatCount, layout).catch((error) => {
+      console.error('Failed to duplicate table', error);
+    });
+  };
+
+  const handleDuplicateObject = (object: VenueObject, layout: SeatingTableLayout) => {
+    onCreateObject(object.type, `${object.label}${labels.duplicateSuffix}`, layout).catch((error) => {
+      console.error('Failed to duplicate venue object', error);
+    });
+  };
+
   const handleGuestListSort = (key: GuestListSortKey) => {
     setListSort((previous) => (previous.key === key ? { key, direction: previous.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' }));
   };
@@ -1100,13 +1264,94 @@ export function SeatingSection({
               {tablesView === 'map' && (
               <>
               <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">{labels.canvasHint}</p>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">{labels.objectsHeading} ({venueObjects.length})</h4>
+                <button
+                  type="button"
+                  onClick={() => setIsObjectFormOpen((open) => !open)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  <Plus size={14} />
+                  {labels.addObjectButton}
+                </button>
+              </div>
+
+              {objectDeleteSelection.size > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 dark:border-rose-900/50 dark:bg-rose-950/30">
+                  <button
+                    type="button"
+                    onClick={handleBulkDeleteObjects}
+                    disabled={isBulkDeletingObjects}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60 dark:bg-rose-600 dark:hover:bg-rose-500"
+                  >
+                    {isBulkDeletingObjects ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    {labels.deleteSelectedButton} ({objectDeleteSelection.size})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setObjectDeleteSelection(new Set())}
+                    className="text-sm font-medium text-rose-700 hover:underline dark:text-rose-300"
+                  >
+                    {labels.clearSelectionButton}
+                  </button>
+                </div>
+              )}
+              {bulkDeleteObjectsError && <p className="mb-2 text-sm text-rose-600 dark:text-rose-400">{bulkDeleteObjectsError}</p>}
+
+              {isObjectFormOpen && (
+                <form onSubmit={handleCreateObjectSubmit} className="mb-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <select
+                      value={objectForm.type}
+                      onChange={(event) => setObjectForm((prev) => ({ ...prev, type: event.target.value as VenueObjectType }))}
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                    >
+                      <option value="stage">{labels.objectTypeStage}</option>
+                      <option value="bar">{labels.objectTypeBar}</option>
+                      <option value="entrance">{labels.objectTypeEntrance}</option>
+                      <option value="danceFloor">{labels.objectTypeDanceFloor}</option>
+                      <option value="custom">{labels.objectTypeCustom}</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={objectForm.label}
+                      onChange={(event) => setObjectForm((prev) => ({ ...prev, label: event.target.value }))}
+                      placeholder={labels.objectLabelPlaceholder}
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSavingObject}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                    >
+                      {isSavingObject && <Loader2 size={16} className="animate-spin" />}
+                      {isSavingObject ? labels.saving : labels.saveObject}
+                    </button>
+                  </div>
+                  {objectFormError && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{objectFormError}</p>}
+                </form>
+              )}
+
+              <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">{labels.canvasHint}</p>
               <SeatingFloorPlan
                 ref={floorPlanRef}
                 tables={sortedTables}
+                venueObjects={venueObjects}
                 seatsUsedByTable={seatsUsedByTable}
                 selectedTableId={selectedTableId}
-                onSelectTable={setSelectedTableId}
+                onSelectTable={(id) => {
+                  setSelectedTableId(id);
+                  if (id) setSelectedObjectId(null);
+                }}
+                selectedObjectId={selectedObjectId}
+                onSelectObject={(id) => {
+                  setSelectedObjectId(id);
+                  if (id) setSelectedTableId(null);
+                }}
                 onLayoutChange={handleLayoutChange}
+                onObjectLayoutChange={handleObjectLayoutChange}
+                onDuplicateTable={handleDuplicateTable}
+                onDuplicateObject={handleDuplicateObject}
                 fullLabel={labels.tableFullBadge}
                 zoomOutLabel={labels.zoomOutLabel}
                 zoomInLabel={labels.zoomInLabel}
@@ -1114,12 +1359,86 @@ export function SeatingSection({
                 dir={isRtl ? 'rtl' : 'ltr'}
                 deleteSelection={tableDeleteSelection}
                 onToggleDeleteSelection={toggleTableDeleteSelection}
+                deleteObjectSelection={objectDeleteSelection}
+                onToggleDeleteObjectSelection={toggleObjectDeleteSelection}
                 deleteCheckboxLabel={labels.deleteCheckboxLabel}
               />
 
               {(() => {
+                const object = selectedObjectId ? venueObjects.find((candidate) => candidate.id === selectedObjectId) : null;
+                if (!object) return null;
+
+                const isEditingObject = editingObjectId === object.id;
+                const objectKey = `object-${object.id}`;
+
+                return (
+                  <div className="mt-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                    {isEditingObject ? (
+                      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                        <select
+                          value={editObjectForm.type}
+                          onChange={(event) => setEditObjectForm((prev) => ({ ...prev, type: event.target.value as VenueObjectType }))}
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                        >
+                          <option value="stage">{labels.objectTypeStage}</option>
+                          <option value="bar">{labels.objectTypeBar}</option>
+                          <option value="entrance">{labels.objectTypeEntrance}</option>
+                          <option value="danceFloor">{labels.objectTypeDanceFloor}</option>
+                          <option value="custom">{labels.objectTypeCustom}</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={editObjectForm.label}
+                          onChange={(event) => setEditObjectForm((prev) => ({ ...prev, label: event.target.value }))}
+                          className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-semibold text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveObjectEdit(object)}
+                          disabled={busyKey === objectKey}
+                          className="inline-flex shrink-0 items-center rounded-lg bg-gray-900 p-1.5 text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                        >
+                          {busyKey === objectKey ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingObjectId(null)}
+                          className="inline-flex shrink-0 items-center rounded-lg border border-gray-200 p-1.5 text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-slate-100">{object.label}</p>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => startEditingObject(object)}
+                            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteObject(object)}
+                            disabled={busyKey === objectKey}
+                            className="rounded-lg p-1 text-rose-500 hover:bg-rose-50 disabled:opacity-60 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                          >
+                            {busyKey === objectKey ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {errorByKey[objectKey] && <p className="text-xs text-rose-600 dark:text-rose-400">{errorByKey[objectKey]}</p>}
+                  </div>
+                );
+              })()}
+
+              {(() => {
                 const table = selectedTableId ? tables.find((candidate) => candidate.id === selectedTableId) : null;
                 if (!table) {
+                  if (selectedObjectId) return null;
                   return <p className="mt-3 text-xs text-gray-400 dark:text-slate-500">{labels.tableDetailsHint}</p>;
                 }
 
