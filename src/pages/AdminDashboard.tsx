@@ -33,9 +33,10 @@ import { InviteLinkVisitsTable, type InviteLinkVisitRecord } from '../components
 import { GuestRosterSection } from '../components/admin/GuestRosterSection';
 import { OldSiteRsvpImportPanel } from '../components/admin/OldSiteRsvpImportPanel';
 import { DuplicateFinderPanel } from '../components/admin/DuplicateFinderPanel';
-import { enrichInviteLinkVisitsWithBaseList } from '../services/inviteLinkVisits';
 import { loadBaseList, syncBaseListFromSheet, updateBaseListEntry, type BaseListSyncResult } from '../services/baseList';
 import type { NormalizedBaseListEntry } from '../utils/baseList';
+import { isGiftMethod, type GiftMethod } from '../utils/gifts';
+import { GiftsSection } from '../components/admin/GiftsSection';
 import { WhatsappReminders } from '../components/admin/WhatsappReminders';
 import {
     createGuestRosterEntry,
@@ -98,6 +99,15 @@ interface RSVPRecord {
     // e.g. a couple who RSVP'd together). Empty array means "use automatic
     // matching".
     manualRosterEntryIds: string[];
+    // Cash-gift tracking (the "כספים" tab) - money actually received from
+    // this RSVP (a couple/family who confirmed together), not a plan or
+    // estimate. Deliberately per-RSVP rather than per-individual-guest,
+    // since that's how gifts are actually given at the wedding. null means
+    // "nothing recorded yet", which is different from 0 (recorded as
+    // receiving nothing) - that distinction is what drives the "still
+    // missing an amount" list.
+    giftAmount: number | null;
+    giftMethod: GiftMethod | null;
 }
 
 type SortKey = 'fullName' | 'guestsCount' | 'group' | 'isAttending' | 'lang' | 'createdAt';
@@ -344,6 +354,7 @@ function toDate(value: unknown): Date | null {
 
 function normalizeRecord(id: string, input: Record<string, unknown>): RSVPRecord {
     const guestsValue = input.guestsCount;
+    const giftAmountValue = input.giftAmount;
     return {
         id,
         fullName: typeof input.fullName === 'string' ? input.fullName : '',
@@ -357,6 +368,8 @@ function normalizeRecord(id: string, input: Record<string, unknown>): RSVPRecord
         manualRosterEntryIds: Array.isArray(input.manualRosterEntryIds)
             ? input.manualRosterEntryIds.filter((entryId): entryId is string => typeof entryId === 'string')
             : [],
+        giftAmount: typeof giftAmountValue === 'number' && Number.isFinite(giftAmountValue) ? giftAmountValue : null,
+        giftMethod: isGiftMethod(input.giftMethod) ? input.giftMethod : null,
     };
 }
 
@@ -432,7 +445,6 @@ export function AdminDashboard() {
     const [error, setError] = useState('');
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [deletingInviteLinkVisitId, setDeletingInviteLinkVisitId] = useState<string | null>(null);
-    const [isEnrichingInviteLinks, setIsEnrichingInviteLinks] = useState(false);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isDeletingSelected, setIsDeletingSelected] = useState(false);
     // Mobile response cards default to a compact one-line summary (name,
@@ -459,7 +471,7 @@ export function AdminDashboard() {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'createdAt', direction: 'desc' });
     const [isAuthChecked, setIsAuthChecked] = useState(false);
     const [isSignedIn, setIsSignedIn] = useState(false);
-    const [activeTab, setActiveTab] = useState<'roster' | 'responses' | 'reminders' | 'seating'>('roster');
+    const [activeTab, setActiveTab] = useState<'roster' | 'responses' | 'reminders' | 'seating' | 'gifts'>('roster');
     const [seatingTables, setSeatingTables] = useState<SeatingTable[]>([]);
     const [seatingGroups, setSeatingGroups] = useState<SeatingGroup[]>([]);
     const [seatingAssignments, setSeatingAssignments] = useState<SeatingAssignment[]>([]);
@@ -813,6 +825,15 @@ export function AdminDashboard() {
         [locale, records],
     );
 
+    // The "כספים" tab only ever concerns itself with confirmed-attending
+    // RSVPs (money is tracked per family/couple who said they're coming, not
+    // per declined response) - filtered here once rather than inside the
+    // section component, so it stays a simple "given these records" view.
+    const attendingGiftRecords = useMemo(
+        () => records.filter((record) => record.isAttending),
+        [records],
+    );
+
     // baseList phone numbers (digits-only) whose guest has already submitted
     // an RSVP - the WhatsApp reminders tab uses this to hide/tag guests who
     // don't need a reminder any more, so it has to be as accurate as the main
@@ -973,9 +994,25 @@ export function AdminDashboard() {
         return statusByPhone;
     }, [records]);
 
+    // Same reasoning as the roster->baseList rename cascade above: the name/
+    // group saved on an inviteLinkVisits doc is a one-time snapshot taken the
+    // moment the guest opened their link, not a live link to baseList. If
+    // baseList's name is corrected afterward (by hand, or by that cascade),
+    // this snapshot would otherwise go stale silently. Rather than requiring
+    // a manual "pull names and groups" refresh, just overlay today's baseList
+    // name/group here at render time - baseList is already loaded in memory
+    // for the reminders tab, so this always reflects the current, correct
+    // name with no extra step.
+    const baseListByPhone = useMemo(() => new Map(baseList.map((entry) => [entry.phone, entry])), [baseList]);
+
     const pendingInviteLinkVisits = useMemo(
-        () => inviteLinkVisits.filter((visit) => !rsvpStatusByPhone.has(visit.phone)),
-        [inviteLinkVisits, rsvpStatusByPhone],
+        () => inviteLinkVisits
+            .filter((visit) => !rsvpStatusByPhone.has(visit.phone))
+            .map((visit) => {
+                const liveGuest = baseListByPhone.get(visit.phone);
+                return liveGuest ? { ...visit, guestName: liveGuest.name, guestGroup: liveGuest.group } : visit;
+            }),
+        [inviteLinkVisits, rsvpStatusByPhone, baseListByPhone],
     );
 
     const isAllSelected = records.length > 0 && selectedIds.length === records.length;
@@ -1253,9 +1290,38 @@ export function AdminDashboard() {
         await reloadGuestRoster();
     };
 
+    // Gil edits guest names in exactly one place - the general roster - and
+    // expects that to be the end of it. baseList (the WhatsApp reminders
+    // list) is a separate collection with no shared key to the roster, so it
+    // never picked up the rename on its own; that's what previously left the
+    // reminders tab showing a stale name until someone used the reminders
+    // tab's own pencil-edit. Rather than requiring that second edit, cascade
+    // the rename to baseList automatically here, right when the roster edit
+    // happens: look up the OLD full name against baseList using the same
+    // tolerant fuzzy matcher used everywhere else, and if it lands on exactly
+    // one entry, rename that entry too. Only acts on an unambiguous single
+    // match - if the old name matches zero or more than one baseList entry,
+    // leave it alone rather than risk renaming the wrong person (the
+    // reminders tab's pencil-edit remains available as a manual fallback for
+    // those rarer cases).
     const handleUpdateGuestRosterEntry = async (id: string, input: GuestRosterEntryInput) => {
+        const previousEntry = guestRoster.find((entry) => entry.id === id);
+        const previousFullName = previousEntry ? `${previousEntry.firstName} ${previousEntry.lastName}`.trim() : '';
+        const nextFullName = `${input.firstName} ${input.lastName}`.trim();
+
         await updateGuestRosterEntry(id, input);
         await reloadGuestRoster();
+
+        if (previousFullName && nextFullName && previousFullName !== nextFullName) {
+            const baseListMatches = baseList.filter((entry) => fullNamesMatch(previousFullName, entry.name));
+            if (baseListMatches.length === 1 && baseListMatches[0].name !== nextFullName) {
+                try {
+                    await handleUpdateBaseListGuestName(baseListMatches[0].phone, nextFullName, baseListMatches[0].group);
+                } catch (cascadeError) {
+                    console.error('Failed to cascade roster name edit to baseList', cascadeError);
+                }
+            }
+        }
     };
 
     const handleDeleteGuestRosterEntry = async (id: string) => {
@@ -1431,32 +1497,6 @@ export function AdminDashboard() {
         }
     };
 
-    const handleEnrichInviteLinkVisits = async () => {
-        if (isEnrichingInviteLinks || pendingInviteLinkVisits.length === 0) {
-            return;
-        }
-
-        setIsEnrichingInviteLinks(true);
-        setError('');
-
-        try {
-            const result = await enrichInviteLinkVisitsWithBaseList(pendingInviteLinkVisits);
-
-            if (result.updatedCount > 0) {
-                setInviteLinkVisits(await loadInviteLinkVisits());
-            }
-
-            if (result.failedCount > 0) {
-                setError(t.adminInviteLinkEnrichError);
-            }
-        } catch (enrichError) {
-            console.error('Failed to enrich invite link visits', enrichError);
-            setError(t.adminInviteLinkEnrichError);
-        } finally {
-            setIsEnrichingInviteLinks(false);
-        }
-    };
-
     // Lets an admin fix a typo'd guest name right in the table. No extra
     // wiring needed to re-match it to the roster: the automatic roster-link
     // effect already reruns on every change to `records` (see above), so a
@@ -1522,6 +1562,25 @@ export function AdminDashboard() {
         } catch (updateError) {
             console.error('Failed to update manual roster match', updateError);
             setError(t.adminManualMatchUpdateError);
+            throw updateError;
+        }
+    };
+
+    // Records money actually received from a confirmed-attending RSVP (the
+    // "כספים" tab) - amount + how it was given. Both fields are optional and
+    // independent (e.g. the method can be set before the exact amount is
+    // known), and either can be cleared back to null by passing null, which
+    // is how a row moves back onto the "still missing an amount" list.
+    const handleGiftChange = async (recordId: string, giftAmount: number | null, giftMethod: GiftMethod | null) => {
+        setError('');
+        try {
+            await updateDoc(doc(db, 'rsvps', recordId), { giftAmount, giftMethod });
+            setRecords((prevRecords) => prevRecords.map((record) => (
+                record.id === recordId ? { ...record, giftAmount, giftMethod } : record
+            )));
+        } catch (updateError) {
+            console.error('Failed to update gift amount/method', updateError);
+            setError(t.adminGiftUpdateError);
             throw updateError;
         }
     };
@@ -1663,6 +1722,16 @@ export function AdminDashboard() {
                                 }`}
                         >
                             {t.adminTabSeating}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('gifts')}
+                            className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'gifts'
+                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                                }`}
+                        >
+                            {t.adminTabGifts}
                         </button>
                     </div>
                 </motion.header>
@@ -1825,10 +1894,8 @@ export function AdminDashboard() {
                         rsvpStatusByPhone={rsvpStatusByPhone}
                         formatDate={formatDate}
                         isLoading={isLoading}
-                        isEnriching={isEnrichingInviteLinks}
                         deletingVisitId={deletingInviteLinkVisitId}
                         onDelete={handleDeleteInviteLinkVisit}
-                        onEnrich={handleEnrichInviteLinkVisits}
                         labels={{
                             title: t.adminInviteLinksTitle,
                             subtitle: t.adminInviteLinksSubtitle,
@@ -1848,8 +1915,6 @@ export function AdminDashboard() {
                             unassignedGroup: t.adminGroupUnassigned,
                             deleteAction: t.adminDeleteAction,
                             deletingAction: t.adminDeletingAction,
-                            enrichAction: t.adminInviteLinkEnrich,
-                            enrichingAction: t.adminInviteLinkEnriching,
                         }}
                     />
                 </motion.section>
@@ -2579,6 +2644,45 @@ export function AdminDashboard() {
                             deleteObjectConfirm: t.adminSeatingDeleteObjectConfirm,
                             deleteSelectedObjectsConfirm: t.adminSeatingDeleteSelectedObjectsConfirm,
                             duplicateSuffix: t.adminSeatingDuplicateSuffix,
+                        }}
+                    />
+                </motion.section>
+                )}
+
+                {activeTab === 'gifts' && (
+                <motion.section
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-6"
+                >
+                    <GiftsSection
+                        records={attendingGiftRecords}
+                        groups={guestGroups}
+                        isLoading={isLoading}
+                        onUpdateGift={handleGiftChange}
+                        labels={{
+                            title: t.adminGiftsTitle,
+                            subtitle: t.adminGiftsSubtitle,
+                            totalLabel: t.adminGiftsTotalLabel,
+                            missingLabel: t.adminGiftsMissingLabel,
+                            byGroupHeading: t.adminGiftsByGroupHeading,
+                            byGroupEmpty: t.adminGiftsByGroupEmpty,
+                            methodCash: t.adminGiftsMethodCash,
+                            methodBitPaybox: t.adminGiftsMethodBitPaybox,
+                            methodCheck: t.adminGiftsMethodCheck,
+                            filterAll: t.adminGiftsFilterAll,
+                            filterMissing: t.adminGiftsFilterMissing,
+                            groupFilterAll: t.adminGiftsGroupFilterAll,
+                            searchPlaceholder: t.adminGiftsSearchPlaceholder,
+                            amountPlaceholder: t.adminGiftsAmountPlaceholder,
+                            clearMethodLabel: t.adminGiftsClearMethodLabel,
+                            saveButton: t.adminGiftsSaveButton,
+                            savingButton: t.adminGiftsSavingButton,
+                            saveError: t.adminGiftsSaveError,
+                            countLabel: t.adminGiftsCountLabel,
+                            guestsWord: t.adminGiftsGuestsWord,
+                            emptyState: t.adminGiftsEmptyState,
+                            loading: t.adminLoading,
                         }}
                     />
                 </motion.section>

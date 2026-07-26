@@ -53,12 +53,15 @@ service cloud.firestore {
       // Anyone can submit an RSVP - this must stay public for guests.
       allow create: if isValidId(rsvpId) && isValidRSVP(incoming());
       // Dashboard updates (group assignment, guest count, full-name typo
-      // fixes, manual roster-match overrides) are admin-only. fullName and
-      // manualRosterEntryIds were added later than group/guestsCount - both
-      // needed adding here too, since a field the dashboard writes but this
-      // list doesn't allow gets silently rejected by Firestore.
+      // fixes, manual roster-match overrides, gift amount/method) are
+      // admin-only. Each field was added later than the original create
+      // shape - all needed adding here too, since a field the dashboard
+      // writes but this list doesn't allow gets silently rejected by
+      // Firestore. giftAmount/giftMethod (the "כספים" tab) are nullable -
+      // null means "not recorded yet", distinct from 0 (recorded as
+      // receiving nothing).
       allow update: if isAdmin() &&
-                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds']) &&
+                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds', 'giftAmount', 'giftMethod']) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['group']) ||
                          (incoming().group is string && incoming().group.size() <= 60)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['guestsCount']) ||
@@ -68,7 +71,13 @@ service cloud.firestore {
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['fullName']) ||
                          (incoming().fullName is string && incoming().fullName.size() > 0 && incoming().fullName.size() <= 100)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['manualRosterEntryIds']) ||
-                         (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10));
+                         (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10)) &&
+                       (!incoming().diff(resource.data).affectedKeys().hasAny(['giftAmount']) ||
+                         incoming().giftAmount == null ||
+                         (incoming().giftAmount is number && incoming().giftAmount >= 0 && incoming().giftAmount <= 1000000)) &&
+                       (!incoming().diff(resource.data).affectedKeys().hasAny(['giftMethod']) ||
+                         incoming().giftMethod == null ||
+                         incoming().giftMethod in ['cash', 'bit_paybox', 'check']);
       // Deletes are admin-only.
       allow delete: if isAdmin();
     }

@@ -1,4 +1,4 @@
-import { RefreshCcw, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
 export interface InviteLinkVisitRecord {
   id: string;
@@ -28,8 +28,6 @@ interface InviteLinkVisitsTableLabels {
   unassignedGroup: string;
   deleteAction: string;
   deletingAction: string;
-  enrichAction: string;
-  enrichingAction: string;
 }
 
 interface InviteLinkVisitsTableProps {
@@ -38,10 +36,8 @@ interface InviteLinkVisitsTableProps {
   labels: InviteLinkVisitsTableLabels;
   formatDate: (value: Date | null) => string;
   isLoading: boolean;
-  isEnriching: boolean;
   deletingVisitId: string | null;
   onDelete: (visitId: string) => void;
-  onEnrich: () => void;
 }
 
 export function InviteLinkVisitsTable({
@@ -50,31 +46,14 @@ export function InviteLinkVisitsTable({
   labels,
   formatDate,
   isLoading,
-  isEnriching,
   deletingVisitId,
   onDelete,
-  onEnrich,
 }: InviteLinkVisitsTableProps) {
   return (
     <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
-      <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-start sm:justify-between dark:border-slate-700">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{labels.title}</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onEnrich}
-          disabled={isLoading || isEnriching || visits.length === 0}
-          className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
-            isLoading || isEnriching || visits.length === 0
-              ? 'cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-slate-800 dark:text-slate-600'
-              : 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
-          }`}
-        >
-          <RefreshCcw size={14} className={isEnriching ? 'animate-spin' : ''} />
-          {isEnriching ? labels.enrichingAction : labels.enrichAction}
-        </button>
+      <div className="border-b border-gray-100 px-5 py-4 dark:border-slate-700">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{labels.title}</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
       </div>
 
       {isLoading ? (
