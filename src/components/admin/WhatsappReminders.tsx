@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Loader2, MessageCircle, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, MessageCircle, Pencil, RefreshCw, Search, X } from 'lucide-react';
 import type { NormalizedBaseListEntry } from '../../utils/baseList';
 import type { BaseListSyncResult } from '../../services/baseList';
 import { toWhatsappDialableNumber } from '../../utils/phoneNumbers';
@@ -44,6 +44,10 @@ export interface WhatsappRemindersLabels {
     missingPhoneHint: string;
     suspiciousCharsWarning: string;
     removeSuspiciousCharsButton: string;
+    editNameButton: string;
+    editNamePlaceholder: string;
+    saveEditButton: string;
+    editNameError: string;
 }
 
 interface WhatsappRemindersProps {
@@ -52,6 +56,14 @@ interface WhatsappRemindersProps {
     isLoading: boolean;
     onSync: () => Promise<BaseListSyncResult>;
     labels: WhatsappRemindersLabels;
+    // Fixes a guest's name directly in baseList (the phone-list collection),
+    // independent of the guest roster - baseList only otherwise gets written
+    // by re-syncing the whole phone-list sheet, which Gil never edits
+    // directly, so a name that's wrong there (but has since been corrected in
+    // the roster) would otherwise be permanently stuck, keeping this tab
+    // showing "still pending" forever for that guest even after they've
+    // actually confirmed.
+    onUpdateGuestName: (phone: string, name: string, group: string) => Promise<void>;
     // Roster entries that still haven't answered but have no matching phone
     // number in baseList at all - the reason this tab's counts never quite
     // match the roster's own "still pending" total by side: baseList counts
@@ -159,8 +171,12 @@ function isMobileUserAgent(): boolean {
 // short of full automation: WhatsApp bans accounts that message people at
 // scale in an "unauthorized" (bot-driven) way, and a real human clicking
 // through a list of pre-filled links is the compliant, safe version of that.
-export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync, labels, missingPhoneGuests }: WhatsappRemindersProps) {
+export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync, labels, missingPhoneGuests, onUpdateGuestName }: WhatsappRemindersProps) {
     const [isMissingPhoneOpen, setIsMissingPhoneOpen] = useState(false);
+    const [editingPhone, setEditingPhone] = useState<string | null>(null);
+    const [editNameValue, setEditNameValue] = useState('');
+    const [isSavingName, setIsSavingName] = useState(false);
+    const [editNameErrorPhone, setEditNameErrorPhone] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncMessage, setSyncMessage] = useState('');
     const [syncIsError, setSyncIsError] = useState(false);
@@ -232,6 +248,37 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
             }
             return next;
         });
+    };
+
+    const startEditingName = (guest: NormalizedBaseListEntry) => {
+        setEditingPhone(guest.phone);
+        setEditNameValue(guest.name);
+        setEditNameErrorPhone(null);
+    };
+
+    const cancelEditingName = () => {
+        setEditingPhone(null);
+        setEditNameValue('');
+    };
+
+    const handleSaveName = async (guest: NormalizedBaseListEntry) => {
+        const trimmed = editNameValue.trim();
+        if (!trimmed) {
+            setEditNameErrorPhone(guest.phone);
+            return;
+        }
+        setIsSavingName(true);
+        setEditNameErrorPhone(null);
+        try {
+            await onUpdateGuestName(guest.phone, trimmed, guest.group);
+            setEditingPhone(null);
+            setEditNameValue('');
+        } catch (error) {
+            console.error('Failed to update baseList guest name', error);
+            setEditNameErrorPhone(guest.phone);
+        } finally {
+            setIsSavingName(false);
+        }
     };
 
     const sortedGuests = useMemo(
@@ -526,6 +573,7 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
                         {visibleGuests.map((guest) => {
                             const hasResponded = respondedPhones.has(guest.phone);
                             const isSelected = selectedPhones.has(guest.phone);
+                            const isEditingThisGuest = editingPhone === guest.phone;
 
                             return (
                                 <div key={guest.phone} className="flex items-center gap-3 px-4 py-3">
@@ -536,7 +584,52 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
                                         className="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
                                     />
                                     <div className="min-w-0 flex-1">
-                                        <p className="truncate font-medium text-gray-900 dark:text-slate-100">{guest.name}</p>
+                                        {isEditingThisGuest ? (
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                <input
+                                                    type="text"
+                                                    value={editNameValue}
+                                                    onChange={(event) => setEditNameValue(event.target.value)}
+                                                    placeholder={labels.editNamePlaceholder}
+                                                    autoFocus
+                                                    dir="auto"
+                                                    className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSaveName(guest)}
+                                                    disabled={isSavingName}
+                                                    aria-label={labels.saveEditButton}
+                                                    title={labels.saveEditButton}
+                                                    className="inline-flex shrink-0 items-center rounded-lg bg-gray-900 p-1.5 text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                                                >
+                                                    {isSavingName ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={cancelEditingName}
+                                                    className="inline-flex shrink-0 items-center rounded-lg border border-gray-200 p-1.5 text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <p className="flex items-center gap-1.5 truncate font-medium text-gray-900 dark:text-slate-100">
+                                                <span className="truncate">{guest.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => startEditingName(guest)}
+                                                    aria-label={labels.editNameButton}
+                                                    title={labels.editNameButton}
+                                                    className="shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                                                >
+                                                    <Pencil size={12} />
+                                                </button>
+                                            </p>
+                                        )}
+                                        {editNameErrorPhone === guest.phone && (
+                                            <p className="mt-0.5 text-xs text-rose-600 dark:text-rose-400">{labels.editNameError}</p>
+                                        )}
                                         <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400">
                                             <span dir="ltr">{formatPhoneForDisplay(guest.phone)}</span>
                                             {guest.group && <span>· {guest.group}</span>}

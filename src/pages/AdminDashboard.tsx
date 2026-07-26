@@ -34,7 +34,7 @@ import { GuestRosterSection } from '../components/admin/GuestRosterSection';
 import { OldSiteRsvpImportPanel } from '../components/admin/OldSiteRsvpImportPanel';
 import { DuplicateFinderPanel } from '../components/admin/DuplicateFinderPanel';
 import { enrichInviteLinkVisitsWithBaseList } from '../services/inviteLinkVisits';
-import { loadBaseList, syncBaseListFromSheet, type BaseListSyncResult } from '../services/baseList';
+import { loadBaseList, syncBaseListFromSheet, updateBaseListEntry, type BaseListSyncResult } from '../services/baseList';
 import type { NormalizedBaseListEntry } from '../utils/baseList';
 import { WhatsappReminders } from '../components/admin/WhatsappReminders';
 import {
@@ -1034,6 +1034,17 @@ export function AdminDashboard() {
             setBaseList(await loadBaseList());
         }
         return result;
+    };
+
+    // Fixes one baseList guest's name directly (see updateBaseListEntry in
+    // services/baseList.ts for why this is needed - the phone-list sheet
+    // sync is otherwise the only way this collection ever changes, and Gil
+    // never edits that sheet, only the dashboard). Updates local state
+    // immediately rather than re-fetching the whole collection, since this
+    // is a single-document write.
+    const handleUpdateBaseListGuestName = async (phone: string, name: string, group: string): Promise<void> => {
+        await updateBaseListEntry(phone, name, group);
+        setBaseList((previous) => previous.map((entry) => (entry.phone === phone ? { ...entry, name, group } : entry)));
     };
 
     // Seating chart handlers - thin wrappers around services/seating.ts.
@@ -2402,6 +2413,7 @@ export function AdminDashboard() {
                         isLoading={isLoadingBaseList}
                         onSync={handleSyncBaseList}
                         missingPhoneGuests={rosterEntriesMissingPhone}
+                        onUpdateGuestName={handleUpdateBaseListGuestName}
                         labels={{
                             title: t.adminRemindersTitle,
                             subtitle: t.adminRemindersSubtitle,
@@ -2437,6 +2449,10 @@ export function AdminDashboard() {
                             missingPhoneHint: t.adminRemindersMissingPhoneHint,
                             suspiciousCharsWarning: t.adminRemindersSuspiciousCharsWarning,
                             removeSuspiciousCharsButton: t.adminRemindersRemoveSuspiciousCharsButton,
+                            editNameButton: t.adminRemindersEditNameButton,
+                            editNamePlaceholder: t.adminRemindersEditNamePlaceholder,
+                            saveEditButton: t.adminRemindersSaveEditButton,
+                            editNameError: t.adminRemindersEditNameError,
                         }}
                     />
                 </motion.section>

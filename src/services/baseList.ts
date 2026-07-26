@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   BASE_LIST_COLLECTION,
@@ -170,6 +170,22 @@ export async function syncBaseListFromSheet(sheetUrls: string[] = DEFAULT_BASE_L
   }
 
   return { upsertedCount: entries.length, skippedCount, totalParsed };
+}
+
+// Fixes a baseList entry's name/group directly from the dashboard - the
+// phone-list sheet sync (syncBaseListFromSheet above) is the only other way
+// this collection ever gets written, and it always re-pulls whatever the
+// SOURCE SHEET says. Gil deliberately only ever edits guest info in the
+// dashboard (never the underlying Google Sheets), so a stale/misspelled name
+// that only ever existed in the phone-list sheet - and was later corrected
+// in the guest roster instead - would otherwise never be fixable, silently
+// keeping the WhatsApp reminders tab out of sync with the roster forever
+// (this is exactly what happened with a guest whose roster name was
+// corrected but whose baseList name, from the phone sheet, never was).
+// Deliberately keyed by phone (the doc id) - phone itself isn't editable
+// here since changing it would mean writing to a different document.
+export async function updateBaseListEntry(phone: string, name: string, group: string): Promise<void> {
+  await setDoc(doc(db, BASE_LIST_COLLECTION, phone), { phone, name: name.trim(), group: group.trim() }, { merge: true });
 }
 
 export async function getBaseListGuestSnapshot(phone: string): Promise<BaseListGuestSnapshot> {
