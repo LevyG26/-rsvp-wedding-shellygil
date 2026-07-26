@@ -35,8 +35,9 @@ import { OldSiteRsvpImportPanel } from '../components/admin/OldSiteRsvpImportPan
 import { DuplicateFinderPanel } from '../components/admin/DuplicateFinderPanel';
 import { loadBaseList, syncBaseListFromSheet, updateBaseListEntry, type BaseListSyncResult } from '../services/baseList';
 import type { NormalizedBaseListEntry } from '../utils/baseList';
-import { isGiftMethod, type GiftMethod } from '../utils/gifts';
+import type { GiftMethod } from '../utils/gifts';
 import { GiftsSection } from '../components/admin/GiftsSection';
+import { loadGiftEntries, saveGiftEntry, type GiftEntry } from '../services/giftEntries';
 import { WhatsappReminders } from '../components/admin/WhatsappReminders';
 import {
     createGuestRosterEntry,
@@ -99,15 +100,6 @@ interface RSVPRecord {
     // e.g. a couple who RSVP'd together). Empty array means "use automatic
     // matching".
     manualRosterEntryIds: string[];
-    // Cash-gift tracking (the "כספים" tab) - money actually received from
-    // this RSVP (a couple/family who confirmed together), not a plan or
-    // estimate. Deliberately per-RSVP rather than per-individual-guest,
-    // since that's how gifts are actually given at the wedding. null means
-    // "nothing recorded yet", which is different from 0 (recorded as
-    // receiving nothing) - that distinction is what drives the "still
-    // missing an amount" list.
-    giftAmount: number | null;
-    giftMethod: GiftMethod | null;
 }
 
 type SortKey = 'fullName' | 'guestsCount' | 'group' | 'isAttending' | 'lang' | 'createdAt';
@@ -354,7 +346,6 @@ function toDate(value: unknown): Date | null {
 
 function normalizeRecord(id: string, input: Record<string, unknown>): RSVPRecord {
     const guestsValue = input.guestsCount;
-    const giftAmountValue = input.giftAmount;
     return {
         id,
         fullName: typeof input.fullName === 'string' ? input.fullName : '',
@@ -368,8 +359,6 @@ function normalizeRecord(id: string, input: Record<string, unknown>): RSVPRecord
         manualRosterEntryIds: Array.isArray(input.manualRosterEntryIds)
             ? input.manualRosterEntryIds.filter((entryId): entryId is string => typeof entryId === 'string')
             : [],
-        giftAmount: typeof giftAmountValue === 'number' && Number.isFinite(giftAmountValue) ? giftAmountValue : null,
-        giftMethod: isGiftMethod(input.giftMethod) ? input.giftMethod : null,
     };
 }
 
@@ -441,6 +430,8 @@ export function AdminDashboard() {
     const [guestRoster, setGuestRoster] = useState<GuestRosterEntry[]>([]);
     const [baseList, setBaseList] = useState<NormalizedBaseListEntry[]>([]);
     const [isLoadingBaseList, setIsLoadingBaseList] = useState(false);
+    const [giftEntries, setGiftEntries] = useState<GiftEntry[]>([]);
+    const [isLoadingGiftEntries, setIsLoadingGiftEntries] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -587,6 +578,12 @@ export function AdminDashboard() {
             .then(setBaseList)
             .catch((loadError) => console.error('Failed to load base list', loadError))
             .finally(() => setIsLoadingBaseList(false));
+
+        setIsLoadingGiftEntries(true);
+        loadGiftEntries()
+            .then(setGiftEntries)
+            .catch((loadError) => console.error('Failed to load gift entries', loadError))
+            .finally(() => setIsLoadingGiftEntries(false));
 
         // Seating chart data loads independently of the RSVP/roster gate
         // above (it doesn't block the rest of the dashboard) - just tracks
@@ -825,13 +822,35 @@ export function AdminDashboard() {
         [locale, records],
     );
 
-    // The "כספים" tab only ever concerns itself with confirmed-attending
-    // RSVPs (money is tracked per family/couple who said they're coming, not
-    // per declined response) - filtered here once rather than inside the
-    // section component, so it stays a simple "given these records" view.
+    // The "כספים" tab has to reflect the MASTER guest list (guestRoster,
+    // knownResponse === 'yes'), not just whoever happened to submit an RSVP
+    // through the website - a large share of confirmed guests were entered
+    // or confirmed by hand (before the site existed, or while it wasn't
+    // matching reliably) and only ever exist as a guestRoster entry, never
+    // as an rsvps document. Gift amounts are therefore stored in their own
+    // giftEntries collection keyed by roster entry id (see
+    // services/giftEntries.ts) rather than on the rsvps records themselves.
+    const giftEntriesByRosterId = useMemo(
+        () => new Map(giftEntries.map((entry) => [entry.rosterEntryId, entry])),
+        [giftEntries],
+    );
+
     const attendingGiftRecords = useMemo(
-        () => records.filter((record) => record.isAttending),
-        [records],
+        () => guestRoster
+            .filter((entry) => entry.knownResponse === 'yes')
+            .map((entry) => {
+                const giftEntry = giftEntriesByRosterId.get(entry.id);
+                return {
+                    id: entry.id,
+                    fullName: `${entry.firstName} ${entry.lastName}`.trim(),
+                    side: entry.side,
+                    category: entry.category,
+                    guestsCount: entry.invitedCount,
+                    giftAmount: giftEntry?.amount ?? null,
+                    giftMethod: giftEntry?.method ?? null,
+                };
+            }),
+        [guestRoster, giftEntriesByRosterId],
     );
 
     // baseList phone numbers (digits-only) whose guest has already submitted
@@ -1026,16 +1045,18 @@ export function AdminDashboard() {
         setIsLoading(true);
         setError('');
         try {
-            const [loadedRecords, loadedInviteLinkVisits, loadedGuestRoster, loadedBaseList] = await Promise.all([
+            const [loadedRecords, loadedInviteLinkVisits, loadedGuestRoster, loadedBaseList, loadedGiftEntries] = await Promise.all([
                 loadRsvpRecords(),
                 loadInviteLinkVisits(),
                 loadGuestRoster(),
                 loadBaseList(),
+                loadGiftEntries(),
             ]);
             setRecords(loadedRecords);
             setInviteLinkVisits(loadedInviteLinkVisits);
             setGuestRoster(loadedGuestRoster);
             setBaseList(loadedBaseList);
+            setGiftEntries(loadedGiftEntries);
             setSelectedIds((prevSelected) => prevSelected.filter((id) => loadedRecords.some((record) => record.id === id)));
         } catch (loadError) {
             console.error('Failed to refresh RSVP data', loadError);
@@ -1566,18 +1587,23 @@ export function AdminDashboard() {
         }
     };
 
-    // Records money actually received from a confirmed-attending RSVP (the
-    // "כספים" tab) - amount + how it was given. Both fields are optional and
-    // independent (e.g. the method can be set before the exact amount is
-    // known), and either can be cleared back to null by passing null, which
-    // is how a row moves back onto the "still missing an amount" list.
-    const handleGiftChange = async (recordId: string, giftAmount: number | null, giftMethod: GiftMethod | null) => {
+    // Records money actually received from a confirmed-attending guestRoster
+    // entry (the "כספים" tab) - amount + how it was given. Both fields are
+    // optional and independent (e.g. the method can be set before the exact
+    // amount is known); passing null for both deletes the record entirely
+    // (see saveGiftEntry), which is how a row moves back onto the "still
+    // missing an amount" list.
+    const handleUpdateRosterGift = async (rosterEntryId: string, giftAmount: number | null, giftMethod: GiftMethod | null) => {
         setError('');
         try {
-            await updateDoc(doc(db, 'rsvps', recordId), { giftAmount, giftMethod });
-            setRecords((prevRecords) => prevRecords.map((record) => (
-                record.id === recordId ? { ...record, giftAmount, giftMethod } : record
-            )));
+            await saveGiftEntry(rosterEntryId, giftAmount, giftMethod);
+            setGiftEntries((previous) => {
+                const withoutEntry = previous.filter((entry) => entry.rosterEntryId !== rosterEntryId);
+                if (giftAmount === null && giftMethod === null) {
+                    return withoutEntry;
+                }
+                return [...withoutEntry, { rosterEntryId, amount: giftAmount, method: giftMethod }];
+            });
         } catch (updateError) {
             console.error('Failed to update gift amount/method', updateError);
             setError(t.adminGiftUpdateError);
@@ -2657,25 +2683,25 @@ export function AdminDashboard() {
                 >
                     <GiftsSection
                         records={attendingGiftRecords}
-                        groups={guestGroups}
-                        isLoading={isLoading}
-                        onUpdateGift={handleGiftChange}
+                        isLoading={isLoading || isLoadingGiftEntries}
+                        onUpdateGift={handleUpdateRosterGift}
                         labels={{
                             title: t.adminGiftsTitle,
                             subtitle: t.adminGiftsSubtitle,
                             totalLabel: t.adminGiftsTotalLabel,
                             missingLabel: t.adminGiftsMissingLabel,
-                            byGroupHeading: t.adminGiftsByGroupHeading,
-                            byGroupEmpty: t.adminGiftsByGroupEmpty,
+                            bySideHeading: t.adminGiftsBySideHeading,
+                            byCategoryHeading: t.adminGiftsByCategoryHeading,
+                            breakdownEmpty: t.adminGiftsBreakdownEmpty,
                             methodCash: t.adminGiftsMethodCash,
                             methodBitPaybox: t.adminGiftsMethodBitPaybox,
                             methodCheck: t.adminGiftsMethodCheck,
                             filterAll: t.adminGiftsFilterAll,
                             filterMissing: t.adminGiftsFilterMissing,
-                            groupFilterAll: t.adminGiftsGroupFilterAll,
+                            sideFilterAll: t.adminGiftsSideFilterAll,
+                            categoryFilterAll: t.adminGiftsCategoryFilterAll,
                             searchPlaceholder: t.adminGiftsSearchPlaceholder,
                             amountPlaceholder: t.adminGiftsAmountPlaceholder,
-                            clearMethodLabel: t.adminGiftsClearMethodLabel,
                             saveButton: t.adminGiftsSaveButton,
                             savingButton: t.adminGiftsSavingButton,
                             saveError: t.adminGiftsSaveError,

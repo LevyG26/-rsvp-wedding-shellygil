@@ -5,7 +5,8 @@ import { GIFT_METHODS, type GiftMethod } from '../../utils/gifts';
 export interface GiftRecordInput {
   id: string;
   fullName: string;
-  group: string;
+  side: string;
+  category: string;
   guestsCount: number;
   giftAmount: number | null;
   giftMethod: GiftMethod | null;
@@ -16,17 +17,18 @@ interface GiftsSectionLabels {
   subtitle: string;
   totalLabel: string;
   missingLabel: string;
-  byGroupHeading: string;
-  byGroupEmpty: string;
+  bySideHeading: string;
+  byCategoryHeading: string;
+  breakdownEmpty: string;
   methodCash: string;
   methodBitPaybox: string;
   methodCheck: string;
   filterAll: string;
   filterMissing: string;
-  groupFilterAll: string;
+  sideFilterAll: string;
+  categoryFilterAll: string;
   searchPlaceholder: string;
   amountPlaceholder: string;
-  clearMethodLabel: string;
   saveButton: string;
   savingButton: string;
   saveError: string;
@@ -38,7 +40,6 @@ interface GiftsSectionLabels {
 
 interface GiftsSectionProps {
   records: GiftRecordInput[];
-  groups: string[];
   labels: GiftsSectionLabels;
   isLoading: boolean;
   onUpdateGift: (recordId: string, giftAmount: number | null, giftMethod: GiftMethod | null) => Promise<void>;
@@ -52,6 +53,23 @@ const METHOD_ICONS: Record<GiftMethod, typeof Banknote> = {
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(amount);
+}
+
+// A label/amount row that reads correctly in RTL: the label flows with the
+// surrounding (RTL) text naturally, and only the actual number is forced
+// dir="ltr" so digits don't get visually reordered - putting dir="ltr" on
+// the whole row (the previous version) is what made "מזומן: ₪0" render
+// backwards.
+function AmountRow({ label, amount, icon: Icon }: { label: string; amount: number; icon?: typeof Banknote }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <span className="flex min-w-0 items-center gap-1.5 truncate text-gray-700 dark:text-slate-300">
+        {Icon && <Icon size={14} className="shrink-0 text-gray-400 dark:text-slate-500" />}
+        <span className="truncate">{label}</span>
+      </span>
+      <span dir="ltr" className="shrink-0 font-semibold text-gray-900 dark:text-slate-100">₪{formatCurrency(amount)}</span>
+    </div>
+  );
 }
 
 function GiftRow({
@@ -90,8 +108,8 @@ function GiftRow({
     <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-gray-900 dark:text-slate-100">{record.fullName}</p>
-        <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
-          {record.group || '-'} · {record.guestsCount} {labels.guestsWord}
+        <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-slate-400">
+          {record.side}{record.side && record.category ? ' · ' : ''}{record.category} · {record.guestsCount} {labels.guestsWord}
         </p>
       </div>
 
@@ -151,15 +169,27 @@ function GiftRow({
   );
 }
 
-export function GiftsSection({ records, groups, labels, isLoading, onUpdateGift }: GiftsSectionProps) {
-  const [groupFilter, setGroupFilter] = useState<'all' | string>('all');
+export function GiftsSection({ records, labels, isLoading, onUpdateGift }: GiftsSectionProps) {
+  const [sideFilter, setSideFilter] = useState<'all' | string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
   const [filterMode, setFilterMode] = useState<'all' | 'missing'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const sides = useMemo(
+    () => Array.from(new Set(records.map((record) => record.side).filter(Boolean))).sort((first, second) => first.localeCompare(second)),
+    [records],
+  );
+
+  const categories = useMemo(
+    () => Array.from(new Set(records.map((record) => record.category).filter(Boolean))).sort((first, second) => first.localeCompare(second)),
+    [records],
+  );
 
   const summary = useMemo(() => {
     const totalAmount = records.reduce((sum, record) => sum + (record.giftAmount ?? 0), 0);
     const byMethod: Record<GiftMethod, number> = { cash: 0, bit_paybox: 0, check: 0 };
-    const byGroup = new Map<string, number>();
+    const bySide = new Map<string, number>();
+    const byCategory = new Map<string, number>();
     let missingCount = 0;
 
     records.forEach((record) => {
@@ -170,15 +200,18 @@ export function GiftsSection({ records, groups, labels, isLoading, onUpdateGift 
       if (record.giftMethod) {
         byMethod[record.giftMethod] += record.giftAmount;
       }
-      const groupKey = record.group || '-';
-      byGroup.set(groupKey, (byGroup.get(groupKey) ?? 0) + record.giftAmount);
+      const sideKey = record.side || '-';
+      const categoryKey = record.category || '-';
+      bySide.set(sideKey, (bySide.get(sideKey) ?? 0) + record.giftAmount);
+      byCategory.set(categoryKey, (byCategory.get(categoryKey) ?? 0) + record.giftAmount);
     });
 
     return {
       totalAmount,
       byMethod,
-      byGroupEntries: Array.from(byGroup.entries()).sort((first, second) => second[1] - first[1]),
       missingCount,
+      bySideEntries: Array.from(bySide.entries()).sort((first, second) => first[0].localeCompare(second[0])),
+      byCategoryEntries: Array.from(byCategory.entries()).sort((first, second) => first[0].localeCompare(second[0])),
     };
   }, [records]);
 
@@ -186,14 +219,15 @@ export function GiftsSection({ records, groups, labels, isLoading, onUpdateGift 
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return records
       .filter((record) => (filterMode === 'missing' ? record.giftAmount === null : true))
-      .filter((record) => (groupFilter === 'all' ? true : record.group === groupFilter))
+      .filter((record) => (sideFilter === 'all' ? true : record.side === sideFilter))
+      .filter((record) => (categoryFilter === 'all' ? true : record.category === categoryFilter))
       .filter((record) => (normalizedSearch ? record.fullName.toLowerCase().includes(normalizedSearch) : true))
-      .sort((first, second) => first.fullName.localeCompare(second.fullName));
-  }, [records, filterMode, groupFilter, searchTerm]);
+      .sort((first, second) => first.fullName.localeCompare(second.fullName, 'he'));
+  }, [records, filterMode, sideFilter, categoryFilter, searchTerm]);
 
   return (
     <>
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
           <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
             <Banknote size={16} />
@@ -203,14 +237,14 @@ export function GiftsSection({ records, groups, labels, isLoading, onUpdateGift 
         </article>
 
         <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-          <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
+          <div className="mb-2 flex items-center gap-2 text-gray-500 dark:text-slate-400">
             <Wallet size={16} />
-            <span className="text-sm font-medium">{labels.methodCash} / Bit·Paybox / {labels.methodCheck}</span>
+            <span className="text-sm font-medium">{labels.methodCash} / {labels.methodBitPaybox} / {labels.methodCheck}</span>
           </div>
-          <div className="space-y-1 text-sm text-gray-700 dark:text-slate-300">
-            <p dir="ltr">{labels.methodCash}: ₪{formatCurrency(summary.byMethod.cash)}</p>
-            <p dir="ltr">{labels.methodBitPaybox}: ₪{formatCurrency(summary.byMethod.bit_paybox)}</p>
-            <p dir="ltr">{labels.methodCheck}: ₪{formatCurrency(summary.byMethod.check)}</p>
+          <div className="text-sm">
+            <AmountRow label={labels.methodCash} amount={summary.byMethod.cash} icon={METHOD_ICONS.cash} />
+            <AmountRow label={labels.methodBitPaybox} amount={summary.byMethod.bit_paybox} icon={METHOD_ICONS.bit_paybox} />
+            <AmountRow label={labels.methodCheck} amount={summary.byMethod.check} icon={METHOD_ICONS.check} />
           </div>
         </article>
 
@@ -222,22 +256,38 @@ export function GiftsSection({ records, groups, labels, isLoading, onUpdateGift 
         </article>
 
         <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-          <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
-            <span className="text-sm font-medium">{labels.byGroupHeading}</span>
+          <div className="mb-2 flex items-center gap-2 text-gray-500 dark:text-slate-400">
+            <span className="text-sm font-medium">{labels.bySideHeading}</span>
           </div>
-          {summary.byGroupEntries.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-slate-400">{labels.byGroupEmpty}</p>
+          {summary.bySideEntries.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-slate-400">{labels.breakdownEmpty}</p>
           ) : (
-            <div className="max-h-24 space-y-1 overflow-y-auto text-sm text-gray-700 dark:text-slate-300">
-              {summary.byGroupEntries.map(([group, amount]) => (
-                <p key={group} className="flex items-center justify-between gap-2">
-                  <span className="truncate">{group}</span>
-                  <span dir="ltr" className="shrink-0">₪{formatCurrency(amount)}</span>
-                </p>
+            <div className="text-sm">
+              {summary.bySideEntries.map(([side, amount]) => (
+                <AmountRow key={side} label={side} amount={amount} />
               ))}
             </div>
           )}
         </article>
+      </div>
+
+      {/* By-category breakdown gets its own full-width section rather than a
+          cramped grid card - unlike side (usually just 2 values), the number
+          of categories can be large enough that a small card can't fit them
+          all legibly. */}
+      <div className="mb-6 rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+        <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
+          <span className="text-sm font-medium">{labels.byCategoryHeading}</span>
+        </div>
+        {summary.byCategoryEntries.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-slate-400">{labels.breakdownEmpty}</p>
+        ) : (
+          <div className="grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            {summary.byCategoryEntries.map(([category, amount]) => (
+              <AmountRow key={category} label={category} amount={amount} />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
@@ -264,13 +314,24 @@ export function GiftsSection({ records, groups, labels, isLoading, onUpdateGift 
             </button>
 
             <select
-              value={groupFilter}
-              onChange={(event) => setGroupFilter(event.target.value)}
+              value={sideFilter}
+              onChange={(event) => setSideFilter(event.target.value)}
               className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:border-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
-              <option value="all">{labels.groupFilterAll}</option>
-              {groups.map((group) => (
-                <option key={group} value={group}>{group}</option>
+              <option value="all">{labels.sideFilterAll}</option>
+              {sides.map((side) => (
+                <option key={side} value={side}>{side}</option>
+              ))}
+            </select>
+
+            <select
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value)}
+              className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:border-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            >
+              <option value="all">{labels.categoryFilterAll}</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>{category}</option>
               ))}
             </select>
 

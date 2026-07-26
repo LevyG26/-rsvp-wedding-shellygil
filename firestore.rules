@@ -53,15 +53,12 @@ service cloud.firestore {
       // Anyone can submit an RSVP - this must stay public for guests.
       allow create: if isValidId(rsvpId) && isValidRSVP(incoming());
       // Dashboard updates (group assignment, guest count, full-name typo
-      // fixes, manual roster-match overrides, gift amount/method) are
-      // admin-only. Each field was added later than the original create
-      // shape - all needed adding here too, since a field the dashboard
-      // writes but this list doesn't allow gets silently rejected by
-      // Firestore. giftAmount/giftMethod (the "כספים" tab) are nullable -
-      // null means "not recorded yet", distinct from 0 (recorded as
-      // receiving nothing).
+      // fixes, manual roster-match overrides) are admin-only. fullName and
+      // manualRosterEntryIds were added later than group/guestsCount - both
+      // needed adding here too, since a field the dashboard writes but this
+      // list doesn't allow gets silently rejected by Firestore.
       allow update: if isAdmin() &&
-                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds', 'giftAmount', 'giftMethod']) &&
+                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds']) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['group']) ||
                          (incoming().group is string && incoming().group.size() <= 60)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['guestsCount']) ||
@@ -71,13 +68,7 @@ service cloud.firestore {
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['fullName']) ||
                          (incoming().fullName is string && incoming().fullName.size() > 0 && incoming().fullName.size() <= 100)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['manualRosterEntryIds']) ||
-                         (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10)) &&
-                       (!incoming().diff(resource.data).affectedKeys().hasAny(['giftAmount']) ||
-                         incoming().giftAmount == null ||
-                         (incoming().giftAmount is number && incoming().giftAmount >= 0 && incoming().giftAmount <= 1000000)) &&
-                       (!incoming().diff(resource.data).affectedKeys().hasAny(['giftMethod']) ||
-                         incoming().giftMethod == null ||
-                         incoming().giftMethod in ['cash', 'bit_paybox', 'check']);
+                         (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10));
       // Deletes are admin-only.
       allow delete: if isAdmin();
     }
@@ -217,6 +208,30 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isAdmin() && isValidId(entryId) && isValidGuestRosterEntry(incoming());
       allow update: if isAdmin() && isValidGuestRosterEntry(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Cash-gift tracking (the "כספים" tab) - amount actually received and how
+    // it was given, keyed by the guestRoster entry id. Kept as its own
+    // collection rather than fields on guestRoster itself, because every
+    // write to a guestRoster document must supply the entry's full,
+    // unrelated shape (see isValidGuestRosterEntry above) and that document
+    // gets rewritten wholesale by the sheet sync and the automatic
+    // RSVP-roster linker - piggybacking gift data there would risk it being
+    // silently overwritten by either of those. Both fields are optional (and
+    // nullable client-side) so a document can record just an amount, just a
+    // method, or both; the app deletes the document entirely once neither is
+    // set (see saveGiftEntry in services/giftEntries.ts).
+    function isValidGiftEntry(data) {
+      return data.keys().hasOnly(['amount', 'method', 'updatedAt']) &&
+             data.updatedAt == request.time &&
+             (!('amount' in data) || (data.amount is number && data.amount >= 0 && data.amount <= 1000000)) &&
+             (!('method' in data) || data.method in ['cash', 'bit_paybox', 'check']);
+    }
+
+    match /giftEntries/{rosterEntryId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isValidId(rosterEntryId) && isValidGiftEntry(incoming());
       allow delete: if isAdmin();
     }
 
