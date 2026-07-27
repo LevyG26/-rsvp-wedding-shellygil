@@ -156,24 +156,32 @@ function GiftRow({
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-end gap-2">
         {GIFT_METHODS.map((method) => {
           const Icon = METHOD_ICONS[method];
           const methodLabel = method === 'cash' ? labels.methodCash : method === 'bit_paybox' ? labels.methodBitPaybox : labels.methodCheck;
           return (
-            <label key={method} className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-800">
-              <Icon size={13} className="shrink-0 text-gray-400 dark:text-slate-500" />
-              <span className="sr-only">{methodLabel}</span>
+            // The method name used to only exist as a placeholder (which
+            // disappears the moment you type) and an invisible sr-only label
+            // - so once a number was entered, or on a first glance before
+            // typing, there was nothing on screen to tell cash apart from
+            // Bit/Paybox apart from check. The label is now always visible
+            // as its own small caption above the field, not just implied by
+            // an icon.
+            <label key={method} className="flex flex-col items-stretch gap-1 rounded-xl border border-gray-200 bg-white px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800">
+              <span className="flex items-center gap-1 text-[11px] font-medium text-gray-500 dark:text-slate-400">
+                <Icon size={11} className="shrink-0" />
+                <span className="truncate">{methodLabel}</span>
+              </span>
               <input
                 type="text"
                 inputMode="numeric"
                 dir="ltr"
                 value={inputs[method]}
                 onChange={(event) => setInputs((previous) => ({ ...previous, [method]: formatAmountInput(event.target.value) }))}
-                placeholder={labels.amountPlaceholder}
+                placeholder="0"
                 disabled={isSaving}
-                title={methodLabel}
-                className="w-20 bg-transparent text-center text-sm text-gray-900 outline-none disabled:cursor-not-allowed dark:text-slate-100"
+                className="w-20 border-0 bg-transparent p-0 text-center text-sm text-gray-900 outline-none disabled:cursor-not-allowed dark:text-slate-100"
               />
             </label>
           );

@@ -9,8 +9,10 @@ import {
     ChevronDown,
     Download,
     Languages,
+    Loader2,
     LogOut,
     Moon,
+    MoreVertical,
     RefreshCcw,
     Sun,
     Trash2,
@@ -457,6 +459,14 @@ export function AdminDashboard() {
     };
     const [isExporting, setIsExporting] = useState(false);
     const [isExportingGifts, setIsExportingGifts] = useState(false);
+    // The four header actions (theme/refresh/export/logout) used to be four
+    // bare icon buttons crammed into a corner - clear enough with a mouse
+    // hovering for the title tooltip, but meaningless at a glance and
+    // impossible to identify at all on a touchscreen (no hover). Collapsed
+    // into a single labeled menu instead, so every action always shows its
+    // name in text, not just an icon someone has to guess at.
+    const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+    const actionsMenuRef = useRef<HTMLDivElement>(null);
     // Kept only for the Excel export summary sheet, which still includes it -
     // no longer editable or shown anywhere in the dashboard UI itself.
     const [plannedGuests, setPlannedGuests] = useState(0);
@@ -482,6 +492,32 @@ export function AdminDashboard() {
         document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
         document.documentElement.lang = currentLang;
     }, [currentLang, isRtl]);
+
+    // Closes the header actions menu on an outside click or Escape - without
+    // this it would only ever close by picking one of its own items.
+    useEffect(() => {
+        if (!isActionsMenuOpen) {
+            return;
+        }
+
+        const handlePointerDown = (event: PointerEvent) => {
+            if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
+                setIsActionsMenuOpen(false);
+            }
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsActionsMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('pointerdown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('pointerdown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isActionsMenuOpen]);
 
     useEffect(() => {
         if (typeof window === 'undefined') {
@@ -1686,55 +1722,74 @@ export function AdminDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     className="relative mb-6 rounded-3xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95"
                 >
-                    <div className="absolute end-4 top-4 flex items-center gap-1.5 sm:gap-2">
+                    <div className="absolute end-4 top-4" ref={actionsMenuRef}>
                         <button
                             type="button"
-                            onClick={toggleTheme}
-                            title={theme === 'dark' ? t.adminThemeToLight : t.adminThemeToDark}
-                            aria-label={theme === 'dark' ? t.adminThemeToLight : t.adminThemeToDark}
-                            className="flex h-8 w-8 items-center justify-center rounded-xl bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200 sm:h-9 sm:w-9 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                            onClick={() => setIsActionsMenuOpen((open) => !open)}
+                            aria-haspopup="menu"
+                            aria-expanded={isActionsMenuOpen}
+                            aria-label={t.adminActionsMenu}
+                            title={t.adminActionsMenu}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${
+                                isActionsMenuOpen
+                                    ? 'bg-gray-200 text-gray-900 dark:bg-slate-700 dark:text-slate-100'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                            }`}
                         >
-                            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                            <MoreVertical size={18} />
                         </button>
-                        <button
-                            type="button"
-                            onClick={handleRefresh}
-                            title={t.adminRefresh}
-                            aria-label={t.adminRefresh}
-                            className="flex h-8 w-8 items-center justify-center rounded-xl bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200 sm:h-9 sm:w-9 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                            <RefreshCcw size={16} />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleExport}
-                            disabled={(records.length === 0 && guestRoster.length === 0) || isLoading || isExporting}
-                            title={t.adminExportExcel}
-                            aria-label={t.adminExportExcel}
-                            className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors sm:h-9 sm:w-9 ${(records.length === 0 && guestRoster.length === 0) || isLoading || isExporting
-                                ? 'cursor-not-allowed bg-gray-100 text-gray-400'
-                                : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                }`}
-                        >
-                            {isExporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-300 border-t-emerald-700" /> : <Download size={16} />}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleLogout}
-                            title={t.adminLogout}
-                            aria-label={t.adminLogout}
-                            className="flex h-8 w-8 items-center justify-center rounded-xl bg-gray-900 text-white transition-colors hover:bg-gray-800 sm:h-9 sm:w-9"
-                        >
-                            <LogOut size={16} />
-                        </button>
+
+                        {isActionsMenuOpen && (
+                            <div
+                                role="menu"
+                                className="absolute end-0 top-11 z-20 w-60 overflow-hidden rounded-2xl border border-gray-100 bg-white py-1.5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+                            >
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => { toggleTheme(); setIsActionsMenuOpen(false); }}
+                                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                >
+                                    {theme === 'dark' ? <Sun size={16} className="shrink-0 text-gray-400 dark:text-slate-500" /> : <Moon size={16} className="shrink-0 text-gray-400 dark:text-slate-500" />}
+                                    {theme === 'dark' ? t.adminThemeToLight : t.adminThemeToDark}
+                                </button>
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => { handleRefresh(); setIsActionsMenuOpen(false); }}
+                                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                                >
+                                    <RefreshCcw size={16} className="shrink-0 text-gray-400 dark:text-slate-500" />
+                                    {t.adminRefresh}
+                                </button>
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => { handleExport(); setIsActionsMenuOpen(false); }}
+                                    disabled={(records.length === 0 && guestRoster.length === 0) || isLoading || isExporting}
+                                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 dark:text-slate-200 dark:hover:bg-slate-800 dark:disabled:text-slate-600"
+                                >
+                                    {isExporting ? <Loader2 size={16} className="shrink-0 animate-spin text-gray-400" /> : <Download size={16} className="shrink-0 text-gray-400 dark:text-slate-500" />}
+                                    {t.adminExportExcel}
+                                </button>
+                                <div className="my-1.5 border-t border-gray-100 dark:border-slate-700" />
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => { handleLogout(); setIsActionsMenuOpen(false); }}
+                                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-rose-600 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                                >
+                                    <LogOut size={16} className="shrink-0" />
+                                    {t.adminLogout}
+                                </button>
+                            </div>
+                        )}
                     </div>
 
-                    {/* pe-* reserves room for the icon-button row (theme
-                        toggle/refresh/export/logout - 4 buttons now that the
-                        toggle was added) so the title block never runs
-                        underneath it, which is what was happening on mobile
-                        before this was widened. */}
-                    <div className="flex items-center gap-3 pe-44 sm:pe-48">
+                    {/* pe-* reserves room for the single actions-menu button
+                        in the corner so the title block never runs underneath
+                        it on mobile. */}
+                    <div className="flex items-center gap-3 pe-14 sm:pe-16">
                         <div className="h-20 w-20 shrink-0 sm:h-28 sm:w-28 lg:h-32 lg:w-32" aria-hidden="true">
                             {/* The source art is a transparent-background monogram, taller than
                                 it is wide (420x594) - object-cover in a mismatched box used to
@@ -1745,19 +1800,24 @@ export function AdminDashboard() {
                             <img src={logoSgSilver} alt="" className="hidden h-full w-full object-contain dark:block" />
                         </div>
                         <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-rose-500">{t.adminDashboardTitle}</p>
-                            <h1 className="text-3xl font-serif text-gray-900 dark:text-slate-100">חתונת שלי וגיל</h1>
-                            <p className="mt-1 text-gray-600 dark:text-slate-400">{t.adminDashboardSubtitle}</p>
+                            <p className={`text-xs font-semibold text-rose-500 ${isRtl ? '' : 'uppercase tracking-wide'}`}>{t.adminDashboardTitle}</p>
+                            <h1 className="font-serif text-3xl tracking-tight text-gray-900 sm:text-4xl dark:text-slate-100">חתונת שלי וגיל</h1>
+                            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{t.adminDashboardSubtitle}</p>
                         </div>
                     </div>
 
-                    <div className="mt-5 flex gap-2 border-b border-gray-100 dark:border-slate-700">
+                    {/* Segmented-pill tab bar - reads as a single grouped
+                        control (like a native app's tab switcher) instead of
+                        a row of underlined text links, and scales better now
+                        that there are five tabs: the active one is a solid
+                        "chip", not just a thin line that's easy to miss. */}
+                    <div className="mt-5 flex flex-wrap gap-1 rounded-2xl bg-gray-100/80 p-1.5 dark:bg-slate-800/60">
                         <button
                             type="button"
                             onClick={() => setActiveTab('roster')}
-                            className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'roster'
-                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'roster'
+                                ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                                : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                         >
                             {t.adminRosterTitle}
@@ -1765,9 +1825,9 @@ export function AdminDashboard() {
                         <button
                             type="button"
                             onClick={() => setActiveTab('responses')}
-                            className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'responses'
-                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'responses'
+                                ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                                : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                         >
                             {t.adminTabResponses}
@@ -1775,9 +1835,9 @@ export function AdminDashboard() {
                         <button
                             type="button"
                             onClick={() => setActiveTab('reminders')}
-                            className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'reminders'
-                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'reminders'
+                                ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                                : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                         >
                             {t.adminTabReminders}
@@ -1785,9 +1845,9 @@ export function AdminDashboard() {
                         <button
                             type="button"
                             onClick={() => setActiveTab('seating')}
-                            className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'seating'
-                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'seating'
+                                ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                                : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                         >
                             {t.adminTabSeating}
@@ -1795,9 +1855,9 @@ export function AdminDashboard() {
                         <button
                             type="button"
                             onClick={() => setActiveTab('gifts')}
-                            className={`border-b-2 px-1 py-2.5 text-sm font-medium transition-colors ${activeTab === 'gifts'
-                                ? 'border-gray-900 text-gray-900 dark:border-slate-200 dark:text-slate-100'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'gifts'
+                                ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                                : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
                         >
                             {t.adminTabGifts}
