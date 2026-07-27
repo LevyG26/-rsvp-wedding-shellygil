@@ -212,27 +212,44 @@ service cloud.firestore {
     }
 
     // Cash-gift tracking (the "כספים" tab) - amount actually received, keyed
-    // by the guestRoster entry id. One optional amount PER payment method
-    // (not a single amount + a single method) since a guest can split their
-    // gift across more than one - e.g. 500 in cash and 500 by Bit. Kept as
-    // its own collection rather than fields on guestRoster itself, because
-    // every write to a guestRoster document must supply the entry's full,
-    // unrelated shape (see isValidGuestRosterEntry above) and that document
-    // gets rewritten wholesale by the sheet sync and the automatic
-    // RSVP-roster linker - piggybacking gift data there would risk it being
-    // silently overwritten by either of those. The app deletes the document
-    // entirely once every amount is cleared (see saveGiftEntry in
+    // by the guestRoster entry id. One optional amount+currency PER payment
+    // method (not a single amount + a single method) since a guest can split
+    // their gift across more than one - e.g. 500 ILS in cash and 500 USD by
+    // Bit. Kept as its own collection rather than fields on guestRoster
+    // itself, because every write to a guestRoster document must supply the
+    // entry's full, unrelated shape (see isValidGuestRosterEntry above) and
+    // that document gets rewritten wholesale by the sheet sync and the
+    // automatic RSVP-roster linker - piggybacking gift data there would risk
+    // it being silently overwritten by either of those. The app deletes the
+    // document entirely once every amount is cleared (see saveGiftEntry in
     // services/giftEntries.ts).
-    function isValidGiftAmount(data, key) {
-      return !(key in data) || (data[key] is number && data[key] >= 0 && data[key] <= 1000000);
+    function isValidGiftCurrency(value) {
+      return value in ['ILS', 'USD', 'EUR'];
+    }
+
+    // A currency field is only meaningful alongside its amount - the client
+    // never writes one without the other - so both must be present together,
+    // or both absent.
+    function isValidGiftMethodFields(data, amountKey, currencyKey) {
+      return (!(amountKey in data) && !(currencyKey in data)) ||
+             (
+               (amountKey in data) &&
+               data[amountKey] is number && data[amountKey] >= 0 && data[amountKey] <= 1000000 &&
+               (!(currencyKey in data) || isValidGiftCurrency(data[currencyKey]))
+             );
     }
 
     function isValidGiftEntry(data) {
-      return data.keys().hasOnly(['cashAmount', 'bitPayboxAmount', 'checkAmount', 'updatedAt']) &&
+      return data.keys().hasOnly([
+               'cashAmount', 'cashCurrency',
+               'bitPayboxAmount', 'bitPayboxCurrency',
+               'checkAmount', 'checkCurrency',
+               'updatedAt'
+             ]) &&
              data.updatedAt == request.time &&
-             isValidGiftAmount(data, 'cashAmount') &&
-             isValidGiftAmount(data, 'bitPayboxAmount') &&
-             isValidGiftAmount(data, 'checkAmount');
+             isValidGiftMethodFields(data, 'cashAmount', 'cashCurrency') &&
+             isValidGiftMethodFields(data, 'bitPayboxAmount', 'bitPayboxCurrency') &&
+             isValidGiftMethodFields(data, 'checkAmount', 'checkCurrency');
     }
 
     match /giftEntries/{rosterEntryId} {

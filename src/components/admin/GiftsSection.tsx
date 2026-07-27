@@ -1,6 +1,20 @@
 import { useMemo, useState } from 'react';
 import { Banknote, Check, Download, Loader2, Search, Trash2, Wallet } from 'lucide-react';
-import { GIFT_METHODS, type GiftMethod } from '../../utils/gifts';
+import {
+  addToTotals,
+  CURRENCY_SYMBOLS,
+  EMPTY_GIFT_AMOUNTS,
+  formatCurrencyTotals,
+  GIFT_CURRENCIES,
+  GIFT_METHODS,
+  isEmptyGiftAmounts,
+  mergeCurrencyTotals,
+  sumGiftAmountsByCurrency,
+  type GiftAmounts,
+  type GiftCurrency,
+  type GiftCurrencyTotals,
+  type GiftMethod,
+} from '../../utils/gifts';
 
 export interface GiftRecordInput {
   id: string;
@@ -8,7 +22,7 @@ export interface GiftRecordInput {
   side: string;
   category: string;
   guestsCount: number;
-  giftAmounts: Record<GiftMethod, number | null>;
+  giftAmounts: GiftAmounts;
 }
 
 interface GiftsSectionLabels {
@@ -22,6 +36,7 @@ interface GiftsSectionLabels {
   methodCash: string;
   methodBitPaybox: string;
   methodCheck: string;
+  currencyLabel: string;
   filterAll: string;
   filterMissing: string;
   sideFilterAll: string;
@@ -46,21 +61,15 @@ interface GiftsSectionProps {
   labels: GiftsSectionLabels;
   isLoading: boolean;
   isExporting: boolean;
-  onUpdateGift: (recordId: string, giftAmounts: Record<GiftMethod, number | null>) => Promise<void>;
+  onUpdateGift: (recordId: string, giftAmounts: GiftAmounts) => Promise<void>;
   onExport: () => void;
 }
-
-const EMPTY_AMOUNTS: Record<GiftMethod, number | null> = { cash: null, bit_paybox: null, check: null };
 
 const METHOD_ICONS: Record<GiftMethod, typeof Banknote> = {
   cash: Banknote,
   bit_paybox: Wallet,
   check: Check,
 };
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(amount);
-}
 
 // Formats digits-only input with thousands separators as the person types
 // (e.g. "1500" -> "1,500"), so entering a gift amount reads clearly without
@@ -76,29 +85,43 @@ function parseAmountInput(formatted: string): number | null {
   return digits ? Number(digits) : null;
 }
 
-function sumAmounts(amounts: Record<GiftMethod, number | null>): number {
-  return (amounts.cash ?? 0) + (amounts.bit_paybox ?? 0) + (amounts.check ?? 0);
-}
-
-function isEmptyAmounts(amounts: Record<GiftMethod, number | null>): boolean {
-  return amounts.cash === null && amounts.bit_paybox === null && amounts.check === null;
-}
-
 // A label/amount row that reads correctly in RTL: the label flows with the
 // surrounding (RTL) text naturally, and only the actual number is forced
 // dir="ltr" so digits don't get visually reordered - putting dir="ltr" on
 // the whole row (an earlier version) is what made "מזומן: ₪0" render
-// backwards.
-function AmountRow({ label, amount, icon: Icon }: { label: string; amount: number; icon?: typeof Banknote }) {
+// backwards. Rendered as its own bordered tile (rather than a bare text
+// line) so multiple rows in the same breakdown card read as clearly
+// separated items instead of blurring together.
+function AmountRow({ label, totals, icon: Icon }: { label: string; totals: GiftCurrencyTotals; icon?: typeof Banknote }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
       <span className="flex min-w-0 items-center gap-1.5 truncate text-gray-700 dark:text-slate-300">
         {Icon && <Icon size={14} className="shrink-0 text-gray-400 dark:text-slate-500" />}
         <span className="truncate">{label}</span>
       </span>
-      <span dir="ltr" className="shrink-0 font-semibold text-gray-900 dark:text-slate-100">₪{formatCurrency(amount)}</span>
+      <span dir="ltr" className="shrink-0 font-semibold text-gray-900 dark:text-slate-100">{formatCurrencyTotals(totals)}</span>
     </div>
   );
+}
+
+type MethodInputs = Record<GiftMethod, { text: string; currency: GiftCurrency }>;
+
+function amountsToInputs(amounts: GiftAmounts): MethodInputs {
+  return GIFT_METHODS.reduce((accumulated, method) => {
+    const entry = amounts[method];
+    accumulated[method] = {
+      text: entry.amount === null ? '' : formatAmountInput(String(entry.amount)),
+      currency: entry.currency,
+    };
+    return accumulated;
+  }, {} as MethodInputs);
+}
+
+function inputsToAmounts(inputs: MethodInputs): GiftAmounts {
+  return GIFT_METHODS.reduce((accumulated, method) => {
+    accumulated[method] = { amount: parseAmountInput(inputs[method].text), currency: inputs[method].currency };
+    return accumulated;
+  }, {} as GiftAmounts);
 }
 
 function GiftRow({
@@ -110,23 +133,20 @@ function GiftRow({
   labels: GiftsSectionLabels;
   onUpdateGift: GiftsSectionProps['onUpdateGift'];
 }) {
-  const [inputs, setInputs] = useState<Record<GiftMethod, string>>({
-    cash: record.giftAmounts.cash === null ? '' : formatAmountInput(String(record.giftAmounts.cash)),
-    bit_paybox: record.giftAmounts.bit_paybox === null ? '' : formatAmountInput(String(record.giftAmounts.bit_paybox)),
-    check: record.giftAmounts.check === null ? '' : formatAmountInput(String(record.giftAmounts.check)),
-  });
+  const [inputs, setInputs] = useState<MethodInputs>(() => amountsToInputs(record.giftAmounts));
   const [isSaving, setIsSaving] = useState(false);
   const [hasError, setHasError] = useState(false);
 
-  const parsedAmounts: Record<GiftMethod, number | null> = {
-    cash: parseAmountInput(inputs.cash),
-    bit_paybox: parseAmountInput(inputs.bit_paybox),
-    check: parseAmountInput(inputs.check),
-  };
-  const hasChanged = GIFT_METHODS.some((method) => parsedAmounts[method] !== record.giftAmounts[method]);
-  const rowTotal = sumAmounts(parsedAmounts);
+  const parsedAmounts = inputsToAmounts(inputs);
+  const hasChanged = GIFT_METHODS.some((method) => {
+    const parsed = parsedAmounts[method];
+    const original = record.giftAmounts[method];
+    return parsed.amount !== original.amount || (parsed.amount !== null && parsed.currency !== original.currency);
+  });
+  const rowTotals = sumGiftAmountsByCurrency(parsedAmounts);
+  const hasRowTotal = Object.keys(rowTotals).length > 0;
 
-  const handleSave = async (nextAmounts: Record<GiftMethod, number | null>) => {
+  const handleSave = async (nextAmounts: GiftAmounts) => {
     if (isSaving) return;
     setIsSaving(true);
     setHasError(false);
@@ -143,8 +163,8 @@ function GiftRow({
   const handleClear = () => {
     if (isSaving) return;
     if (!window.confirm(labels.clearConfirm)) return;
-    setInputs({ cash: '', bit_paybox: '', check: '' });
-    void handleSave(EMPTY_AMOUNTS);
+    setInputs(amountsToInputs(EMPTY_GIFT_AMOUNTS));
+    void handleSave(EMPTY_GIFT_AMOUNTS);
   };
 
   return (
@@ -167,28 +187,48 @@ function GiftRow({
             // typing, there was nothing on screen to tell cash apart from
             // Bit/Paybox apart from check. The label is now always visible
             // as its own small caption above the field, not just implied by
-            // an icon.
+            // an icon. A currency selector sits beside the amount so any of
+            // the three methods can be entered in ₪, $ or €.
             <label key={method} className="flex flex-col items-stretch gap-1 rounded-xl border border-gray-200 bg-white px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800">
               <span className="flex items-center gap-1 text-[11px] font-medium text-gray-500 dark:text-slate-400">
                 <Icon size={11} className="shrink-0" />
                 <span className="truncate">{methodLabel}</span>
               </span>
-              <input
-                type="text"
-                inputMode="numeric"
-                dir="ltr"
-                value={inputs[method]}
-                onChange={(event) => setInputs((previous) => ({ ...previous, [method]: formatAmountInput(event.target.value) }))}
-                placeholder="0"
-                disabled={isSaving}
-                className="w-20 border-0 bg-transparent p-0 text-center text-sm text-gray-900 outline-none disabled:cursor-not-allowed dark:text-slate-100"
-              />
+              <span className="flex items-center gap-1">
+                <select
+                  aria-label={labels.currencyLabel}
+                  value={inputs[method].currency}
+                  onChange={(event) => setInputs((previous) => ({
+                    ...previous,
+                    [method]: { ...previous[method], currency: event.target.value as GiftCurrency },
+                  }))}
+                  disabled={isSaving}
+                  className="shrink-0 rounded-md border-0 bg-transparent p-0 text-xs font-semibold text-gray-500 outline-none disabled:cursor-not-allowed dark:text-slate-400"
+                >
+                  {GIFT_CURRENCIES.map((currency) => (
+                    <option key={currency} value={currency}>{CURRENCY_SYMBOLS[currency]}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  dir="ltr"
+                  value={inputs[method].text}
+                  onChange={(event) => setInputs((previous) => ({
+                    ...previous,
+                    [method]: { ...previous[method], text: formatAmountInput(event.target.value) },
+                  }))}
+                  placeholder="0"
+                  disabled={isSaving}
+                  className="w-16 border-0 bg-transparent p-0 text-center text-sm text-gray-900 outline-none disabled:cursor-not-allowed dark:text-slate-100"
+                />
+              </span>
             </label>
           );
         })}
 
-        {rowTotal > 0 && (
-          <span dir="ltr" className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">= ₪{formatCurrency(rowTotal)}</span>
+        {hasRowTotal && (
+          <span dir="ltr" className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">= {formatCurrencyTotals(rowTotals)}</span>
         )}
 
         {(hasChanged || isSaving) && (
@@ -203,7 +243,7 @@ function GiftRow({
           </button>
         )}
 
-        {!isEmptyAmounts(record.giftAmounts) && (
+        {!isEmptyGiftAmounts(record.giftAmounts) && (
           <button
             type="button"
             onClick={handleClear}
@@ -239,30 +279,33 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
   );
 
   const summary = useMemo(() => {
-    const byMethod: Record<GiftMethod, number> = { cash: 0, bit_paybox: 0, check: 0 };
-    const bySide = new Map<string, number>();
-    const byCategory = new Map<string, number>();
-    let totalAmount = 0;
+    const byMethod: Record<GiftMethod, GiftCurrencyTotals> = { cash: {}, bit_paybox: {}, check: {} };
+    const bySide = new Map<string, GiftCurrencyTotals>();
+    const byCategory = new Map<string, GiftCurrencyTotals>();
+    let totalByCurrency: GiftCurrencyTotals = {};
     let missingCount = 0;
 
     records.forEach((record) => {
-      if (isEmptyAmounts(record.giftAmounts)) {
+      if (isEmptyGiftAmounts(record.giftAmounts)) {
         missingCount += 1;
         return;
       }
-      const recordTotal = sumAmounts(record.giftAmounts);
-      totalAmount += recordTotal;
+      const recordTotals = sumGiftAmountsByCurrency(record.giftAmounts);
+      totalByCurrency = mergeCurrencyTotals(totalByCurrency, recordTotals);
       GIFT_METHODS.forEach((method) => {
-        byMethod[method] += record.giftAmounts[method] ?? 0;
+        const entry = record.giftAmounts[method];
+        if (entry.amount !== null) {
+          byMethod[method] = addToTotals(byMethod[method], entry.currency, entry.amount);
+        }
       });
       const sideKey = record.side || '-';
       const categoryKey = record.category || '-';
-      bySide.set(sideKey, (bySide.get(sideKey) ?? 0) + recordTotal);
-      byCategory.set(categoryKey, (byCategory.get(categoryKey) ?? 0) + recordTotal);
+      bySide.set(sideKey, mergeCurrencyTotals(bySide.get(sideKey) ?? {}, recordTotals));
+      byCategory.set(categoryKey, mergeCurrencyTotals(byCategory.get(categoryKey) ?? {}, recordTotals));
     });
 
     return {
-      totalAmount,
+      totalByCurrency,
       byMethod,
       missingCount,
       bySideEntries: Array.from(bySide.entries()).sort((first, second) => first[0].localeCompare(second[0])),
@@ -273,7 +316,7 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
   const visibleRecords = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return records
-      .filter((record) => (filterMode === 'missing' ? isEmptyAmounts(record.giftAmounts) : true))
+      .filter((record) => (filterMode === 'missing' ? isEmptyGiftAmounts(record.giftAmounts) : true))
       .filter((record) => (sideFilter === 'all' ? true : record.side === sideFilter))
       .filter((record) => (categoryFilter === 'all' ? true : record.category === categoryFilter))
       .filter((record) => (normalizedSearch ? record.fullName.toLowerCase().includes(normalizedSearch) : true))
@@ -288,7 +331,7 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
             <Banknote size={16} />
             <span className="text-sm font-medium">{labels.totalLabel}</span>
           </div>
-          <p dir="ltr" className="text-3xl font-semibold text-gray-900 dark:text-slate-100">₪{formatCurrency(summary.totalAmount)}</p>
+          <p dir="ltr" className="break-words text-3xl font-semibold text-gray-900 dark:text-slate-100">{formatCurrencyTotals(summary.totalByCurrency)}</p>
         </article>
 
         <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
@@ -296,10 +339,10 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
             <Wallet size={16} />
             <span className="text-sm font-medium">{labels.methodCash} / {labels.methodBitPaybox} / {labels.methodCheck}</span>
           </div>
-          <div className="text-sm">
-            <AmountRow label={labels.methodCash} amount={summary.byMethod.cash} icon={METHOD_ICONS.cash} />
-            <AmountRow label={labels.methodBitPaybox} amount={summary.byMethod.bit_paybox} icon={METHOD_ICONS.bit_paybox} />
-            <AmountRow label={labels.methodCheck} amount={summary.byMethod.check} icon={METHOD_ICONS.check} />
+          <div className="space-y-1.5 text-sm">
+            <AmountRow label={labels.methodCash} totals={summary.byMethod.cash} icon={METHOD_ICONS.cash} />
+            <AmountRow label={labels.methodBitPaybox} totals={summary.byMethod.bit_paybox} icon={METHOD_ICONS.bit_paybox} />
+            <AmountRow label={labels.methodCheck} totals={summary.byMethod.check} icon={METHOD_ICONS.check} />
           </div>
         </article>
 
@@ -317,9 +360,9 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
           {summary.bySideEntries.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-slate-400">{labels.breakdownEmpty}</p>
           ) : (
-            <div className="text-sm">
-              {summary.bySideEntries.map(([side, amount]) => (
-                <AmountRow key={side} label={side} amount={amount} />
+            <div className="space-y-1.5 text-sm">
+              {summary.bySideEntries.map(([side, totals]) => (
+                <AmountRow key={side} label={side} totals={totals} />
               ))}
             </div>
           )}
@@ -329,7 +372,9 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
       {/* By-category breakdown gets its own full-width section rather than a
           cramped grid card - unlike side (usually just 2 values), the number
           of categories can be large enough that a small card can't fit them
-          all legibly. */}
+          all legibly. Each category is its own bordered tile (via AmountRow)
+          so it's clear at a glance where one group ends and the next
+          begins. */}
       <div className="mb-6 rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
         <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
           <span className="text-sm font-medium">{labels.byCategoryHeading}</span>
@@ -337,9 +382,9 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
         {summary.byCategoryEntries.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-slate-400">{labels.breakdownEmpty}</p>
         ) : (
-          <div className="grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            {summary.byCategoryEntries.map(([category, amount]) => (
-              <AmountRow key={category} label={category} amount={amount} />
+          <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            {summary.byCategoryEntries.map(([category, totals]) => (
+              <AmountRow key={category} label={category} totals={totals} />
             ))}
           </div>
         )}

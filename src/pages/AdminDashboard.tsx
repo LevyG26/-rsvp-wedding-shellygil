@@ -38,7 +38,7 @@ import { OldSiteRsvpImportPanel } from '../components/admin/OldSiteRsvpImportPan
 import { DuplicateFinderPanel } from '../components/admin/DuplicateFinderPanel';
 import { loadBaseList, syncBaseListFromSheet, updateBaseListEntry, type BaseListSyncResult } from '../services/baseList';
 import type { NormalizedBaseListEntry } from '../utils/baseList';
-import type { GiftMethod } from '../utils/gifts';
+import { EMPTY_GIFT_AMOUNTS, isEmptyGiftAmounts, type GiftAmounts } from '../utils/gifts';
 import { GiftsSection } from '../components/admin/GiftsSection';
 import { loadGiftEntries, saveGiftEntry, type GiftEntry } from '../services/giftEntries';
 import { WhatsappReminders } from '../components/admin/WhatsappReminders';
@@ -884,7 +884,7 @@ export function AdminDashboard() {
                     side: entry.side,
                     category: entry.category,
                     guestsCount: entry.invitedCount,
-                    giftAmounts: giftEntry?.amounts ?? { cash: null, bit_paybox: null, check: null },
+                    giftAmounts: giftEntry?.amounts ?? EMPTY_GIFT_AMOUNTS,
                 };
             }),
         [guestRoster, giftEntriesByRosterId],
@@ -1631,14 +1631,13 @@ export function AdminDashboard() {
     // Clearing every field (all three null) deletes the record entirely (see
     // saveGiftEntry), which is how a row moves back onto the "still missing
     // an amount" list.
-    const handleUpdateRosterGift = async (rosterEntryId: string, amounts: Record<GiftMethod, number | null>) => {
+    const handleUpdateRosterGift = async (rosterEntryId: string, amounts: GiftAmounts) => {
         setError('');
         try {
             await saveGiftEntry(rosterEntryId, amounts);
             setGiftEntries((previous) => {
                 const withoutEntry = previous.filter((entry) => entry.rosterEntryId !== rosterEntryId);
-                const isEmpty = amounts.cash === null && amounts.bit_paybox === null && amounts.check === null;
-                if (isEmpty) {
+                if (isEmptyGiftAmounts(amounts)) {
                     return withoutEntry;
                 }
                 return [...withoutEntry, { rosterEntryId, amounts }];
@@ -2801,6 +2800,7 @@ export function AdminDashboard() {
                             methodCash: t.adminGiftsMethodCash,
                             methodBitPaybox: t.adminGiftsMethodBitPaybox,
                             methodCheck: t.adminGiftsMethodCheck,
+                            currencyLabel: t.adminGiftsCurrencyLabel,
                             filterAll: t.adminGiftsFilterAll,
                             filterMissing: t.adminGiftsFilterMissing,
                             sideFilterAll: t.adminGiftsSideFilterAll,
