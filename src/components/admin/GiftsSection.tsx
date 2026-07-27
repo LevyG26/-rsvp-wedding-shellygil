@@ -4,7 +4,8 @@ import {
   addToTotals,
   CURRENCY_SYMBOLS,
   EMPTY_GIFT_AMOUNTS,
-  formatCurrencyTotals,
+  formatCurrencyAmount,
+  getCurrencyTotalsEntries,
   GIFT_CURRENCIES,
   GIFT_METHODS,
   isEmptyGiftAmounts,
@@ -71,6 +72,55 @@ const METHOD_ICONS: Record<GiftMethod, typeof Banknote> = {
   check: Check,
 };
 
+// Each currency gets its own subtle color so that when a guest (or a
+// breakdown total) has amounts in more than one currency, they read as
+// distinct labeled chips rather than one string glued together with a "+".
+const CURRENCY_CHIP_STYLES: Record<GiftCurrency, string> = {
+  ILS: 'bg-gray-100 text-gray-700 dark:bg-slate-700/70 dark:text-slate-200',
+  USD: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+  EUR: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+};
+
+// Renders a per-currency breakdown as a stack of small colored pills (one
+// per currency actually present) instead of a single joined "₪1,500 + €700"
+// string - each currency is visually distinct and the amounts don't run
+// into each other.
+function CurrencyAmounts({
+  totals,
+  size = 'sm',
+  direction = 'column',
+}: {
+  totals: GiftCurrencyTotals;
+  size?: 'sm' | 'lg';
+  direction?: 'column' | 'row';
+}) {
+  const entries = getCurrencyTotalsEntries(totals);
+  const sizeClass = size === 'lg' ? 'px-3 py-1 text-xl' : 'px-2 py-0.5 text-sm';
+  const wrapperClass = direction === 'row' ? 'flex flex-wrap items-center gap-1.5' : 'flex flex-col items-end gap-1';
+
+  if (entries.length === 0) {
+    return (
+      <span dir="ltr" className={`inline-flex w-fit shrink-0 items-center rounded-lg font-semibold ${sizeClass} ${CURRENCY_CHIP_STYLES.ILS}`}>
+        {CURRENCY_SYMBOLS.ILS}0
+      </span>
+    );
+  }
+
+  return (
+    <div className={wrapperClass}>
+      {entries.map(({ currency, amount }) => (
+        <span
+          key={currency}
+          dir="ltr"
+          className={`inline-flex w-fit shrink-0 items-center rounded-lg font-semibold ${sizeClass} ${CURRENCY_CHIP_STYLES[currency]}`}
+        >
+          {CURRENCY_SYMBOLS[currency]}{formatCurrencyAmount(amount)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // Formats digits-only input with thousands separators as the person types
 // (e.g. "1500" -> "1,500"), so entering a gift amount reads clearly without
 // needing to count zeros. Parsing just strips the separators back out.
@@ -94,12 +144,12 @@ function parseAmountInput(formatted: string): number | null {
 // separated items instead of blurring together.
 function AmountRow({ label, totals, icon: Icon }: { label: string; totals: GiftCurrencyTotals; icon?: typeof Banknote }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/50">
       <span className="flex min-w-0 items-center gap-1.5 truncate text-gray-700 dark:text-slate-300">
         {Icon && <Icon size={14} className="shrink-0 text-gray-400 dark:text-slate-500" />}
         <span className="truncate">{label}</span>
       </span>
-      <span dir="ltr" className="shrink-0 font-semibold text-gray-900 dark:text-slate-100">{formatCurrencyTotals(totals)}</span>
+      <CurrencyAmounts totals={totals} />
     </div>
   );
 }
@@ -228,7 +278,10 @@ function GiftRow({
         })}
 
         {hasRowTotal && (
-          <span dir="ltr" className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">= {formatCurrencyTotals(rowTotals)}</span>
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            <span className="text-xs font-medium text-gray-400 dark:text-slate-500">=</span>
+            <CurrencyAmounts totals={rowTotals} direction="row" />
+          </div>
         )}
 
         {(hasChanged || isSaving) && (
@@ -331,7 +384,7 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
             <Banknote size={16} />
             <span className="text-sm font-medium">{labels.totalLabel}</span>
           </div>
-          <p dir="ltr" className="break-words text-3xl font-semibold text-gray-900 dark:text-slate-100">{formatCurrencyTotals(summary.totalByCurrency)}</p>
+          <CurrencyAmounts totals={summary.totalByCurrency} size="lg" direction="row" />
         </article>
 
         <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">

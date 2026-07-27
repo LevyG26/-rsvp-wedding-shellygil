@@ -85,11 +85,28 @@ export function formatCurrencyAmount(amount: number): string {
 }
 
 // Renders a per-currency breakdown as one compact string, e.g. "₪1,500 +
-// $200" - only the currencies that actually have an amount are shown, in a
-// fixed ILS/USD/EUR order so it reads consistently guest to guest.
+// $200" - used for plain-text contexts (the Excel export) where there's no
+// room for the UI's separate colored chip per currency. Only the currencies
+// that actually have an amount are shown, in a fixed ILS/USD/EUR order so it
+// reads consistently guest to guest.
 export function formatCurrencyTotals(totals: GiftCurrencyTotals): string {
   const parts = GIFT_CURRENCIES
     .filter((currency) => !!totals[currency])
     .map((currency) => `${CURRENCY_SYMBOLS[currency]}${formatCurrencyAmount(totals[currency] as number)}`);
   return parts.length > 0 ? parts.join(' + ') : `${CURRENCY_SYMBOLS[DEFAULT_GIFT_CURRENCY]}0`;
+}
+
+// Same breakdown as a list rather than a joined string - the UI renders each
+// currency as its own distinct chip (with its own color) instead of gluing
+// them together with a "+", which read as messy/unclear once a guest had an
+// amount in more than one currency.
+export interface GiftCurrencyTotalEntry {
+  currency: GiftCurrency;
+  amount: number;
+}
+
+export function getCurrencyTotalsEntries(totals: GiftCurrencyTotals): GiftCurrencyTotalEntry[] {
+  return GIFT_CURRENCIES
+    .filter((currency) => !!totals[currency])
+    .map((currency) => ({ currency, amount: totals[currency] as number }));
 }
