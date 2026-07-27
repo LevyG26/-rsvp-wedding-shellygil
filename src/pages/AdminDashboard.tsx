@@ -26,6 +26,7 @@ import { useAdminTheme } from '../hooks/useAdminTheme';
 import { Language, translations } from '../i18n';
 import { logoutAdmin, onAdminAuthStateChanged } from '../admin/auth';
 import { exportRsvpWorkbook } from '../admin/exportRsvpWorkbook';
+import { exportGiftsWorkbook } from '../admin/exportGiftsWorkbook';
 import { GuestCountInput } from '../components/admin/GuestCountInput';
 import { EditableTextField } from '../components/admin/EditableTextField';
 import { GuestGroupSelect } from '../components/admin/GuestGroupSelect';
@@ -455,6 +456,7 @@ export function AdminDashboard() {
         });
     };
     const [isExporting, setIsExporting] = useState(false);
+    const [isExportingGifts, setIsExportingGifts] = useState(false);
     // Kept only for the Excel export summary sheet, which still includes it -
     // no longer editable or shown anywhere in the dashboard UI itself.
     const [plannedGuests, setPlannedGuests] = useState(0);
@@ -846,8 +848,7 @@ export function AdminDashboard() {
                     side: entry.side,
                     category: entry.category,
                     guestsCount: entry.invitedCount,
-                    giftAmount: giftEntry?.amount ?? null,
-                    giftMethod: giftEntry?.method ?? null,
+                    giftAmounts: giftEntry?.amounts ?? { cash: null, bit_paybox: null, check: null },
                 };
             }),
         [guestRoster, giftEntriesByRosterId],
@@ -1588,26 +1589,68 @@ export function AdminDashboard() {
     };
 
     // Records money actually received from a confirmed-attending guestRoster
-    // entry (the "כספים" tab) - amount + how it was given. Both fields are
-    // optional and independent (e.g. the method can be set before the exact
-    // amount is known); passing null for both deletes the record entirely
-    // (see saveGiftEntry), which is how a row moves back onto the "still
-    // missing an amount" list.
-    const handleUpdateRosterGift = async (rosterEntryId: string, giftAmount: number | null, giftMethod: GiftMethod | null) => {
+    // entry (the "כספים" tab) - one optional amount per payment method, so a
+    // guest can split their gift across more than one (e.g. 500 in cash and
+    // 500 by Bit) instead of forcing a single amount + a single method.
+    // Clearing every field (all three null) deletes the record entirely (see
+    // saveGiftEntry), which is how a row moves back onto the "still missing
+    // an amount" list.
+    const handleUpdateRosterGift = async (rosterEntryId: string, amounts: Record<GiftMethod, number | null>) => {
         setError('');
         try {
-            await saveGiftEntry(rosterEntryId, giftAmount, giftMethod);
+            await saveGiftEntry(rosterEntryId, amounts);
             setGiftEntries((previous) => {
                 const withoutEntry = previous.filter((entry) => entry.rosterEntryId !== rosterEntryId);
-                if (giftAmount === null && giftMethod === null) {
+                const isEmpty = amounts.cash === null && amounts.bit_paybox === null && amounts.check === null;
+                if (isEmpty) {
                     return withoutEntry;
                 }
-                return [...withoutEntry, { rosterEntryId, amount: giftAmount, method: giftMethod }];
+                return [...withoutEntry, { rosterEntryId, amounts }];
             });
         } catch (updateError) {
-            console.error('Failed to update gift amount/method', updateError);
+            console.error('Failed to update gift amounts', updateError);
             setError(t.adminGiftUpdateError);
             throw updateError;
+        }
+    };
+
+    const handleExportGifts = async () => {
+        if (attendingGiftRecords.length === 0 || isExportingGifts) {
+            return;
+        }
+
+        setIsExportingGifts(true);
+        setError('');
+        try {
+            await exportGiftsWorkbook({
+                records: attendingGiftRecords,
+                isRtl,
+                labels: {
+                    summarySheet: t.adminGiftsExportSummarySheet,
+                    detailsSheet: t.adminGiftsExportDetailsSheet,
+                    totalReceived: t.adminGiftsTotalLabel,
+                    missingCount: t.adminGiftsMissingLabel,
+                    byMethodHeading: t.adminGiftsExportByMethodHeading,
+                    methodCash: t.adminGiftsMethodCash,
+                    methodBitPaybox: t.adminGiftsMethodBitPaybox,
+                    methodCheck: t.adminGiftsMethodCheck,
+                    bySideHeading: t.adminGiftsBySideHeading,
+                    byCategoryHeading: t.adminGiftsByCategoryHeading,
+                    name: t.adminTableName,
+                    side: t.adminGiftsExportSide,
+                    category: t.adminGiftsByCategoryHeading,
+                    guests: t.adminGiftsGuestsWord,
+                    total: t.adminGiftsExportTotal,
+                    status: t.adminTableStatus,
+                    statusRecorded: t.adminGiftsExportStatusRecorded,
+                    statusMissing: t.adminGiftsMissingLabel,
+                },
+            });
+        } catch (exportError) {
+            console.error('Failed to export gifts workbook', exportError);
+            setError(t.adminGiftsExportError);
+        } finally {
+            setIsExportingGifts(false);
         }
     };
 
@@ -2684,7 +2727,9 @@ export function AdminDashboard() {
                     <GiftsSection
                         records={attendingGiftRecords}
                         isLoading={isLoading || isLoadingGiftEntries}
+                        isExporting={isExportingGifts}
                         onUpdateGift={handleUpdateRosterGift}
+                        onExport={handleExportGifts}
                         labels={{
                             title: t.adminGiftsTitle,
                             subtitle: t.adminGiftsSubtitle,
@@ -2705,10 +2750,14 @@ export function AdminDashboard() {
                             saveButton: t.adminGiftsSaveButton,
                             savingButton: t.adminGiftsSavingButton,
                             saveError: t.adminGiftsSaveError,
+                            clearButton: t.adminGiftsClearButton,
+                            clearConfirm: t.adminGiftsClearConfirm,
                             countLabel: t.adminGiftsCountLabel,
                             guestsWord: t.adminGiftsGuestsWord,
                             emptyState: t.adminGiftsEmptyState,
                             loading: t.adminLoading,
+                            exportButton: t.adminGiftsExportButton,
+                            exportingButton: t.adminGiftsExportingButton,
                         }}
                     />
                 </motion.section>

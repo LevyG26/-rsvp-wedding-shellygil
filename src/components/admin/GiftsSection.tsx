@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Banknote, Check, Loader2, Search, Wallet } from 'lucide-react';
+import { Banknote, Check, Download, Loader2, Search, Trash2, Wallet } from 'lucide-react';
 import { GIFT_METHODS, type GiftMethod } from '../../utils/gifts';
 
 export interface GiftRecordInput {
@@ -8,8 +8,7 @@ export interface GiftRecordInput {
   side: string;
   category: string;
   guestsCount: number;
-  giftAmount: number | null;
-  giftMethod: GiftMethod | null;
+  giftAmounts: Record<GiftMethod, number | null>;
 }
 
 interface GiftsSectionLabels {
@@ -32,18 +31,26 @@ interface GiftsSectionLabels {
   saveButton: string;
   savingButton: string;
   saveError: string;
+  clearButton: string;
+  clearConfirm: string;
   countLabel: string;
   guestsWord: string;
   emptyState: string;
   loading: string;
+  exportButton: string;
+  exportingButton: string;
 }
 
 interface GiftsSectionProps {
   records: GiftRecordInput[];
   labels: GiftsSectionLabels;
   isLoading: boolean;
-  onUpdateGift: (recordId: string, giftAmount: number | null, giftMethod: GiftMethod | null) => Promise<void>;
+  isExporting: boolean;
+  onUpdateGift: (recordId: string, giftAmounts: Record<GiftMethod, number | null>) => Promise<void>;
+  onExport: () => void;
 }
+
+const EMPTY_AMOUNTS: Record<GiftMethod, number | null> = { cash: null, bit_paybox: null, check: null };
 
 const METHOD_ICONS: Record<GiftMethod, typeof Banknote> = {
   cash: Banknote,
@@ -52,13 +59,35 @@ const METHOD_ICONS: Record<GiftMethod, typeof Banknote> = {
 };
 
 function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 }).format(amount);
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(amount);
+}
+
+// Formats digits-only input with thousands separators as the person types
+// (e.g. "1500" -> "1,500"), so entering a gift amount reads clearly without
+// needing to count zeros. Parsing just strips the separators back out.
+function formatAmountInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('en-US');
+}
+
+function parseAmountInput(formatted: string): number | null {
+  const digits = formatted.replace(/\D/g, '');
+  return digits ? Number(digits) : null;
+}
+
+function sumAmounts(amounts: Record<GiftMethod, number | null>): number {
+  return (amounts.cash ?? 0) + (amounts.bit_paybox ?? 0) + (amounts.check ?? 0);
+}
+
+function isEmptyAmounts(amounts: Record<GiftMethod, number | null>): boolean {
+  return amounts.cash === null && amounts.bit_paybox === null && amounts.check === null;
 }
 
 // A label/amount row that reads correctly in RTL: the label flows with the
 // surrounding (RTL) text naturally, and only the actual number is forced
 // dir="ltr" so digits don't get visually reordered - putting dir="ltr" on
-// the whole row (the previous version) is what made "מזומן: ₪0" render
+// the whole row (an earlier version) is what made "מזומן: ₪0" render
 // backwards.
 function AmountRow({ label, amount, icon: Icon }: { label: string; amount: number; icon?: typeof Banknote }) {
   return (
@@ -81,27 +110,41 @@ function GiftRow({
   labels: GiftsSectionLabels;
   onUpdateGift: GiftsSectionProps['onUpdateGift'];
 }) {
-  const [amountInput, setAmountInput] = useState(record.giftAmount === null ? '' : String(record.giftAmount));
-  const [methodInput, setMethodInput] = useState<GiftMethod | null>(record.giftMethod);
+  const [inputs, setInputs] = useState<Record<GiftMethod, string>>({
+    cash: record.giftAmounts.cash === null ? '' : formatAmountInput(String(record.giftAmounts.cash)),
+    bit_paybox: record.giftAmounts.bit_paybox === null ? '' : formatAmountInput(String(record.giftAmounts.bit_paybox)),
+    check: record.giftAmounts.check === null ? '' : formatAmountInput(String(record.giftAmounts.check)),
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [hasError, setHasError] = useState(false);
 
-  const parsedAmount = amountInput.trim() === '' ? null : Number(amountInput);
-  const isAmountValid = parsedAmount === null || (Number.isFinite(parsedAmount) && parsedAmount >= 0);
-  const hasChanged = isAmountValid && (parsedAmount !== record.giftAmount || methodInput !== record.giftMethod);
+  const parsedAmounts: Record<GiftMethod, number | null> = {
+    cash: parseAmountInput(inputs.cash),
+    bit_paybox: parseAmountInput(inputs.bit_paybox),
+    check: parseAmountInput(inputs.check),
+  };
+  const hasChanged = GIFT_METHODS.some((method) => parsedAmounts[method] !== record.giftAmounts[method]);
+  const rowTotal = sumAmounts(parsedAmounts);
 
-  const handleSave = async () => {
-    if (!hasChanged || isSaving || !isAmountValid) return;
+  const handleSave = async (nextAmounts: Record<GiftMethod, number | null>) => {
+    if (isSaving) return;
     setIsSaving(true);
     setHasError(false);
     try {
-      await onUpdateGift(record.id, parsedAmount, methodInput);
+      await onUpdateGift(record.id, nextAmounts);
     } catch (saveError) {
       console.error('Failed to save gift entry', saveError);
       setHasError(true);
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleClear = () => {
+    if (isSaving) return;
+    if (!window.confirm(labels.clearConfirm)) return;
+    setInputs({ cash: '', bit_paybox: '', check: '' });
+    void handleSave(EMPTY_AMOUNTS);
   };
 
   return (
@@ -114,52 +157,54 @@ function GiftRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="number"
-          min={0}
-          step="1"
-          inputMode="decimal"
-          dir="ltr"
-          value={amountInput}
-          onChange={(event) => setAmountInput(event.target.value)}
-          placeholder={labels.amountPlaceholder}
-          disabled={isSaving}
-          className="w-24 rounded-xl border border-gray-300 bg-white px-2 py-1.5 text-center text-sm text-gray-900 outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-200 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-400 dark:focus:ring-slate-700"
-        />
-
-        <div className="flex flex-wrap gap-1">
-          {GIFT_METHODS.map((method) => {
-            const Icon = METHOD_ICONS[method];
-            const methodLabel = method === 'cash' ? labels.methodCash : method === 'bit_paybox' ? labels.methodBitPaybox : labels.methodCheck;
-            const isActive = methodInput === method;
-            return (
-              <button
-                key={method}
-                type="button"
-                onClick={() => setMethodInput(isActive ? null : method)}
+        {GIFT_METHODS.map((method) => {
+          const Icon = METHOD_ICONS[method];
+          const methodLabel = method === 'cash' ? labels.methodCash : method === 'bit_paybox' ? labels.methodBitPaybox : labels.methodCheck;
+          return (
+            <label key={method} className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-800">
+              <Icon size={13} className="shrink-0 text-gray-400 dark:text-slate-500" />
+              <span className="sr-only">{methodLabel}</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                dir="ltr"
+                value={inputs[method]}
+                onChange={(event) => setInputs((previous) => ({ ...previous, [method]: formatAmountInput(event.target.value) }))}
+                placeholder={labels.amountPlaceholder}
                 disabled={isSaving}
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                  isActive
-                    ? 'bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Icon size={12} />
-                {methodLabel}
-              </button>
-            );
-          })}
-        </div>
+                title={methodLabel}
+                className="w-20 bg-transparent text-center text-sm text-gray-900 outline-none disabled:cursor-not-allowed dark:text-slate-100"
+              />
+            </label>
+          );
+        })}
+
+        {rowTotal > 0 && (
+          <span dir="ltr" className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">= ₪{formatCurrency(rowTotal)}</span>
+        )}
 
         {(hasChanged || isSaving) && (
           <button
             type="button"
-            onClick={handleSave}
+            onClick={() => handleSave(parsedAmounts)}
             disabled={!hasChanged || isSaving}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-300 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:bg-slate-700"
           >
             {isSaving ? <Loader2 size={13} className="animate-spin" /> : null}
             {isSaving ? labels.savingButton : labels.saveButton}
+          </button>
+        )}
+
+        {!isEmptyAmounts(record.giftAmounts) && (
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={isSaving}
+            aria-label={labels.clearButton}
+            title={labels.clearButton}
+            className="shrink-0 rounded-xl p-1.5 text-gray-400 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed dark:text-slate-500 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
+          >
+            <Trash2 size={14} />
           </button>
         )}
 
@@ -169,7 +214,7 @@ function GiftRow({
   );
 }
 
-export function GiftsSection({ records, labels, isLoading, onUpdateGift }: GiftsSectionProps) {
+export function GiftsSection({ records, labels, isLoading, isExporting, onUpdateGift, onExport }: GiftsSectionProps) {
   const [sideFilter, setSideFilter] = useState<'all' | string>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
   const [filterMode, setFilterMode] = useState<'all' | 'missing'>('all');
@@ -186,24 +231,26 @@ export function GiftsSection({ records, labels, isLoading, onUpdateGift }: Gifts
   );
 
   const summary = useMemo(() => {
-    const totalAmount = records.reduce((sum, record) => sum + (record.giftAmount ?? 0), 0);
     const byMethod: Record<GiftMethod, number> = { cash: 0, bit_paybox: 0, check: 0 };
     const bySide = new Map<string, number>();
     const byCategory = new Map<string, number>();
+    let totalAmount = 0;
     let missingCount = 0;
 
     records.forEach((record) => {
-      if (record.giftAmount === null) {
+      if (isEmptyAmounts(record.giftAmounts)) {
         missingCount += 1;
         return;
       }
-      if (record.giftMethod) {
-        byMethod[record.giftMethod] += record.giftAmount;
-      }
+      const recordTotal = sumAmounts(record.giftAmounts);
+      totalAmount += recordTotal;
+      GIFT_METHODS.forEach((method) => {
+        byMethod[method] += record.giftAmounts[method] ?? 0;
+      });
       const sideKey = record.side || '-';
       const categoryKey = record.category || '-';
-      bySide.set(sideKey, (bySide.get(sideKey) ?? 0) + record.giftAmount);
-      byCategory.set(categoryKey, (byCategory.get(categoryKey) ?? 0) + record.giftAmount);
+      bySide.set(sideKey, (bySide.get(sideKey) ?? 0) + recordTotal);
+      byCategory.set(categoryKey, (byCategory.get(categoryKey) ?? 0) + recordTotal);
     });
 
     return {
@@ -218,7 +265,7 @@ export function GiftsSection({ records, labels, isLoading, onUpdateGift }: Gifts
   const visibleRecords = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return records
-      .filter((record) => (filterMode === 'missing' ? record.giftAmount === null : true))
+      .filter((record) => (filterMode === 'missing' ? isEmptyAmounts(record.giftAmounts) : true))
       .filter((record) => (sideFilter === 'all' ? true : record.side === sideFilter))
       .filter((record) => (categoryFilter === 'all' ? true : record.category === categoryFilter))
       .filter((record) => (normalizedSearch ? record.fullName.toLowerCase().includes(normalizedSearch) : true))
@@ -292,9 +339,24 @@ export function GiftsSection({ records, labels, isLoading, onUpdateGift }: Gifts
 
       <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
         <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 dark:border-slate-700">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{labels.title}</h2>
-            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{labels.title}</h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onExport}
+              disabled={isExporting || records.length === 0}
+              className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+                isExporting || records.length === 0
+                  ? 'cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-slate-800 dark:text-slate-600'
+                  : 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
+              }`}
+            >
+              {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              {isExporting ? labels.exportingButton : labels.exportButton}
+            </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
