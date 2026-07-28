@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Check, Loader2, MessageCircle, Pencil, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, MessageCircle, Pencil, Phone, RefreshCw, Search, X } from 'lucide-react';
 import type { NormalizedBaseListEntry } from '../../utils/baseList';
 import type { BaseListSyncResult } from '../../services/baseList';
-import { toWhatsappDialableNumber } from '../../utils/phoneNumbers';
+import { normalizePhoneDigits, toWhatsappDialableNumber } from '../../utils/phoneNumbers';
 
 export interface WhatsappRemindersMissingPhoneGuest {
     name: string;
@@ -48,6 +48,11 @@ export interface WhatsappRemindersLabels {
     editNamePlaceholder: string;
     saveEditButton: string;
     editNameError: string;
+    addPhoneButton: string;
+    addPhonePlaceholder: string;
+    savePhoneButton: string;
+    addPhoneError: string;
+    addPhoneInvalid: string;
 }
 
 interface WhatsappRemindersProps {
@@ -73,6 +78,14 @@ interface WhatsappRemindersProps {
     // tab. Surfacing them here is what actually explains the gap, instead of
     // leaving Gil to wonder why the numbers disagree.
     missingPhoneGuests: WhatsappRemindersMissingPhoneGuest[];
+    // Lets Gil add a phone number for one of these guests right here, in one
+    // step - creates (or upserts) the matching baseList entry directly,
+    // rather than requiring him to add the guest to the external phone-number
+    // spreadsheet and re-run the sync just to cover a single person. Once
+    // saved, the guest disappears from missingPhoneGuests on its own (their
+    // name now matches a real baseList entry) and shows up in the reminders
+    // list like everyone else.
+    onAddPhone: (name: string, group: string, phone: string) => Promise<void>;
 }
 
 const TEMPLATE_STORAGE_KEY = 'wedding-admin-wa-reminder-template';
@@ -171,12 +184,19 @@ function isMobileUserAgent(): boolean {
 // short of full automation: WhatsApp bans accounts that message people at
 // scale in an "unauthorized" (bot-driven) way, and a real human clicking
 // through a list of pre-filled links is the compliant, safe version of that.
-export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync, labels, missingPhoneGuests, onUpdateGuestName }: WhatsappRemindersProps) {
+export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync, labels, missingPhoneGuests, onUpdateGuestName, onAddPhone }: WhatsappRemindersProps) {
     const [isMissingPhoneOpen, setIsMissingPhoneOpen] = useState(false);
     const [editingPhone, setEditingPhone] = useState<string | null>(null);
     const [editNameValue, setEditNameValue] = useState('');
     const [isSavingName, setIsSavingName] = useState(false);
     const [editNameErrorPhone, setEditNameErrorPhone] = useState<string | null>(null);
+    // Keyed the same way as each missingPhoneGuests <li> (`${name}-${index}`)
+    // since these guests have no id/phone of their own yet - that's exactly
+    // the thing being added.
+    const [addingPhoneKey, setAddingPhoneKey] = useState<string | null>(null);
+    const [addPhoneValue, setAddPhoneValue] = useState('');
+    const [isSavingPhone, setIsSavingPhone] = useState(false);
+    const [addPhoneErrorKey, setAddPhoneErrorKey] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncMessage, setSyncMessage] = useState('');
     const [syncIsError, setSyncIsError] = useState(false);
@@ -278,6 +298,37 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
             setEditNameErrorPhone(guest.phone);
         } finally {
             setIsSavingName(false);
+        }
+    };
+
+    const startAddingPhone = (key: string) => {
+        setAddingPhoneKey(key);
+        setAddPhoneValue('');
+        setAddPhoneErrorKey(null);
+    };
+
+    const cancelAddingPhone = () => {
+        setAddingPhoneKey(null);
+        setAddPhoneValue('');
+    };
+
+    const handleSavePhone = async (key: string, guest: WhatsappRemindersMissingPhoneGuest) => {
+        const digits = normalizePhoneDigits(addPhoneValue);
+        if (!digits) {
+            setAddPhoneErrorKey(`invalid:${key}`);
+            return;
+        }
+        setIsSavingPhone(true);
+        setAddPhoneErrorKey(null);
+        try {
+            await onAddPhone(guest.name, guest.category, digits);
+            setAddingPhoneKey(null);
+            setAddPhoneValue('');
+        } catch (error) {
+            console.error('Failed to add baseList phone number', error);
+            setAddPhoneErrorKey(`save:${key}`);
+        } finally {
+            setIsSavingPhone(false);
         }
     };
 
@@ -406,13 +457,68 @@ export function WhatsappReminders({ baseList, respondedPhones, isLoading, onSync
                         </button>
                         <p className="mt-1 text-xs opacity-90">{labels.missingPhoneHint}</p>
                         {isMissingPhoneOpen && (
-                            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs">
-                                {missingPhoneGuests.map((guest, index) => (
-                                    <li key={`${guest.name}-${index}`} className="flex items-center justify-between gap-2 rounded-lg bg-white/60 px-2 py-1 dark:bg-slate-900/40">
-                                        <span className="truncate">{guest.name}</span>
-                                        {guest.category && <span className="shrink-0 opacity-70">{guest.category}</span>}
-                                    </li>
-                                ))}
+                            <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto text-xs">
+                                {missingPhoneGuests.map((guest, index) => {
+                                    const key = `${guest.name}-${index}`;
+                                    const isAddingThisGuest = addingPhoneKey === key;
+                                    return (
+                                        <li key={key} className="rounded-lg bg-white/60 px-2 py-1 dark:bg-slate-900/40">
+                                            {isAddingThisGuest ? (
+                                                <div className="flex flex-wrap items-center gap-1.5 py-0.5">
+                                                    <span className="truncate font-medium">{guest.name}</span>
+                                                    <input
+                                                        type="text"
+                                                        inputMode="tel"
+                                                        dir="ltr"
+                                                        value={addPhoneValue}
+                                                        onChange={(event) => setAddPhoneValue(event.target.value)}
+                                                        placeholder={labels.addPhonePlaceholder}
+                                                        autoFocus
+                                                        className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSavePhone(key, guest)}
+                                                        disabled={isSavingPhone}
+                                                        aria-label={labels.savePhoneButton}
+                                                        title={labels.savePhoneButton}
+                                                        className="inline-flex shrink-0 items-center rounded-lg bg-gray-900 p-1.5 text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                                                    >
+                                                        {isSavingPhone ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={cancelAddingPhone}
+                                                        className="inline-flex shrink-0 items-center rounded-lg border border-gray-200 p-1.5 text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                                                    >
+                                                        <X size={13} />
+                                                    </button>
+                                                    {addPhoneErrorKey === `invalid:${key}` && (
+                                                        <span className="w-full text-xs text-rose-600 dark:text-rose-400">{labels.addPhoneInvalid}</span>
+                                                    )}
+                                                    {addPhoneErrorKey === `save:${key}` && (
+                                                        <span className="w-full text-xs text-rose-600 dark:text-rose-400">{labels.addPhoneError}</span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="flex min-w-0 items-center gap-1.5">
+                                                        <span className="truncate">{guest.name}</span>
+                                                        {guest.category && <span className="shrink-0 opacity-70">{guest.category}</span>}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => startAddingPhone(key)}
+                                                        className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-rose-100 px-2 py-1 font-medium text-rose-800 hover:bg-rose-200 dark:bg-rose-900/40 dark:text-rose-200 dark:hover:bg-rose-900/60"
+                                                    >
+                                                        <Phone size={11} />
+                                                        {labels.addPhoneButton}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         )}
                     </div>

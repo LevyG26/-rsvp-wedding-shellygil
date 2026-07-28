@@ -1142,6 +1142,18 @@ export function AdminDashboard() {
         setBaseList((previous) => previous.map((entry) => (entry.phone === phone ? { ...entry, name, group } : entry)));
     };
 
+    // Lets Gil add a phone number for a roster guest who has none, right from
+    // the reminders tab's "missing phone" panel, instead of needing to add
+    // them to the external phone-number spreadsheet and re-run the sync just
+    // to cover one person. updateBaseListEntry upserts by phone, so this
+    // works whether or not that phone already happens to exist. The guest
+    // then disappears from rosterEntriesMissingPhone on its own next render
+    // (their name now matches a real baseList entry).
+    const handleAddBaseListPhone = async (name: string, group: string, phone: string): Promise<void> => {
+        await updateBaseListEntry(phone, name, group);
+        setBaseList((previous) => [...previous.filter((entry) => entry.phone !== phone), { phone, name, group }]);
+    };
+
     // Seating chart handlers - thin wrappers around services/seating.ts.
     // Local state isn't updated manually here because the onSnapshot
     // listeners set up above already keep seatingTables/seatingGroups/
@@ -2607,6 +2619,7 @@ export function AdminDashboard() {
                         onSync={handleSyncBaseList}
                         missingPhoneGuests={rosterEntriesMissingPhone}
                         onUpdateGuestName={handleUpdateBaseListGuestName}
+                        onAddPhone={handleAddBaseListPhone}
                         labels={{
                             title: t.adminRemindersTitle,
                             subtitle: t.adminRemindersSubtitle,
@@ -2646,6 +2659,11 @@ export function AdminDashboard() {
                             editNamePlaceholder: t.adminRemindersEditNamePlaceholder,
                             saveEditButton: t.adminRemindersSaveEditButton,
                             editNameError: t.adminRemindersEditNameError,
+                            addPhoneButton: t.adminRemindersAddPhoneButton,
+                            addPhonePlaceholder: t.adminRemindersAddPhonePlaceholder,
+                            savePhoneButton: t.adminRemindersSavePhoneButton,
+                            addPhoneError: t.adminRemindersAddPhoneError,
+                            addPhoneInvalid: t.adminRemindersAddPhoneInvalid,
                         }}
                     />
                 </motion.section>
