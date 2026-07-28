@@ -1983,42 +1983,40 @@ export function AdminDashboard() {
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.05 }}
-                    className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+                    className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4"
                 >
-                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-                        <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
-                            <Users size={16} />
-                            <span className="text-sm font-medium">{t.adminTotalSubmissions}</span>
+                    <article className="rounded-2xl border border-white/30 bg-white/90 p-3.5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+                        <div className="mb-1.5 flex items-center gap-1.5 text-gray-500 dark:text-slate-400">
+                            <Users size={14} className="shrink-0" />
+                            <span className="truncate text-xs font-medium">{t.adminTotalSubmissions}</span>
                         </div>
-                        <p dir="ltr" className="text-3xl font-semibold text-gray-900 dark:text-slate-100">{records.length}</p>
+                        <p dir="ltr" className="text-2xl font-semibold text-gray-900 dark:text-slate-100">{records.length}</p>
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-                        <div className="mb-3 flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                            <UserCheck size={16} />
-                            <span className="text-sm font-medium">{t.adminAttendingCount}</span>
+                    <article className="rounded-2xl border border-white/30 bg-white/90 p-3.5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+                        <div className="mb-1.5 flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                            <UserCheck size={14} className="shrink-0" />
+                            <span className="truncate text-xs font-medium">{t.adminAttendingCount}</span>
                         </div>
-                        <p dir="ltr" className="text-3xl font-semibold text-gray-900 dark:text-slate-100">{attendingCount}</p>
+                        <p dir="ltr" className="text-2xl font-semibold text-gray-900 dark:text-slate-100">{attendingCount}</p>
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-                        <div className="mb-3 flex items-center gap-2 text-rose-600 dark:text-rose-400">
-                            <UserX size={16} />
-                            <span className="text-sm font-medium">{t.adminNotAttendingCount}</span>
+                    <article className="rounded-2xl border border-white/30 bg-white/90 p-3.5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+                        <div className="mb-1.5 flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                            <UserX size={14} className="shrink-0" />
+                            <span className="truncate text-xs font-medium">{t.adminNotAttendingCount}</span>
                         </div>
-                        <p dir="ltr" className="text-3xl font-semibold text-gray-900 dark:text-slate-100">{notAttendingCount}</p>
+                        <p dir="ltr" className="text-2xl font-semibold text-gray-900 dark:text-slate-100">{notAttendingCount}</p>
                     </article>
 
-                    <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-                        <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
-                            <Languages size={16} />
-                            <span className="text-sm font-medium">{t.adminLanguageBreakdown}</span>
+                    <article className="rounded-2xl border border-white/30 bg-white/90 p-3.5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+                        <div className="mb-1.5 flex items-center gap-1.5 text-gray-500 dark:text-slate-400">
+                            <Languages size={14} className="shrink-0" />
+                            <span className="truncate text-xs font-medium">{t.adminLanguageBreakdown}</span>
                         </div>
-                        <div className="space-y-1 text-sm text-gray-700 dark:text-slate-300">
-                            <p dir="ltr">HE: {languageBreakdown.he}</p>
-                            <p dir="ltr">EN: {languageBreakdown.en}</p>
-                            <p dir="ltr">FR: {languageBreakdown.fr}</p>
-                        </div>
+                        <p dir="ltr" className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                            HE {languageBreakdown.he} · EN {languageBreakdown.en} · FR {languageBreakdown.fr}
+                        </p>
                     </article>
                 </motion.section>
 

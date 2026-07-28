@@ -1,4 +1,5 @@
-import { Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, Trash2 } from 'lucide-react';
 
 export interface InviteLinkVisitRecord {
   id: string;
@@ -49,13 +50,35 @@ export function InviteLinkVisitsTable({
   deletingVisitId,
   onDelete,
 }: InviteLinkVisitsTableProps) {
+  // Collapsed by default: this panel used to always render its full table
+  // inline, pushing the main RSVP responses table (what Gil actually checks
+  // day to day) further down the page - collapsing it, with the count
+  // visible right on the closed header, means he sees at a glance how many
+  // guests opened their link without having to scroll past the whole list
+  // to get to what he came here for.
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
     <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
-      <div className="border-b border-gray-100 px-5 py-4 dark:border-slate-700">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{labels.title}</h2>
-        <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
-      </div>
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-start"
+      >
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{labels.title}</h2>
+          <p className="mt-1 truncate text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span dir="ltr" className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:bg-slate-800 dark:text-slate-300">
+            {visits.length}
+          </span>
+          <ChevronDown size={18} className={`text-gray-400 transition-transform dark:text-slate-500 ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
 
+      {isOpen && (
+      <div className="border-t border-gray-100 dark:border-slate-700">
       {isLoading ? (
         <div className="flex items-center justify-center gap-3 p-8 text-gray-600 dark:text-slate-400">
           <span className="h-5 w-5 rounded-full border-2 border-gray-200 border-t-gray-700 animate-spin dark:border-slate-700 dark:border-t-slate-300" />
@@ -182,6 +205,8 @@ export function InviteLinkVisitsTable({
           </table>
         </div>
         </>
+      )}
+      </div>
       )}
     </div>
   );
