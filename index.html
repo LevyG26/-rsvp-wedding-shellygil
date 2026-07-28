@@ -13,6 +13,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="google" content="notranslate" />
+    <!-- Blocks search engines from indexing/crawling the site at all - this
+         is a private invite page, not something meant to be discoverable by
+         searching "wedding" or the couple's names. A stranger finding the
+         RSVP form via Google (rather than a link actually sent to them) is
+         exactly the scenario this prevents going forward; it doesn't retroactively
+         remove a page already indexed - that needs a manual removal request
+         in Google Search Console. -->
+    <meta name="robots" content="noindex, nofollow" />
     <title>Wedding | Shelly & Gil</title>
     <link rel="icon" type="image/png" href="/src/assets/logo-sg-dark.png" />
     <link rel="apple-touch-icon" href="/src/assets/logo-sg-dark.png" />
