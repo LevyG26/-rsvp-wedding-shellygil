@@ -41,6 +41,58 @@ function formatDateLine(lang: Language, iso: string): DateLineParts | null {
   return { datePart, timePart };
 }
 
+// The "navigate"/"add to calendar" buttons used to only show on the form
+// itself, before submitting - once a guest confirmed and saw the thank-you
+// screen, they were gone. Pulled into its own small component (rather than
+// duplicating the JSX) so the exact same buttons can also be shown on the
+// post-submission screen, in addition to the original spot on the form.
+function EventActionButtons({
+  wazeUrl,
+  calendarLink,
+  navigationLabel,
+  addToCalendarLabel,
+}: {
+  wazeUrl?: string;
+  calendarLink?: CalendarLink;
+  navigationLabel: string;
+  addToCalendarLabel: string;
+}) {
+  if (!wazeUrl && !calendarLink) return null;
+
+  return (
+    <div className="waze-row">
+      {wazeUrl && (
+        <a className="waze-btn" href={wazeUrl} target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#5c594f" strokeWidth={2}>
+            <path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z" />
+            <circle cx="12" cy="10" r="2.5" />
+          </svg>
+          <span>{navigationLabel}</span>
+        </a>
+      )}
+      {calendarLink && (
+        // calendarLink.href is a real Blob object URL for the Apple/.ics
+        // case (not a data: URI) - `download` is reliable on Blob URLs in
+        // mobile Safari, unlike on data: URIs, which is what made this
+        // button silently do nothing before.
+        <a
+          className="waze-btn"
+          href={calendarLink.href}
+          {...(calendarLink.isDownload
+            ? { download: calendarLink.fileName }
+            : { target: '_blank', rel: 'noopener noreferrer' })}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="#5c594f" strokeWidth={2}>
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <path d="M16 2v4M8 2v4M3 10h18" />
+          </svg>
+          <span>{addToCalendarLabel}</span>
+        </a>
+      )}
+    </div>
+  );
+}
+
 export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
   const t = translations[lang];
   const weddingDate = EVENT_START_ISO;
@@ -138,6 +190,17 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
 
         {isAttending && (
           <img src={logoSg} alt="" aria-hidden="true" className="thankyou-logo" />
+        )}
+
+        {/* Only shown when attending - navigating/saving the date to a
+            calendar isn't relevant to a guest who just declined. */}
+        {isAttending && (
+          <EventActionButtons
+            wazeUrl={wazeUrl}
+            calendarLink={calendarLink}
+            navigationLabel={t.navigation}
+            addToCalendarLabel={t.addToCalendar}
+          />
         )}
       </div>
     );
@@ -254,38 +317,12 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
         </button>
       </form>
 
-      {(wazeUrl || calendarLink) && (
-        <div className="waze-row">
-          {wazeUrl && (
-            <a className="waze-btn" href={wazeUrl} target="_blank" rel="noopener noreferrer">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#5c594f" strokeWidth={2}>
-                <path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z" />
-                <circle cx="12" cy="10" r="2.5" />
-              </svg>
-              <span>{t.navigation}</span>
-            </a>
-          )}
-          {calendarLink && (
-            // calendarLink.href is a real Blob object URL for the Apple/.ics
-            // case (not a data: URI) - `download` is reliable on Blob URLs in
-            // mobile Safari, unlike on data: URIs, which is what made this
-            // button silently do nothing before.
-            <a
-              className="waze-btn"
-              href={calendarLink.href}
-              {...(calendarLink.isDownload
-                ? { download: calendarLink.fileName }
-                : { target: '_blank', rel: 'noopener noreferrer' })}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="#5c594f" strokeWidth={2}>
-                <rect x="3" y="4" width="18" height="18" rx="2" />
-                <path d="M16 2v4M8 2v4M3 10h18" />
-              </svg>
-              <span>{t.addToCalendar}</span>
-            </a>
-          )}
-        </div>
-      )}
+      <EventActionButtons
+        wazeUrl={wazeUrl}
+        calendarLink={calendarLink}
+        navigationLabel={t.navigation}
+        addToCalendarLabel={t.addToCalendar}
+      />
     </div>
   );
 }
