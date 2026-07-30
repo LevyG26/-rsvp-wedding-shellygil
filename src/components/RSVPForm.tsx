@@ -238,6 +238,23 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
           {isAttending ? t.thankYouAttending : t.thankYouNotAttending}
         </p>
 
+        {/* Shows back exactly what was recorded - both right after a fresh
+            submission and when reopening a previously-answered link - so the
+            guest can actually see (and, via the update button below, fix)
+            their name/phone/guest count instead of just a generic "thank
+            you" with no way to tell what's on file. */}
+        <div className="thankyou-summary">
+          <p><span className="thankyou-summary-label">{t.fullName}:</span> {fullName}</p>
+          <p><span className="thankyou-summary-label">{t.guestsCount}:</span> {guestsCount}</p>
+          {/* linkedPhone (from a personal /link/{phone} URL) is the saved
+              phone just as much as one typed into the optional field - the
+              phone input itself is hidden whenever linkedPhone is set, so
+              the typed-phone state alone would miss it. */}
+          {(linkedPhone || phone) && (
+            <p><span className="thankyou-summary-label">{t.phoneSummaryLabel}:</span> <span dir="ltr">{linkedPhone || phone}</span></p>
+          )}
+        </div>
+
         {isAttending && (
           <img src={logoSg} alt="" aria-hidden="true" className="thankyou-logo" />
         )}
