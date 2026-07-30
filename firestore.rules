@@ -45,6 +45,28 @@ service cloud.firestore {
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 20 && data.phone.matches('^[0-9+()\\-\\s]{7,20}$')));
     }
 
+    // Lets a guest who already submitted come back to the same link (their
+    // browser remembers the RSVP doc id - see src/utils/rsvpSubmission.ts)
+    // and correct their own answer in place, instead of creating a second,
+    // duplicate rsvps document. Deliberately only allows the exact fields
+    // the public RSVP form itself controls (fullName/isAttending/
+    // guestsCount/phone/lang) - createdAt must stay exactly what it already
+    // was (proves this is an edit, not a disguised new submission), and
+    // 'group'/'manualRosterEntryIds' (admin-only fields, set later from the
+    // dashboard) can never appear in the diff, so a guest editing their own
+    // headcount can never silently wipe out an admin's group assignment or
+    // roster link.
+    function isValidGuestRsvpSelfUpdate(data, oldData) {
+      return data.diff(oldData).affectedKeys().hasOnly(['fullName', 'isAttending', 'guestsCount', 'phone', 'lang', 'note']) &&
+             data.createdAt == oldData.createdAt &&
+             data.fullName is string && data.fullName.size() <= 100 &&
+             data.isAttending is bool &&
+             data.guestsCount is int && data.guestsCount >= 1 && data.guestsCount <= 10 &&
+             (!('lang' in data) || (data.lang is string && data.lang.size() <= 10)) &&
+             (!('note' in data) || (data.note is string && data.note.size() <= 500)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20 && data.phone.matches('^[0-9+()\\-\\s]{7,20}$')));
+    }
+
     match /rsvps/{rsvpId} {
       // Only signed-in admins (see isAdmin() above) can read the guest list -
       // this is what actually protects guest privacy, independent of the
@@ -56,8 +78,10 @@ service cloud.firestore {
       // fixes, manual roster-match overrides) are admin-only. fullName and
       // manualRosterEntryIds were added later than group/guestsCount - both
       // needed adding here too, since a field the dashboard writes but this
-      // list doesn't allow gets silently rejected by Firestore.
-      allow update: if isAdmin() &&
+      // list doesn't allow gets silently rejected by Firestore. A guest
+      // editing their OWN previous submission (see isValidGuestRsvpSelfUpdate
+      // above) is the one non-admin path allowed here.
+      allow update: if (isAdmin() &&
                        incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds']) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['group']) ||
                          (incoming().group is string && incoming().group.size() <= 60)) &&
@@ -68,7 +92,8 @@ service cloud.firestore {
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['fullName']) ||
                          (incoming().fullName is string && incoming().fullName.size() > 0 && incoming().fullName.size() <= 100)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['manualRosterEntryIds']) ||
-                         (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10));
+                         (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10))) ||
+                       (isValidId(rsvpId) && isValidGuestRsvpSelfUpdate(incoming(), resource.data));
       // Deletes are admin-only.
       allow delete: if isAdmin();
     }

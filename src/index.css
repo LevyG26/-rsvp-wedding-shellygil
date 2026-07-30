@@ -645,6 +645,30 @@
   opacity: 0.92;
 }
 
+/* Small, understated text button - only shown when a guest reopens a link
+   they already answered from this browser, letting them go back into the
+   (pre-filled) form to correct their answer rather than submit a duplicate
+   one. Deliberately quiet (not styled like .submit-btn/.waze-btn) since it's
+   a secondary, occasional action, not the main call to action. */
+.update-response-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  color: #777777;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.update-response-btn:hover {
+  color: #2b2924;
+}
+
 .wedding-silk-background {
   background-color: #f8f9fa;
   background-image:

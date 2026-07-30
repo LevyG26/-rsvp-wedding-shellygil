@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { CheckCircle2, Pencil, XCircle } from 'lucide-react';
 import { Language, translations } from '../i18n';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import logoSg from '../assets/logo-sg-dark.png';
 import { isValidPhoneNumber } from '../utils/phoneNumbers';
 import { CalendarLink } from '../utils/calendarLink';
 import { EVENT_START_ISO } from '../eventDetails';
+import { loadRsvpSubmission, saveRsvpSubmission } from '../utils/rsvpSubmission';
 
 interface Props {
   lang: Language;
@@ -107,6 +108,28 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  // Set once we know this browser already has a saved answer for this link
+  // (see src/utils/rsvpSubmission.ts) - a truthy value here means "update
+  // the existing rsvps doc" instead of "create a new one".
+  const [existingSubmissionId, setExistingSubmissionId] = useState<string | null>(null);
+
+  // Runs once on mount: if this guest already submitted from this browser
+  // (their answer is remembered under this link's phone, or under the
+  // shared "general" slot for the phone-less link), pre-fill the form with
+  // their previous answer and show the thank-you screen right away, as if
+  // they'd just submitted it - so reopening the same link doesn't look like
+  // a blank new form.
+  useEffect(() => {
+    const saved = loadRsvpSubmission(linkedPhone || '');
+    if (!saved) return;
+    setExistingSubmissionId(saved.id);
+    setFullName(saved.fullName);
+    setIsAttending(saved.isAttending);
+    setGuestsCount(saved.guestsCount);
+    if (saved.phone) setPhone(saved.phone);
+    setSubmitted(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedPhone]);
 
   const handleFullNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const nextFullName = event.target.value;
@@ -150,19 +173,46 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
     setIsSubmitting(true);
 
     try {
-      const dataToSave: any = {
-        fullName: fullName.trim(),
-        isAttending,
-        guestsCount,
-        lang,
-        createdAt: serverTimestamp(),
-      };
+      const trimmedFullName = fullName.trim();
+      let savedId = existingSubmissionId;
 
-      if (phoneToSave) {
-        dataToSave.phone = phoneToSave;
+      if (existingSubmissionId) {
+        // Editing a previous answer from this same browser - only ever
+        // touches the fields the guest controls (createdAt is deliberately
+        // left out entirely, since the rules require it to stay unchanged;
+        // omitting it here rather than resending the old value keeps this
+        // in sync automatically if that ever changes).
+        const updateData: any = { fullName: trimmedFullName, isAttending, guestsCount, lang };
+        if (phoneToSave) updateData.phone = phoneToSave;
+        await updateDoc(doc(db, 'rsvps', existingSubmissionId), updateData);
+      } else {
+        const dataToSave: any = {
+          fullName: trimmedFullName,
+          isAttending,
+          guestsCount,
+          lang,
+          createdAt: serverTimestamp(),
+        };
+
+        if (phoneToSave) {
+          dataToSave.phone = phoneToSave;
+        }
+
+        const created = await addDoc(collection(db, 'rsvps'), dataToSave);
+        savedId = created.id;
+        setExistingSubmissionId(created.id);
       }
 
-      await addDoc(collection(db, 'rsvps'), dataToSave);
+      if (savedId) {
+        saveRsvpSubmission(linkedPhone || '', {
+          id: savedId,
+          fullName: trimmedFullName,
+          isAttending: isAttending as boolean,
+          guestsCount,
+          phone: phoneToSave || undefined,
+        });
+      }
+
       setSubmitted(true);
     } catch (err: any) {
       console.error('Error saving RSVP:', err);
@@ -201,6 +251,21 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
             navigationLabel={t.navigation}
             addToCalendarLabel={t.addToCalendar}
           />
+        )}
+
+        {/* Only offered when there's an actual saved answer to change
+            (existingSubmissionId) - reopens the form below, pre-filled with
+            that answer; submitting again updates the same rsvps document
+            instead of creating a duplicate one. */}
+        {existingSubmissionId && (
+          <button
+            type="button"
+            className="update-response-btn"
+            onClick={() => setSubmitted(false)}
+          >
+            <Pencil size={13} />
+            {t.updateResponse}
+          </button>
         )}
       </div>
     );
