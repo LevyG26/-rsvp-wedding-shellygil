@@ -1,0 +1,15 @@
+{
+  "name": "Wedding | Shelly & Gil",
+  "short_name": "החתונה שלנו",
+  "start_url": "/he/admin/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f43f5e",
+  "icons": [
+    {
+      "src": "/pwa-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -369,5 +369,29 @@ service cloud.firestore {
       allow update: if isAdmin() && isValidVenueObject(incoming());
       allow delete: if isAdmin();
     }
+
+    // One doc per device that opted in to mobile push notifications for new/
+    // updated RSVPs (see the "אפשר התראות בנייד" button in the dashboard
+    // header). Holds only the FCM registration token itself - never guest
+    // data - so it's admin-only read/write like everything else here, but
+    // there's nothing sensitive in the token itself beyond "this is one of
+    // Gil's devices". Auto-generated doc ID (not the token) because FCM
+    // tokens contain characters isValidId() doesn't allow. The Cloud
+    // Function that actually sends the push runs with the Admin SDK, which
+    // bypasses these rules entirely - this only governs the dashboard's own
+    // reads/writes.
+    function isValidNotificationToken(data) {
+      return data.keys().hasAll(['token', 'createdAt']) &&
+             data.keys().hasOnly(['token', 'createdAt']) &&
+             data.token is string && data.token.size() > 0 && data.token.size() <= 400 &&
+             data.createdAt == request.time;
+    }
+
+    match /adminNotificationTokens/{tokenDocId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidId(tokenDocId) && isValidNotificationToken(incoming());
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
   }
 }

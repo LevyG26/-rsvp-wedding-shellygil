@@ -24,6 +24,13 @@
     <title>Wedding | Shelly & Gil</title>
     <link rel="icon" type="image/png" href="/src/assets/logo-sg-dark.png" />
     <link rel="apple-touch-icon" href="/src/assets/logo-sg-dark.png" />
+    <!-- Lets the admin dashboard be "installed" to a phone's home screen
+         (required for reliable background push notifications on mobile -
+         see public/firebase-messaging-sw.js and the "enable notifications"
+         button in the dashboard header). Guests never see an install
+         prompt from this - manifest scope/start_url point at the admin
+         route, not the public RSVP page. -->
+    <link rel="manifest" href="/manifest.json" />
     <meta name="description" content="RSVP for the wedding." />
     <meta property="og:title" content="Wedding | Shelly & Gil" />
     <meta property="og:description" content="Join us in celebrating our wedding." />

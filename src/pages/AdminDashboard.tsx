@@ -6,6 +6,7 @@ import {
     ArrowDown,
     ArrowUp,
     ArrowUpDown,
+    Bell,
     ChevronDown,
     Download,
     Languages,
@@ -42,6 +43,8 @@ import { EMPTY_GIFT_AMOUNTS, isEmptyGiftAmounts, type GiftAmounts } from '../uti
 import { GiftsSection } from '../components/admin/GiftsSection';
 import { loadGiftEntries, saveGiftEntry, type GiftEntry } from '../services/giftEntries';
 import { WhatsappReminders } from '../components/admin/WhatsappReminders';
+import { enableAdminPushNotifications } from '../utils/pushNotifications';
+import { firebaseVapidKey } from '../config/firebaseConfig';
 import {
     createGuestRosterEntry,
     deleteGuestRosterEntriesForSide,
@@ -467,6 +470,12 @@ export function AdminDashboard() {
     // name in text, not just an icon someone has to guess at.
     const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
     const actionsMenuRef = useRef<HTMLDivElement>(null);
+    // 'idle' before the button is first pressed; 'error' carries its own
+    // message (invalid config, browser rejected the permission prompt for a
+    // reason other than an outright "denied", etc.) separately from the
+    // more common denied/unsupported cases so the menu label can be exact.
+    const [notificationsStatus, setNotificationsStatus] = useState<'idle' | 'enabling' | 'enabled' | 'denied' | 'unsupported' | 'error'>('idle');
+    const [notificationsErrorMessage, setNotificationsErrorMessage] = useState('');
     // Kept only for the Excel export summary sheet, which still includes it -
     // no longer editable or shown anywhere in the dashboard UI itself.
     const [plannedGuests, setPlannedGuests] = useState(0);
@@ -1076,6 +1085,21 @@ export function AdminDashboard() {
     const handleLogout = async () => {
         await logoutAdmin();
         navigate(loginPath, { replace: true });
+    };
+
+    const handleEnableNotifications = async () => {
+        setNotificationsStatus('enabling');
+        setNotificationsErrorMessage('');
+        if (!firebaseVapidKey) {
+            setNotificationsStatus('error');
+            setNotificationsErrorMessage(t.adminNotificationsMissingConfig);
+            return;
+        }
+        const result = await enableAdminPushNotifications(firebaseVapidKey);
+        if (result.status === 'error') {
+            setNotificationsErrorMessage(result.message);
+        }
+        setNotificationsStatus(result.status);
     };
 
     const handleRefresh = async () => {
@@ -1783,6 +1807,16 @@ export function AdminDashboard() {
                                     {isExporting ? <Loader2 size={16} className="shrink-0 animate-spin text-gray-400" /> : <Download size={16} className="shrink-0 text-gray-400 dark:text-slate-500" />}
                                     {t.adminExportExcel}
                                 </button>
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => { handleEnableNotifications(); setIsActionsMenuOpen(false); }}
+                                    disabled={notificationsStatus === 'enabling' || notificationsStatus === 'enabled'}
+                                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 dark:text-slate-200 dark:hover:bg-slate-800 dark:disabled:text-slate-600"
+                                >
+                                    {notificationsStatus === 'enabling' ? <Loader2 size={16} className="shrink-0 animate-spin text-gray-400" /> : <Bell size={16} className="shrink-0 text-gray-400 dark:text-slate-500" />}
+                                    {notificationsStatus === 'enabled' ? t.adminNotificationsEnabled : t.adminNotificationsEnable}
+                                </button>
                                 <div className="my-1.5 border-t border-gray-100 dark:border-slate-700" />
                                 <button
                                     type="button"
@@ -1875,6 +1909,21 @@ export function AdminDashboard() {
                         </button>
                     </div>
                 </motion.header>
+
+                {(notificationsStatus === 'enabled' || notificationsStatus === 'denied' || notificationsStatus === 'unsupported' || notificationsStatus === 'error') && (
+                    <div
+                        className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${
+                            notificationsStatus === 'enabled'
+                                ? 'border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                : 'border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300'
+                        }`}
+                    >
+                        {notificationsStatus === 'enabled' && t.adminNotificationsSuccessMessage}
+                        {notificationsStatus === 'denied' && t.adminNotificationsDeniedMessage}
+                        {notificationsStatus === 'unsupported' && t.adminNotificationsUnsupportedMessage}
+                        {notificationsStatus === 'error' && (notificationsErrorMessage || t.adminNotificationsErrorMessage)}
+                    </div>
+                )}
 
                 {activeTab === 'roster' && (
                 <motion.section

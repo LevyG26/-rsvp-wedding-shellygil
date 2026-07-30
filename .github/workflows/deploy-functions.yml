@@ -1,0 +1,13 @@
+# NOT USED - superseded by a Vercel API route (see api/notify-rsvp.ts) that
+# sends push notifications without requiring Firebase's paid Blaze plan.
+# Safe to delete this file, along with the functions/ directory, whenever
+# convenient - kept only so nothing breaks if it's still present at commit
+# time. Deliberately has no "on:" trigger, so it never runs automatically.
+name: "(disabled) Deploy Cloud Functions"
+on:
+  workflow_dispatch: {}
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "This workflow is disabled - see the comment at the top of this file."

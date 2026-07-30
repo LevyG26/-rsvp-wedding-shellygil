@@ -175,6 +175,7 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
     try {
       const trimmedFullName = fullName.trim();
       let savedId = existingSubmissionId;
+      const wasUpdate = Boolean(existingSubmissionId);
 
       if (existingSubmissionId) {
         // Editing a previous answer from this same browser - only ever
@@ -211,6 +212,16 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
           guestsCount,
           phone: phoneToSave || undefined,
         });
+
+        // Best-effort mobile notification for the couple - never blocks or
+        // fails the guest's own submission if this call has trouble (offline,
+        // notifications not set up yet, etc.), since that's a nice-to-have
+        // for the admins, not something the guest should ever see fail.
+        fetch('/api/notify-rsvp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rsvpId: savedId, isUpdate: wasUpdate }),
+        }).catch(() => {});
       }
 
       setSubmitted(true);

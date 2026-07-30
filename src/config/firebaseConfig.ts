@@ -35,3 +35,13 @@ export const firebaseConfig: FirebaseOptions = {
 };
 
 export const firestoreDatabaseId = readOptionalEnv('VITE_FIRESTORE_DATABASE_ID');
+
+// Web Push "VAPID" public key, generated once in Firebase Console > Project
+// settings > Cloud Messaging > Web configuration, and pasted into .env.local
+// (and Vercel's env vars) as VITE_FIREBASE_VAPID_KEY. Not a secret in the
+// same sense as an API key you'd hide server-side - it identifies this app
+// to the push service - but it's still project-specific config, so it lives
+// in env vars rather than hardcoded. Optional because the site works fully
+// without push notifications configured; only the "enable notifications"
+// button in the dashboard needs it.
+export const firebaseVapidKey = readOptionalEnv('VITE_FIREBASE_VAPID_KEY');
