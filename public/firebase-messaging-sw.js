@@ -1,47 +1,45 @@
 /* eslint-disable no-undef */
 // Background push handler - runs in its own service-worker thread, separate
 // from the React app, so it can show a notification even when the dashboard
-// tab isn't open or isn't focused. Firebase's compat SDK is loaded via
-// importScripts because service workers can't use the app's normal Vite/ESM
-// bundle - this file is served as-is from /public, untouched by the build.
+// tab isn't open or isn't focused.
 //
-// The Firebase config values below are NOT hardcoded: a service worker has
-// no access to the page's JS variables or import.meta.env, so
-// src/utils/pushNotifications.ts passes them along as query-string params
-// when it registers this file (see buildServiceWorkerUrl there). These are
-// all public, non-secret values already shipped to every visitor's browser
-// in the normal app bundle - nothing sensitive is exposed by this.
-importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
-
-const params = new URLSearchParams(self.location.search);
-
-firebase.initializeApp({
-  apiKey: params.get('apiKey'),
-  authDomain: params.get('authDomain'),
-  projectId: params.get('projectId'),
-  appId: params.get('appId'),
-  messagingSenderId: params.get('messagingSenderId'),
-});
-
-const messaging = firebase.messaging();
-
+// This deliberately does NOT use firebase-messaging-compat.js's own
+// onBackgroundMessage() helper anymore. That worked fine on Chrome/desktop,
+// but on an installed iOS Safari PWA it was unreliable: the handler fired,
+// but the parsed payload came back empty, so every notification silently
+// fell back to generic placeholder text instead of the real guest name/
+// status. Multiple other people hit the same iOS-specific gap in Firebase's
+// SDK. Listening to the raw, standard `push` event ourselves and parsing
+// the JSON payload directly sidesteps that SDK layer entirely and works
+// consistently on both Chrome and iOS Safari - it's plain Web Push API,
+// nothing Firebase-specific about it.
+//
 // api/notify-rsvp.ts (a Vercel serverless function, not a Firebase Cloud
-// Function) sends a data-only payload - deliberately no top-level
-// `notification` field. If it included one, the browser would auto-display
-// it AND still call this handler, which would call showNotification() a
-// second time - that's what was causing every RSVP to show two identical
-// notifications. Data-only means this handler is the only thing that ever
-// calls showNotification(), so exactly one notification appears per RSVP.
-messaging.onBackgroundMessage((payload) => {
-  const title = payload.data?.title || 'עדכון אישור הגעה';
-  const body = payload.data?.body || '';
-  self.registration.showNotification(title, {
-    body,
-    icon: '/pwa-icon.png',
-    badge: '/pwa-icon.png',
-    data: { url: payload.data?.url || '/' },
-  });
+// Function) sends a data-only FCM payload - deliberately no top-level
+// `notification` field, since including one caused the browser to
+// auto-display a notification AND this handler to show a second one for
+// the same push (every RSVP briefly showed twice).
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (err) {
+    payload = {};
+  }
+
+  const data = payload.data || {};
+  const title = data.title || 'עדכון אישור הגעה';
+  const body = data.body || '';
+  const url = data.url || '/';
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/pwa-icon.png',
+      badge: '/pwa-icon.png',
+      data: { url },
+    })
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {

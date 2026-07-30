@@ -1,6 +1,6 @@
 import { getApp } from 'firebase/app';
 import { getMessaging, getToken, isSupported } from 'firebase/messaging';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, getDocs, query, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { firebaseConfig } from '../config/firebaseConfig';
 
@@ -32,10 +32,14 @@ function buildServiceWorkerUrl(): string {
 // Walks Gil through turning on push notifications for this browser/device:
 // registers the service worker, asks for OS-level notification permission,
 // fetches this device's FCM registration token, and saves it to Firestore
-// so the notifyOnRsvpWrite Cloud Function (see functions/src/index.ts) knows
-// where to send a push whenever a guest submits or edits an RSVP. Safe to
-// call more than once (e.g. on a second device) - each device gets its own
-// token document.
+// so api/notify-rsvp.ts (a Vercel serverless function, see that file for why
+// it's not a Firebase Cloud Function) knows where to send a push whenever a
+// guest submits or edits an RSVP. Safe to call more than once, including
+// repeatedly on the same already-enabled device (e.g. forcing a service-
+// worker update after a fix is deployed) - re-registering a device whose
+// token hasn't changed is a no-op rather than creating a second token
+// document, which would otherwise double-send every future notification to
+// that one device.
 export async function enableAdminPushNotifications(vapidKey: string): Promise<EnableNotificationsResult> {
   try {
     if (!vapidKey) {
@@ -61,10 +65,13 @@ export async function enableAdminPushNotifications(vapidKey: string): Promise<En
       return { status: 'error', message: 'Could not get a notification token from this browser.' };
     }
 
-    await addDoc(collection(db, NOTIFICATION_TOKENS_COLLECTION), {
-      token,
-      createdAt: serverTimestamp(),
-    });
+    const existingTokenDocs = await getDocs(query(collection(db, NOTIFICATION_TOKENS_COLLECTION), where('token', '==', token)));
+    if (existingTokenDocs.empty) {
+      await addDoc(collection(db, NOTIFICATION_TOKENS_COLLECTION), {
+        token,
+        createdAt: serverTimestamp(),
+      });
+    }
 
     return { status: 'enabled' };
   } catch (error) {
