@@ -615,7 +615,16 @@
 }
 .thankyou-card {
   text-align: center;
-  padding: 20px 0;
+  padding: 8px 0 12px;
+  /* Pulls the whole thank-you card up within the same oval frame the form
+     itself sits in (.rsvp-wrap's padding-top is fixed and identical for both
+     states) - the summary block below made this screen noticeably taller
+     than the plain form, pushing the calendar/navigation buttons and the
+     "update response" link down past the oval/visible area. This negative
+     margin claws that space back without touching .rsvp-wrap, which would
+     also shift the pre-submission form (already carefully tuned to sit
+     inside the oval). */
+  margin-top: -30px;
   /* The form-card swaps to this card the instant the RSVP submits - a plain
      instant swap read as an abrupt jump-cut against the surrounding
      invitation artwork. A quick fade+rise softens that handoff. */
@@ -634,27 +643,29 @@
 /* Shows back the name/guest count/phone that were actually recorded, right
    under the "thank you" message - otherwise there was no way for a guest to
    confirm what's on file for them, or to know what they're about to change
-   before pressing "update your response" below. */
+   before pressing "update your response" below. Deliberately no box/border/
+   background here (an earlier version looked like a white sticker pasted
+   over the lace artwork) - same plain-text-on-texture treatment as
+   .helper-text elsewhere on this card, just with a label/value pair per
+   line, so it reads as part of the invitation rather than a UI widget
+   dropped on top of it. */
 .thankyou-summary {
-  margin: 10px auto 0;
+  margin: 4px auto 0;
   max-width: 220px;
-  padding: 10px 14px;
-  border: 1px solid #e2e0d8;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.55);
-  text-align: start;
 }
 .thankyou-summary p {
   margin: 0;
-  padding: 2px 0;
+  padding: 1px 0;
   font-family: Arial, sans-serif;
-  font-size: 12.5px;
-  color: #3f3d37;
-  line-height: 1.4;
+  font-size: 12px;
+  color: #6b6862;
+  line-height: 1.45;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
 .thankyou-summary-label {
-  color: #85807a;
-  margin-inline-end: 4px;
+  color: #8a857d;
+  font-weight: 700;
+  margin-inline-end: 3px;
 }
 
 .thankyou-card .thankyou-logo {
@@ -665,7 +676,7 @@
      removed per Gil's request - the logo alone is now the confirmation
      visual, made bigger and pulled up closer to the text above it. */
   display: block;
-  max-width: 108px;
+  max-width: 92px;
   margin: 2px auto 0;
   border-radius: 10px;
   opacity: 0.92;
@@ -680,7 +691,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-top: 14px;
+  margin-top: 6px;
   padding: 6px 4px;
   border: none;
   background: none;
