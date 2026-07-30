@@ -94,10 +94,21 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const title = isUpdate ? 'אישור הגעה עודכן' : 'אישור הגעה חדש';
     const body2 = `${fullName} - ${statusText}`;
 
+    // Deliberately data-only (no top-level `notification` field). When a
+    // push includes a `notification` field, the browser auto-displays it
+    // AND still fires the service worker's onBackgroundMessage handler,
+    // which calls showNotification() itself - that combination is what was
+    // producing two identical notifications per RSVP. Data-only means only
+    // our own onBackgroundMessage handler ever calls showNotification(), so
+    // it displays exactly once. (All values must be strings - FCM's data
+    // payload doesn't support other types.)
     const response = await getMessaging(app).sendEachForMulticast({
       tokens,
-      notification: { title, body: body2 },
-      data: { url: '/he/admin/dashboard' },
+      data: {
+        title,
+        body: body2,
+        url: '/he/admin/dashboard',
+      },
     });
 
     // Clean up any device tokens FCM reports as dead (uninstalled PWA,

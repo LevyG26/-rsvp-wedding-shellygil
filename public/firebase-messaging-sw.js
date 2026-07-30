@@ -26,13 +26,16 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// The notifyOnRsvpWrite Cloud Function (functions/src/index.ts) sends a
-// "notification" payload, which most browsers already show automatically -
-// this handler mainly exists so the notification click brings the dashboard
-// tab into focus (or opens a new one) instead of doing nothing.
+// api/notify-rsvp.ts (a Vercel serverless function, not a Firebase Cloud
+// Function) sends a data-only payload - deliberately no top-level
+// `notification` field. If it included one, the browser would auto-display
+// it AND still call this handler, which would call showNotification() a
+// second time - that's what was causing every RSVP to show two identical
+// notifications. Data-only means this handler is the only thing that ever
+// calls showNotification(), so exactly one notification appears per RSVP.
 messaging.onBackgroundMessage((payload) => {
-  const title = payload.notification?.title || 'עדכון אישור הגעה';
-  const body = payload.notification?.body || '';
+  const title = payload.data?.title || 'עדכון אישור הגעה';
+  const body = payload.data?.body || '';
   self.registration.showNotification(title, {
     body,
     icon: '/pwa-icon.png',
