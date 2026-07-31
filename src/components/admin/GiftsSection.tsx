@@ -416,13 +416,20 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
 
   return (
     <>
-      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {/* Total + missing count share one card (missing shown as a small
+            secondary stat under the total) instead of the missing count
+            getting an entire card of its own for a single number. */}
         <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
           <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
             <Banknote size={16} />
             <span className="text-sm font-medium">{labels.totalLabel}</span>
           </div>
           <CurrencyAmounts totals={summary.totalByCurrency} size="lg" direction="row" />
+          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-sm dark:border-slate-700">
+            <span className="font-medium text-rose-600 dark:text-rose-400">{labels.missingLabel}</span>
+            <span dir="ltr" className="text-lg font-semibold text-gray-900 dark:text-slate-100">{summary.missingCount}</span>
+          </div>
         </article>
 
         <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
@@ -437,13 +444,12 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
           </div>
         </article>
 
-        <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-          <div className="mb-3 flex items-center gap-2 text-rose-600 dark:text-rose-400">
-            <span className="text-sm font-medium">{labels.missingLabel}</span>
-          </div>
-          <p dir="ltr" className="text-3xl font-semibold text-gray-900 dark:text-slate-100">{summary.missingCount}</p>
-        </article>
-
+        {/* Side and attendance-status breakdowns are both short 2-3 line
+            lists, so they now share one card (separated by a divider)
+            instead of each taking a full card - this is also what makes it
+            clear that gifts from non-attending/undecided guests aren't
+            silently folded into the same total as confirmed guests (see
+            giftRecords in AdminDashboard.tsx). */}
         <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
           <div className="mb-2 flex items-center gap-2 text-gray-500 dark:text-slate-400">
             <span className="text-sm font-medium">{labels.bySideHeading}</span>
@@ -457,16 +463,8 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
               ))}
             </div>
           )}
-        </article>
 
-        {/* This tab lists every guest, not just confirmed attendees (see
-            giftRecords in AdminDashboard.tsx) - this card is what makes that
-            visible in the money totals themselves, not just as a badge on
-            each row, so it's clear at a glance how much of what's been
-            received actually came from people who aren't (or aren't yet)
-            confirmed to attend. */}
-        <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-          <div className="mb-2 flex items-center gap-2 text-gray-500 dark:text-slate-400">
+          <div className="mb-2 mt-4 flex items-center gap-2 border-t border-gray-100 pt-3 text-gray-500 dark:border-slate-700 dark:text-slate-400">
             <span className="text-sm font-medium">{labels.byAttendanceHeading}</span>
           </div>
           <div className="space-y-1.5 text-sm">

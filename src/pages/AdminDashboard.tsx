@@ -15,6 +15,7 @@ import {
     Moon,
     MoreVertical,
     RefreshCcw,
+    Search,
     Sun,
     Trash2,
     UserCheck,
@@ -452,6 +453,11 @@ export function AdminDashboard() {
     const [deletingInviteLinkVisitId, setDeletingInviteLinkVisitId] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+    // Free-text search above the responses list - matches name, phone, and
+    // group, so Gil can find a specific guest's response without scrolling
+    // through the whole table. Purely a display filter (see
+    // visibleSortedRecords below); it never touches the underlying records.
+    const [responseSearchTerm, setResponseSearchTerm] = useState('');
     // Mobile response cards default to a compact one-line summary (name,
     // roster match, status) and only reveal the editable fields + delete
     // button once tapped open - same "one line to scan, one tap to edit"
@@ -1057,6 +1063,21 @@ export function AdminDashboard() {
         });
     }, [locale, records, sortConfig]);
 
+    // What the responses table (mobile cards + desktop rows) actually
+    // renders - sortedRecords filtered by the search box above it. Matches
+    // name, phone, or group as a plain substring (diacritics/case-insensitive
+    // via toLowerCase, no normalization needed for Hebrew) so "select all"
+    // below can mean "all rows currently visible", not "all rows that exist".
+    const visibleSortedRecords = useMemo(() => {
+        const normalizedSearch = responseSearchTerm.trim().toLowerCase();
+        if (!normalizedSearch) return sortedRecords;
+        return sortedRecords.filter((record) => (
+            record.fullName.toLowerCase().includes(normalizedSearch) ||
+            record.phone.toLowerCase().includes(normalizedSearch) ||
+            record.group.toLowerCase().includes(normalizedSearch)
+        ));
+    }, [sortedRecords, responseSearchTerm]);
+
     const rsvpStatusByPhone = useMemo(() => {
         const statusByPhone = new Map<string, boolean>();
         const newestRecords = [...records].sort(
@@ -1093,7 +1114,10 @@ export function AdminDashboard() {
         [inviteLinkVisits, rsvpStatusByPhone, baseListByPhone],
     );
 
-    const isAllSelected = records.length > 0 && selectedIds.length === records.length;
+    // Reflects (and toggles) only the rows currently visible under the
+    // search filter, not every record that exists - otherwise "select all"
+    // while searching would silently also select rows Gil can't even see.
+    const isAllSelected = visibleSortedRecords.length > 0 && visibleSortedRecords.every((record) => selectedIds.includes(record.id));
 
     const handleLogout = async () => {
         await logoutAdmin();
@@ -1476,11 +1500,16 @@ export function AdminDashboard() {
     };
 
     const handleToggleAllSelection = () => {
+        const visibleIds = visibleSortedRecords.map((record) => record.id);
         if (isAllSelected) {
-            setSelectedIds([]);
+            // Unselect only the visible rows - any selection outside the
+            // current search (there shouldn't normally be any, but this is
+            // the safe behavior) is left untouched rather than silently
+            // wiped out.
+            setSelectedIds((prevSelected) => prevSelected.filter((id) => !visibleIds.includes(id)));
             return;
         }
-        setSelectedIds(records.map((record) => record.id));
+        setSelectedIds((prevSelected) => Array.from(new Set([...prevSelected, ...visibleIds])));
     };
 
     const handleExport = async () => {
@@ -2421,6 +2450,23 @@ export function AdminDashboard() {
                     transition={{ delay: 0.1 }}
                     className="order-2 mb-6 overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95"
                 >
+                    <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-5 py-3 dark:border-slate-700">
+                        <div className="relative min-w-[12rem] flex-1 sm:max-w-xs sm:flex-none">
+                            <Search size={14} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="text"
+                                value={responseSearchTerm}
+                                onChange={(event) => setResponseSearchTerm(event.target.value)}
+                                placeholder={t.adminResponseSearchPlaceholder}
+                                className="w-full rounded-full border border-gray-200 bg-white py-1.5 ps-8 pe-3 text-xs text-gray-700 outline-none focus:border-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                            />
+                        </div>
+                        {responseSearchTerm.trim() !== '' && (
+                            <span className="text-xs text-gray-500 dark:text-slate-400">
+                                {visibleSortedRecords.length} {t.adminResponseSearchResultsCount}
+                            </span>
+                        )}
+                    </div>
                     {selectedIds.length > 0 && (
                         <div className="flex items-center justify-between gap-3 border-b border-rose-100 bg-rose-50 px-5 py-2.5 dark:border-rose-900/40 dark:bg-rose-950/40">
                             <span className="text-sm font-medium text-rose-700 dark:text-rose-300">{selectedIds.length} {t.adminSelectedCount}</span>
@@ -2444,11 +2490,13 @@ export function AdminDashboard() {
                         <div className="p-6 text-center text-rose-600 dark:text-rose-400">{error}</div>
                     ) : records.length === 0 ? (
                         <div className="p-8 text-center text-gray-600 dark:text-slate-400">{t.adminNoRecords}</div>
+                    ) : visibleSortedRecords.length === 0 ? (
+                        <div className="p-8 text-center text-gray-600 dark:text-slate-400">{t.adminResponseSearchNoResults}</div>
                     ) : (
                         <>
                         {/* Mobile card list (below md breakpoint) */}
                         <div className="divide-y divide-gray-100 md:hidden dark:divide-slate-700">
-                            {sortedRecords.map((record, index) => {
+                            {visibleSortedRecords.map((record, index) => {
                                 const isExpanded = expandedRecordIds.has(record.id);
                                 return (
                                 <div key={record.id} className="p-3">
@@ -2682,7 +2730,7 @@ export function AdminDashboard() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 bg-white dark:divide-slate-700 dark:bg-slate-900">
-                                    {sortedRecords.map((record, index) => (
+                                    {visibleSortedRecords.map((record, index) => (
                                         <tr key={record.id} className="align-top">
                                             <td className="w-24 px-4 py-3">
                                                 <input
