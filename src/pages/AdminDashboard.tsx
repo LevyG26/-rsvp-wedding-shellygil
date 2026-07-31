@@ -14,6 +14,7 @@ import {
     LogOut,
     Moon,
     MoreVertical,
+    Pencil,
     RefreshCcw,
     Search,
     Sun,
@@ -2532,6 +2533,14 @@ export function AdminDashboard() {
                                                 </span>
                                             </span>
                                             <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400" dir="ltr">×{record.guestsCount}</span>
+                                            {record.attendanceSetByAdmin && (
+                                                <Pencil
+                                                    size={12}
+                                                    className="shrink-0 text-gray-400 dark:text-slate-500"
+                                                    aria-label={t.adminAttendanceSetByAdminHint}
+                                                    title={t.adminAttendanceSetByAdminHint}
+                                                />
+                                            )}
                                             <span
                                                 className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${record.isAttending
                                                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
@@ -2598,7 +2607,10 @@ export function AdminDashboard() {
                                                     </button>
                                                 </div>
                                                 {record.attendanceSetByAdmin && (
-                                                    <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{t.adminAttendanceSetByAdminHint}</p>
+                                                    <p className="mt-1 flex items-center gap-1 text-xs text-gray-400 dark:text-slate-500">
+                                                        <Pencil size={11} className="shrink-0" />
+                                                        {t.adminAttendanceSetByAdminHint}
+                                                    </p>
                                                 )}
                                             </div>
                                             <div>
@@ -2825,7 +2837,10 @@ export function AdminDashboard() {
                                                     </button>
                                                 </div>
                                                 {record.attendanceSetByAdmin && (
-                                                    <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{t.adminAttendanceSetByAdminHint}</p>
+                                                    <p className="mt-1 flex items-center gap-1 text-xs text-gray-400 dark:text-slate-500">
+                                                        <Pencil size={11} className="shrink-0" />
+                                                        {t.adminAttendanceSetByAdminHint}
+                                                    </p>
                                                 )}
                                             </td>
                                             <td className="w-24 px-4 py-3 text-center text-gray-700 dark:text-slate-300" dir="ltr">{record.lang}</td>
