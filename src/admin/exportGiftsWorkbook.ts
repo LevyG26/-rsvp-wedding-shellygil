@@ -18,6 +18,7 @@ export interface GiftExportRecord {
     category: string;
     guestsCount: number;
     giftAmounts: GiftAmounts;
+    attendanceStatus: 'yes' | 'no' | null;
 }
 
 export interface GiftExportLabels {
@@ -39,6 +40,10 @@ export interface GiftExportLabels {
     status: string;
     statusRecorded: string;
     statusMissing: string;
+    attendance: string;
+    attendanceAttending: string;
+    attendanceNotAttending: string;
+    attendancePending: string;
 }
 
 interface ExportGiftsWorkbookOptions {
@@ -121,8 +126,11 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
 
     const sortedRecords = [...records].sort((first, second) => first.fullName.localeCompare(second.fullName, 'he'));
 
+    const attendanceLabel = (status: 'yes' | 'no' | null) =>
+        status === 'yes' ? labels.attendanceAttending : status === 'no' ? labels.attendanceNotAttending : labels.attendancePending;
+
     const detailsData: SheetData = [
-        [labels.name, labels.side, labels.category, labels.guests, labels.methodCash, labels.methodBitPaybox, labels.methodCheck, labels.total, labels.status]
+        [labels.name, labels.side, labels.category, labels.guests, labels.attendance, labels.methodCash, labels.methodBitPaybox, labels.methodCheck, labels.total, labels.status]
             .map((value) => ({ value, type: String, ...headerStyle })),
         ...sortedRecords.map((record) => {
             const recordTotals = sumGiftAmountsByCurrency(record.giftAmounts);
@@ -135,6 +143,7 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
                 textCell(record.side),
                 textCell(record.category),
                 record.guestsCount,
+                textCell(attendanceLabel(record.attendanceStatus)),
                 cashEntry.amount !== null ? amountTextCell(methodTotals(record.giftAmounts, 'cash')) : null,
                 bitPayboxEntry.amount !== null ? amountTextCell(methodTotals(record.giftAmounts, 'bit_paybox')) : null,
                 checkEntry.amount !== null ? amountTextCell(methodTotals(record.giftAmounts, 'check')) : null,
@@ -169,6 +178,7 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
                 { width: 16 },
                 { width: 18 },
                 { width: 10 },
+                { width: 14 },
                 { width: 14 },
                 { width: 16 },
                 { width: 12 },

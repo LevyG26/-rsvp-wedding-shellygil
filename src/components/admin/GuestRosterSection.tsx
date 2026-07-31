@@ -62,6 +62,14 @@ export interface GuestRosterLabels {
   updateError: string;
   createError: string;
   requiredName: string;
+  // Shown (as a tooltip on desktop, and as small text under the field on
+  // mobile, where hover tooltips don't work) for any entry whose status came
+  // from an actual RSVP submission - explains that changing it here also
+  // corrects that guest's real RSVP (see handleUpdateGuestRosterEntry /
+  // syncRosterStatusChangeToRsvp in AdminDashboard.tsx), so the two stay in
+  // sync instead of the automatic RSVP-roster linker quietly reverting this
+  // field back to match the untouched RSVP a moment later.
+  statusLinkedHint: string;
 }
 
 interface GuestRosterSectionProps {
@@ -882,13 +890,17 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                 <select
                                   value={entry.knownResponse ?? ''}
                                   disabled={isSaving}
+                                  title={entry.linkedFromRsvp ? labels.statusLinkedHint : undefined}
                                   onChange={(event) => handleStatusChange(entry, event.target.value)}
                                   className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                                 >
-                                  <option value="">{labels.statusPending}</option>
+                                  <option value="" disabled={entry.linkedFromRsvp}>{labels.statusPending}</option>
                                   <option value="yes">{labels.statusConfirmed}</option>
                                   <option value="no">{labels.statusDeclined}</option>
                                 </select>
+                                {entry.linkedFromRsvp && (
+                                  <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{labels.statusLinkedHint}</p>
+                                )}
                               </div>
                             </div>
                             {rowError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{rowError}</p>}
@@ -966,13 +978,17 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                               <select
                                 value={entry.knownResponse ?? ''}
                                 disabled={isSaving}
+                                title={entry.linkedFromRsvp ? labels.statusLinkedHint : undefined}
                                 onChange={(event) => handleStatusChange(entry, event.target.value)}
                                 className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                               >
-                                <option value="">{labels.statusPending}</option>
+                                <option value="" disabled={entry.linkedFromRsvp}>{labels.statusPending}</option>
                                 <option value="yes">{labels.statusConfirmed}</option>
                                 <option value="no">{labels.statusDeclined}</option>
                               </select>
+                              {entry.linkedFromRsvp && (
+                                <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{labels.statusLinkedHint}</p>
+                              )}
                               {rowError && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{rowError}</p>}
                             </td>
                             <td className="px-4 py-2 text-center">

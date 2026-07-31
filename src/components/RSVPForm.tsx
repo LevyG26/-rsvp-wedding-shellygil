@@ -182,8 +182,12 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
         // touches the fields the guest controls (createdAt is deliberately
         // left out entirely, since the rules require it to stay unchanged;
         // omitting it here rather than resending the old value keeps this
-        // in sync automatically if that ever changes).
-        const updateData: any = { fullName: trimmedFullName, isAttending, guestsCount, lang };
+        // in sync automatically if that ever changes). attendanceSetByAdmin
+        // is explicitly cleared here - this is the guest's own real answer,
+        // so any earlier admin correction no longer applies (see
+        // firestore.rules' isValidGuestRsvpSelfUpdate for why this is the
+        // one field a self-update may only ever set back to false).
+        const updateData: any = { fullName: trimmedFullName, isAttending, guestsCount, lang, attendanceSetByAdmin: false };
         if (phoneToSave) updateData.phone = phoneToSave;
         await updateDoc(doc(db, 'rsvps', existingSubmissionId), updateData);
       } else {

@@ -24,6 +24,12 @@ export interface GiftRecordInput {
   category: string;
   guestsCount: number;
   giftAmounts: GiftAmounts;
+  // 'yes'/'no' mirror the guest's actual RSVP response; null means they
+  // haven't responded yet. Shown as a badge next to the name so it's clear
+  // at a glance - this tab lists every guest, not just confirmed attendees,
+  // since some guests send a gift despite not attending (or before
+  // responding at all).
+  attendanceStatus: 'yes' | 'no' | null;
 }
 
 interface GiftsSectionLabels {
@@ -55,6 +61,11 @@ interface GiftsSectionLabels {
   loading: string;
   exportButton: string;
   exportingButton: string;
+  attendanceAttending: string;
+  attendanceNotAttending: string;
+  attendancePending: string;
+  attendanceFilterAll: string;
+  byAttendanceHeading: string;
 }
 
 interface GiftsSectionProps {
@@ -220,7 +231,20 @@ function GiftRow({
   return (
     <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-gray-900 dark:text-slate-100">{record.fullName}</p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <p className="truncate font-medium text-gray-900 dark:text-slate-100">{record.fullName}</p>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              record.attendanceStatus === 'yes'
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                : record.attendanceStatus === 'no'
+                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                  : 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-400'
+            }`}
+          >
+            {record.attendanceStatus === 'yes' ? labels.attendanceAttending : record.attendanceStatus === 'no' ? labels.attendanceNotAttending : labels.attendancePending}
+          </span>
+        </div>
         <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-slate-400">
           {record.side}{record.side && record.category ? ' · ' : ''}{record.category} · {record.guestsCount} {labels.guestsWord}
         </p>
@@ -318,6 +342,7 @@ function GiftRow({
 export function GiftsSection({ records, labels, isLoading, isExporting, onUpdateGift, onExport }: GiftsSectionProps) {
   const [sideFilter, setSideFilter] = useState<'all' | string>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
+  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'yes' | 'no' | 'pending'>('all');
   const [filterMode, setFilterMode] = useState<'all' | 'missing'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -335,6 +360,11 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
     const byMethod: Record<GiftMethod, GiftCurrencyTotals> = { cash: {}, bit_paybox: {}, check: {} };
     const bySide = new Map<string, GiftCurrencyTotals>();
     const byCategory = new Map<string, GiftCurrencyTotals>();
+    // Keyed by the same 'yes'/'no'/'pending' values used for the filter, so
+    // a gift given by someone who isn't actually attending (or hasn't
+    // responded yet) is visible as its own line instead of being silently
+    // folded into the same total as confirmed guests.
+    const byAttendance: Record<'yes' | 'no' | 'pending', GiftCurrencyTotals> = { yes: {}, no: {}, pending: {} };
     let totalByCurrency: GiftCurrencyTotals = {};
     let missingCount = 0;
 
@@ -355,11 +385,14 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
       const categoryKey = record.category || '-';
       bySide.set(sideKey, mergeCurrencyTotals(bySide.get(sideKey) ?? {}, recordTotals));
       byCategory.set(categoryKey, mergeCurrencyTotals(byCategory.get(categoryKey) ?? {}, recordTotals));
+      const attendanceKey = record.attendanceStatus === 'yes' ? 'yes' : record.attendanceStatus === 'no' ? 'no' : 'pending';
+      byAttendance[attendanceKey] = mergeCurrencyTotals(byAttendance[attendanceKey], recordTotals);
     });
 
     return {
       totalByCurrency,
       byMethod,
+      byAttendance,
       missingCount,
       bySideEntries: Array.from(bySide.entries()).sort((first, second) => first[0].localeCompare(second[0])),
       byCategoryEntries: Array.from(byCategory.entries()).sort((first, second) => first[0].localeCompare(second[0])),
@@ -372,9 +405,14 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
       .filter((record) => (filterMode === 'missing' ? isEmptyGiftAmounts(record.giftAmounts) : true))
       .filter((record) => (sideFilter === 'all' ? true : record.side === sideFilter))
       .filter((record) => (categoryFilter === 'all' ? true : record.category === categoryFilter))
+      .filter((record) => {
+        if (attendanceFilter === 'all') return true;
+        if (attendanceFilter === 'pending') return record.attendanceStatus === null;
+        return record.attendanceStatus === attendanceFilter;
+      })
       .filter((record) => (normalizedSearch ? record.fullName.toLowerCase().includes(normalizedSearch) : true))
       .sort((first, second) => first.fullName.localeCompare(second.fullName, 'he'));
-  }, [records, filterMode, sideFilter, categoryFilter, searchTerm]);
+  }, [records, filterMode, sideFilter, categoryFilter, attendanceFilter, searchTerm]);
 
   return (
     <>
@@ -419,6 +457,23 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
               ))}
             </div>
           )}
+        </article>
+
+        {/* This tab lists every guest, not just confirmed attendees (see
+            giftRecords in AdminDashboard.tsx) - this card is what makes that
+            visible in the money totals themselves, not just as a badge on
+            each row, so it's clear at a glance how much of what's been
+            received actually came from people who aren't (or aren't yet)
+            confirmed to attend. */}
+        <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+          <div className="mb-2 flex items-center gap-2 text-gray-500 dark:text-slate-400">
+            <span className="text-sm font-medium">{labels.byAttendanceHeading}</span>
+          </div>
+          <div className="space-y-1.5 text-sm">
+            <AmountRow label={labels.attendanceAttending} totals={summary.byAttendance.yes} />
+            <AmountRow label={labels.attendanceNotAttending} totals={summary.byAttendance.no} />
+            <AmountRow label={labels.attendancePending} totals={summary.byAttendance.pending} />
+          </div>
         </article>
       </div>
 
@@ -501,6 +556,17 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
               {categories.map((category) => (
                 <option key={category} value={category}>{category}</option>
               ))}
+            </select>
+
+            <select
+              value={attendanceFilter}
+              onChange={(event) => setAttendanceFilter(event.target.value as typeof attendanceFilter)}
+              className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:border-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            >
+              <option value="all">{labels.attendanceFilterAll}</option>
+              <option value="yes">{labels.attendanceAttending}</option>
+              <option value="no">{labels.attendanceNotAttending}</option>
+              <option value="pending">{labels.attendancePending}</option>
             </select>
 
             <div className="relative ms-auto min-w-[10rem] flex-1 sm:flex-none">

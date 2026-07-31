@@ -57,14 +57,20 @@ service cloud.firestore {
     // headcount can never silently wipe out an admin's group assignment or
     // roster link.
     function isValidGuestRsvpSelfUpdate(data, oldData) {
-      return data.diff(oldData).affectedKeys().hasOnly(['fullName', 'isAttending', 'guestsCount', 'phone', 'lang', 'note']) &&
+      return data.diff(oldData).affectedKeys().hasOnly(['fullName', 'isAttending', 'guestsCount', 'phone', 'lang', 'note', 'attendanceSetByAdmin']) &&
              data.createdAt == oldData.createdAt &&
              data.fullName is string && data.fullName.size() <= 100 &&
              data.isAttending is bool &&
              data.guestsCount is int && data.guestsCount >= 1 && data.guestsCount <= 10 &&
              (!('lang' in data) || (data.lang is string && data.lang.size() <= 10)) &&
              (!('note' in data) || (data.note is string && data.note.size() <= 500)) &&
-             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20 && data.phone.matches('^[0-9+()\\-\\s]{7,20}$')));
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20 && data.phone.matches('^[0-9+()\\-\\s]{7,20}$'))) &&
+             // A guest submitting their own answer is by definition NOT an
+             // admin override - if this field was true from an earlier admin
+             // correction, the guest's own fresh edit clears it back to
+             // false, since the status shown now genuinely is the guest's
+             // own current input again.
+             (!('attendanceSetByAdmin' in data) || data.attendanceSetByAdmin == false);
     }
 
     match /rsvps/{rsvpId} {
@@ -87,7 +93,7 @@ service cloud.firestore {
       // submission (see isValidGuestRsvpSelfUpdate above) is the one
       // non-admin path allowed here.
       allow update: if (isAdmin() &&
-                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds', 'isAttending']) &&
+                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds', 'isAttending', 'attendanceSetByAdmin']) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['group']) ||
                          (incoming().group is string && incoming().group.size() <= 60)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['guestsCount']) ||
@@ -99,7 +105,15 @@ service cloud.firestore {
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['manualRosterEntryIds']) ||
                          (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['isAttending']) ||
-                         incoming().isAttending is bool)) ||
+                         incoming().isAttending is bool) &&
+                       // Set to true whenever an admin changes isAttending on
+                       // a guest's behalf (from either the Responses tab's
+                       // own toggle or a status change in the guest roster
+                       // tab that syncs back to this document) - a marker so
+                       // the Responses tab can show "changed by Gil" instead
+                       // of implying the guest updated it themselves.
+                       (!incoming().diff(resource.data).affectedKeys().hasAny(['attendanceSetByAdmin']) ||
+                         incoming().attendanceSetByAdmin is bool)) ||
                        (isValidId(rsvpId) && isValidGuestRsvpSelfUpdate(incoming(), resource.data));
       // Deletes are admin-only.
       allow delete: if isAdmin();

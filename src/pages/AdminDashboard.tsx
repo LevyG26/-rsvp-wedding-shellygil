@@ -106,6 +106,13 @@ interface RSVPRecord {
     // e.g. a couple who RSVP'd together). Empty array means "use automatic
     // matching".
     manualRosterEntryIds: string[];
+    // True when isAttending currently reflects an admin's manual correction
+    // (from either this tab's own toggle or a status change in the guest
+    // roster tab that synced back here) rather than the guest's own most
+    // recent submission - shown as a small badge so it's never confused with
+    // the guest's actual answer. Cleared automatically the next time the
+    // guest submits their own update (see RSVPForm.tsx).
+    attendanceSetByAdmin: boolean;
 }
 
 type SortKey = 'fullName' | 'guestsCount' | 'group' | 'isAttending' | 'lang' | 'createdAt';
@@ -365,6 +372,7 @@ function normalizeRecord(id: string, input: Record<string, unknown>): RSVPRecord
         manualRosterEntryIds: Array.isArray(input.manualRosterEntryIds)
             ? input.manualRosterEntryIds.filter((entryId): entryId is string => typeof entryId === 'string')
             : [],
+        attendanceSetByAdmin: input.attendanceSetByAdmin === true,
     };
 }
 
@@ -882,9 +890,13 @@ export function AdminDashboard() {
         [giftEntries],
     );
 
-    const attendingGiftRecords = useMemo(
+    // Includes every roster entry, not just confirmed-attending ones - some
+    // guests send a gift/money despite not attending (or before responding
+    // at all), and Gil needs to be able to record that. attendanceStatus
+    // lets the Gifts tab show who's who instead of implying everyone listed
+    // is attending.
+    const giftRecords = useMemo(
         () => guestRoster
-            .filter((entry) => entry.knownResponse === 'yes')
             .map((entry) => {
                 const giftEntry = giftEntriesByRosterId.get(entry.id);
                 return {
@@ -894,6 +906,7 @@ export function AdminDashboard() {
                     category: entry.category,
                     guestsCount: entry.invitedCount,
                     giftAmounts: giftEntry?.amounts ?? EMPTY_GIFT_AMOUNTS,
+                    attendanceStatus: entry.knownResponse,
                 };
             }),
         [guestRoster, giftEntriesByRosterId],
@@ -1403,6 +1416,36 @@ export function AdminDashboard() {
         const previousFullName = previousEntry ? `${previousEntry.firstName} ${previousEntry.lastName}`.trim() : '';
         const nextFullName = `${input.firstName} ${input.lastName}`.trim();
 
+        // A status edit on an entry that's linked to a real submission needs
+        // to change that submission itself, not just this roster row -
+        // otherwise the automatic RSVP-roster linker (the effect above, which
+        // exists specifically to keep the roster matching the real
+        // submissions) would just overwrite this edit back within moments,
+        // which is exactly the "changes revert by themselves" behavior Gil
+        // ran into before isAttending was syncable at all.
+        if (previousEntry && previousEntry.linkedFromRsvp && input.knownResponse !== previousEntry.knownResponse) {
+            if (input.knownResponse === null) {
+                setError(t.adminRosterCannotClearLinkedStatus);
+                throw new Error('cannot-clear-linked-status');
+            }
+            try {
+                await syncRosterStatusChangeToRsvp(id, input.knownResponse === 'yes');
+            } catch (syncError) {
+                console.error('Failed to sync roster status change back to the linked RSVP', syncError);
+                setError(t.adminRosterSyncToRsvpError);
+                throw syncError;
+            }
+            // Deliberately does NOT also call updateGuestRosterEntry/
+            // reloadGuestRoster here - the RSVP write above is what the
+            // automatic linker (subscribed to `records`) reacts to, and it's
+            // the one place that correctly re-derives this entry's
+            // knownResponse/linkedFromRsvp/invitedCount together. Writing the
+            // roster directly here too, in parallel, would race with that
+            // and could briefly (harmlessly, but confusingly) flip
+            // linkedFromRsvp back to false for no reason.
+            return;
+        }
+
         await updateGuestRosterEntry(id, input);
         await reloadGuestRoster();
 
@@ -1648,9 +1691,9 @@ export function AdminDashboard() {
         setError('');
         setUpdatingAttendanceId(recordId);
         try {
-            await updateDoc(doc(db, 'rsvps', recordId), { isAttending });
+            await updateDoc(doc(db, 'rsvps', recordId), { isAttending, attendanceSetByAdmin: true });
             setRecords((prevRecords) => prevRecords.map((record) => (
-                record.id === recordId ? { ...record, isAttending } : record
+                record.id === recordId ? { ...record, isAttending, attendanceSetByAdmin: true } : record
             )));
         } catch (updateError) {
             console.error('Failed to update attendance status', updateError);
@@ -1658,6 +1701,41 @@ export function AdminDashboard() {
         } finally {
             setUpdatingAttendanceId(null);
         }
+    };
+
+    // Finds the one RSVP record currently matched to a given roster entry -
+    // the mirror image of resolveRosterMatches (which goes RSVP -> roster
+    // entries), needed here to go the other way when a status edit happens
+    // in the roster tab. Deliberately conservative: only returns a record
+    // when exactly one match is found. Zero matches means the entry isn't
+    // actually tied to a live submission (stale link); more than one is a
+    // genuinely ambiguous case the automatic linker itself would never have
+    // produced on its own - either way, guessing which RSVP to overwrite
+    // would risk changing the wrong guest's answer, so both are treated as
+    // "can't sync automatically" rather than picked at random.
+    const findSingleLinkedRsvpRecord = (rosterEntryId: string): RSVPRecord | 'none' | 'ambiguous' => {
+        const matchingRecords = records.filter((record) => resolveRosterMatches(record, guestRoster).matches.some((entry) => entry.id === rosterEntryId));
+        if (matchingRecords.length === 0) return 'none';
+        if (matchingRecords.length > 1) return 'ambiguous';
+        return matchingRecords[0];
+    };
+
+    // Mirrors handleAttendanceChange above, but triggered from the guest
+    // roster tab instead of the Responses tab - see handleUpdateGuestRosterEntry,
+    // which calls this only when a roster entry's status actually changed and
+    // that entry is currently linked to a real submission. Throws (rather than
+    // swallowing the error) so the roster-tab caller can surface it right next
+    // to the field the admin was just editing, instead of only in the
+    // page-level error banner.
+    const syncRosterStatusChangeToRsvp = async (rosterEntryId: string, nextIsAttending: boolean) => {
+        const linkedRecord = findSingleLinkedRsvpRecord(rosterEntryId);
+        if (linkedRecord === 'none' || linkedRecord === 'ambiguous') {
+            throw new Error(linkedRecord);
+        }
+        await updateDoc(doc(db, 'rsvps', linkedRecord.id), { isAttending: nextIsAttending, attendanceSetByAdmin: true });
+        setRecords((prevRecords) => prevRecords.map((record) => (
+            record.id === linkedRecord.id ? { ...record, isAttending: nextIsAttending, attendanceSetByAdmin: true } : record
+        )));
     };
 
     // Pins (or, passing an empty array, un-pins) a response to specific
@@ -1708,7 +1786,7 @@ export function AdminDashboard() {
     };
 
     const handleExportGifts = async () => {
-        if (attendingGiftRecords.length === 0 || isExportingGifts) {
+        if (giftRecords.length === 0 || isExportingGifts) {
             return;
         }
 
@@ -1716,7 +1794,7 @@ export function AdminDashboard() {
         setError('');
         try {
             await exportGiftsWorkbook({
-                records: attendingGiftRecords,
+                records: giftRecords,
                 isRtl,
                 labels: {
                     summarySheet: t.adminGiftsExportSummarySheet,
@@ -1737,6 +1815,10 @@ export function AdminDashboard() {
                     status: t.adminTableStatus,
                     statusRecorded: t.adminGiftsExportStatusRecorded,
                     statusMissing: t.adminGiftsMissingLabel,
+                    attendance: t.adminGiftsExportAttendance,
+                    attendanceAttending: t.adminStatusAttending,
+                    attendanceNotAttending: t.adminStatusNotAttending,
+                    attendancePending: t.adminRosterPending,
                 },
             });
         } catch (exportError) {
@@ -2021,6 +2103,7 @@ export function AdminDashboard() {
                             updateError: t.adminRosterUpdateError,
                             createError: t.adminRosterCreateError,
                             requiredName: t.adminRosterRequiredName,
+                            statusLinkedHint: t.adminRosterStatusLinkedHint,
                         }}
                     />
                 </motion.section>
@@ -2466,6 +2549,9 @@ export function AdminDashboard() {
                                                         {t.adminStatusNotAttending}
                                                     </button>
                                                 </div>
+                                                {record.attendanceSetByAdmin && (
+                                                    <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{t.adminAttendanceSetByAdminHint}</p>
+                                                )}
                                             </div>
                                             <div>
                                                 <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{t.adminTableGroup}</p>
@@ -2690,6 +2776,9 @@ export function AdminDashboard() {
                                                         {t.adminStatusNotAttending}
                                                     </button>
                                                 </div>
+                                                {record.attendanceSetByAdmin && (
+                                                    <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{t.adminAttendanceSetByAdminHint}</p>
+                                                )}
                                             </td>
                                             <td className="w-24 px-4 py-3 text-center text-gray-700 dark:text-slate-300" dir="ltr">{record.lang}</td>
                                             <td className="w-44 px-4 py-3 text-center text-gray-700 whitespace-nowrap dark:text-slate-300" dir="ltr">{formatDate(record.createdAt)}</td>
@@ -2914,7 +3003,7 @@ export function AdminDashboard() {
                     className="mb-6"
                 >
                     <GiftsSection
-                        records={attendingGiftRecords}
+                        records={giftRecords}
                         isLoading={isLoading || isLoadingGiftEntries}
                         isExporting={isExportingGifts}
                         onUpdateGift={handleUpdateRosterGift}
@@ -2948,6 +3037,11 @@ export function AdminDashboard() {
                             loading: t.adminLoading,
                             exportButton: t.adminGiftsExportButton,
                             exportingButton: t.adminGiftsExportingButton,
+                            attendanceAttending: t.adminStatusAttending,
+                            attendanceNotAttending: t.adminStatusNotAttending,
+                            attendancePending: t.adminRosterPending,
+                            attendanceFilterAll: t.adminGiftsAttendanceFilterAll,
+                            byAttendanceHeading: t.adminGiftsByAttendanceHeading,
                         }}
                     />
                 </motion.section>
