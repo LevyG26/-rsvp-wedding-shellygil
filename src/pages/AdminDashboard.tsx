@@ -1902,7 +1902,18 @@ export function AdminDashboard() {
                 <motion.header
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="relative mb-6 rounded-3xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95"
+                    // z-30 matters here specifically because framer-motion sets an
+                    // inline `transform` on this element (for the y-offset
+                    // animation), which per the CSS spec makes the header create
+                    // its OWN stacking context - so the actions-menu dropdown's
+                    // z-20 (scoped inside that context) was being compared against
+                    // nothing, and later sibling sections (roster list, etc, which
+                    // also get a transform from framer-motion) simply painted over
+                    // the whole header in DOM order, hiding the bottom of the open
+                    // dropdown. Giving the header itself a z-index lifts its entire
+                    // stacking context - dropdown included - above every section
+                    // that follows it.
+                    className="relative z-30 mb-6 rounded-3xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95"
                 >
                     <div className="absolute end-4 top-4" ref={actionsMenuRef}>
                         <button
@@ -3055,6 +3066,7 @@ export function AdminDashboard() {
                             deleteSelectedButton: t.adminSeatingDeleteSelectedButton,
                             deleteSelectedTablesConfirm: t.adminSeatingDeleteSelectedTablesConfirm,
                             clearSelectionButton: t.adminSeatingClearSelectionButton,
+                            selectAllTablesButton: t.adminSeatingSelectAllTablesButton,
                             objectsHeading: t.adminSeatingObjectsHeading,
                             addObjectButton: t.adminSeatingAddObjectButton,
                             objectLabelPlaceholder: t.adminSeatingObjectLabelPlaceholder,
@@ -3119,7 +3131,8 @@ export function AdminDashboard() {
                             attendancePending: t.adminRosterPending,
                             attendanceFilterAll: t.adminGiftsAttendanceFilterAll,
                             byAttendanceHeading: t.adminGiftsByAttendanceHeading,
-                            attendanceConfirmedLabel: t.adminGiftsAttendanceConfirmedLabel,
+                            attendancePaidRecordsLabel: t.adminGiftsAttendancePaidRecordsLabel,
+                            attendancePaidGuestsLabel: t.adminGiftsAttendancePaidGuestsLabel,
                         }}
                     />
                 </motion.section>

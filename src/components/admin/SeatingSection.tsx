@@ -5,6 +5,7 @@ import {
   ArrowUpDown,
   Camera,
   Check,
+  CheckSquare,
   Download,
   LayoutGrid,
   List,
@@ -104,6 +105,7 @@ export interface SeatingLabels {
   deleteSelectedButton: string;
   deleteSelectedTablesConfirm: string;
   clearSelectionButton: string;
+  selectAllTablesButton: string;
   objectsHeading: string;
   addObjectButton: string;
   objectLabelPlaceholder: string;
@@ -1172,6 +1174,20 @@ export function SeatingSection({
                 <Plus size={14} />
                 {labels.addTableButton}
               </button>
+              {/* Selecting tables for bulk delete previously meant clicking
+                  each table's tiny checkbox on the canvas one at a time - a
+                  one-click "select all" makes "mark everything, then delete"
+                  actually fast when clearing out a whole layout. */}
+              {tables.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTableDeleteSelection(new Set(tables.map((table) => table.id)))}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  <CheckSquare size={14} />
+                  {labels.selectAllTablesButton}
+                </button>
+              )}
             </div>
           </div>
           {generateVenueTablesError && <p className="mb-2 text-sm text-rose-600 dark:text-rose-400">{generateVenueTablesError}</p>}
