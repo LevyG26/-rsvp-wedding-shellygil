@@ -3122,6 +3122,7 @@ export function AdminDashboard() {
                             clearConfirm: t.adminGiftsClearConfirm,
                             countLabel: t.adminGiftsCountLabel,
                             guestsWord: t.adminGiftsGuestsWord,
+                            recordsWord: t.adminGiftsRecordsWord,
                             emptyState: t.adminGiftsEmptyState,
                             loading: t.adminLoading,
                             exportButton: t.adminGiftsExportButton,

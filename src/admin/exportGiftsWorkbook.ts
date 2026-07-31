@@ -87,7 +87,11 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
 
     records.forEach((record) => {
         if (isEmptyGiftAmounts(record.giftAmounts)) {
-            missingCount += 1;
+            // Scoped to attending guests only, same as the dashboard stat -
+            // counting every invited guest with no amount (including anyone
+            // who hasn't responded yet, or declined) isn't a meaningful
+            // "missing" case the way an attending guest with no amount is.
+            if (record.attendanceStatus === 'yes') missingCount += 1;
             return;
         }
         const recordTotals = sumGiftAmountsByCurrency(record.giftAmounts);

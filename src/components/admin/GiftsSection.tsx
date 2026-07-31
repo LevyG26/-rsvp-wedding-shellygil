@@ -58,6 +58,7 @@ interface GiftsSectionLabels {
   clearConfirm: string;
   countLabel: string;
   guestsWord: string;
+  recordsWord: string;
   emptyState: string;
   loading: string;
   exportButton: string;
@@ -380,6 +381,10 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
     let notAttendingPaidCount = 0;
     let totalByCurrency: GiftCurrencyTotals = {};
     let missingCount = 0;
+    // Real headcount behind missingCount (which is a row/record count) - one
+    // row can be a couple or family, so "12 records" without this would
+    // understate how many actual people that represents.
+    let missingGuestsCount = 0;
 
     records.forEach((record) => {
       const attendanceKey = record.attendanceStatus === 'yes' ? 'yes' : record.attendanceStatus === 'no' ? 'no' : 'pending';
@@ -391,7 +396,17 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
       }
 
       if (!hasAmount) {
-        missingCount += 1;
+        // Scoped to attending guests only - counting every invited guest
+        // with no amount (including everyone who hasn't even responded to
+        // the RSVP yet, or declined) is what produced a confusing number
+        // like 547 when Gil was expecting something close to his ~240
+        // attending records. Of course a non-responder or a declined guest
+        // has no amount recorded - that's not a meaningful "still missing"
+        // case the way an attending guest with no amount is.
+        if (attendanceKey === 'yes') {
+          missingCount += 1;
+          missingGuestsCount += record.guestsCount;
+        }
         return;
       }
       const recordTotals = sumGiftAmountsByCurrency(record.giftAmounts);
@@ -415,6 +430,7 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
       byAttendance,
       byAttendanceGuestsCount,
       notAttendingPaidCount,
+      missingGuestsCount,
       missingCount,
       bySideEntries: Array.from(bySide.entries()).sort((first, second) => first[0].localeCompare(second[0])),
       byCategoryEntries: Array.from(byCategory.entries()).sort((first, second) => first[0].localeCompare(second[0])),
@@ -470,9 +486,15 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
             </div>
             <CurrencyAmounts totals={summary.byAttendance.no} direction="row" />
           </div>
+          {/* Record count alone understates this - one row can be a couple
+              or family, so the actual guest count is shown alongside it,
+              same "X records · Y guests" pairing used at the bottom of the
+              guest list below. */}
           <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-sm dark:border-slate-700">
             <span className="font-medium text-rose-600 dark:text-rose-400">{labels.missingLabel}</span>
-            <span dir="ltr" className="text-lg font-semibold text-gray-900 dark:text-slate-100">{summary.missingCount}</span>
+            <span dir="ltr" className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+              {summary.missingCount} {labels.recordsWord} · {summary.missingGuestsCount} {labels.guestsWord}
+            </span>
           </div>
         </article>
 
