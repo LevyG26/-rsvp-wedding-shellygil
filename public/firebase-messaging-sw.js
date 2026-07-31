@@ -19,6 +19,19 @@
 // `notification` field, since including one caused the browser to
 // auto-display a notification AND this handler to show a second one for
 // the same push (every RSVP briefly showed twice).
+// Makes a newly-deployed version of this file take over immediately (as
+// soon as the browser re-fetches it) instead of waiting for every tab/PWA
+// instance to be fully closed first - without this, a phone that's already
+// enabled notifications can keep running an old, stale copy of this exact
+// file for a long time after a fix is deployed, which is what made the last
+// couple of fixes look like they hadn't worked.
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener('push', (event) => {
   let payload = {};
   try {

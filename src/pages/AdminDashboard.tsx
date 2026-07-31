@@ -1638,6 +1638,28 @@ export function AdminDashboard() {
         }
     };
 
+    // Lets Gil correct a guest's attending/not-attending status directly
+    // from the dashboard - e.g. a guest calls to say plans changed - instead
+    // of relying on the guest reopening their own personal link (which only
+    // works if it's the exact same browser/device they originally submitted
+    // from). Mirrors handleFullNameChange/handleGuestCountChange above.
+    const [updatingAttendanceId, setUpdatingAttendanceId] = useState<string | null>(null);
+    const handleAttendanceChange = async (recordId: string, isAttending: boolean) => {
+        setError('');
+        setUpdatingAttendanceId(recordId);
+        try {
+            await updateDoc(doc(db, 'rsvps', recordId), { isAttending });
+            setRecords((prevRecords) => prevRecords.map((record) => (
+                record.id === recordId ? { ...record, isAttending } : record
+            )));
+        } catch (updateError) {
+            console.error('Failed to update attendance status', updateError);
+            setError(t.adminAttendanceUpdateError);
+        } finally {
+            setUpdatingAttendanceId(null);
+        }
+    };
+
     // Pins (or, passing an empty array, un-pins) a response to specific
     // roster entry/entries - used from the picker shown for "no
     // match"/"ambiguous" statuses so an admin can confirm the correct
@@ -2419,6 +2441,33 @@ export function AdminDashboard() {
                                                 />
                                             </div>
                                             <div>
+                                                <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{t.adminTableStatus}</p>
+                                                <div className="flex gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAttendanceChange(record.id, true)}
+                                                        disabled={isDeletingSelected || deletingId === record.id || updatingAttendanceId === record.id || record.isAttending}
+                                                        className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed ${record.isAttending
+                                                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                                                            }`}
+                                                    >
+                                                        {t.adminStatusAttending}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAttendanceChange(record.id, false)}
+                                                        disabled={isDeletingSelected || deletingId === record.id || updatingAttendanceId === record.id || !record.isAttending}
+                                                        className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed ${!record.isAttending
+                                                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                                                            }`}
+                                                    >
+                                                        {t.adminStatusNotAttending}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div>
                                                 <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{t.adminTableGroup}</p>
                                                 <GuestGroupSelect
                                                     group={record.group}
@@ -2617,14 +2666,30 @@ export function AdminDashboard() {
                                                 />
                                             </td>
                                             <td className="px-4 py-3">
-                                                <span
-                                                    className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${record.isAttending
-                                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                                                        : 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
-                                                        }`}
-                                                >
-                                                    {record.isAttending ? t.adminStatusAttending : t.adminStatusNotAttending}
-                                                </span>
+                                                <div className="inline-flex gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAttendanceChange(record.id, true)}
+                                                        disabled={isDeletingSelected || deletingId === record.id || updatingAttendanceId === record.id || record.isAttending}
+                                                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed ${record.isAttending
+                                                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                                                            }`}
+                                                    >
+                                                        {t.adminStatusAttending}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAttendanceChange(record.id, false)}
+                                                        disabled={isDeletingSelected || deletingId === record.id || updatingAttendanceId === record.id || !record.isAttending}
+                                                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed ${!record.isAttending
+                                                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                                                            }`}
+                                                    >
+                                                        {t.adminStatusNotAttending}
+                                                    </button>
+                                                </div>
                                             </td>
                                             <td className="w-24 px-4 py-3 text-center text-gray-700 dark:text-slate-300" dir="ltr">{record.lang}</td>
                                             <td className="w-44 px-4 py-3 text-center text-gray-700 whitespace-nowrap dark:text-slate-300" dir="ltr">{formatDate(record.createdAt)}</td>

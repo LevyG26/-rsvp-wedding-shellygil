@@ -75,14 +75,19 @@ service cloud.firestore {
       // Anyone can submit an RSVP - this must stay public for guests.
       allow create: if isValidId(rsvpId) && isValidRSVP(incoming());
       // Dashboard updates (group assignment, guest count, full-name typo
-      // fixes, manual roster-match overrides) are admin-only. fullName and
-      // manualRosterEntryIds were added later than group/guestsCount - both
-      // needed adding here too, since a field the dashboard writes but this
-      // list doesn't allow gets silently rejected by Firestore. A guest
-      // editing their OWN previous submission (see isValidGuestRsvpSelfUpdate
-      // above) is the one non-admin path allowed here.
+      // fixes, manual roster-match overrides, correcting a guest's
+      // attending/not-attending status on their behalf - e.g. a guest calls
+      // Gil to say they can no longer make it) are admin-only. fullName,
+      // manualRosterEntryIds, and isAttending were each added later than
+      // group/guestsCount - all needed adding here too, since a field the
+      // dashboard writes but this list doesn't allow gets silently rejected
+      // by Firestore (this is exactly what made the dashboard's attendance
+      // toggle look like it "reverted" instead of saving, before
+      // isAttending was added here). A guest editing their OWN previous
+      // submission (see isValidGuestRsvpSelfUpdate above) is the one
+      // non-admin path allowed here.
       allow update: if (isAdmin() &&
-                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds']) &&
+                       incoming().diff(resource.data).affectedKeys().hasOnly(['group', 'guestsCount', 'fullName', 'manualRosterEntryIds', 'isAttending']) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['group']) ||
                          (incoming().group is string && incoming().group.size() <= 60)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['guestsCount']) ||
@@ -92,7 +97,9 @@ service cloud.firestore {
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['fullName']) ||
                          (incoming().fullName is string && incoming().fullName.size() > 0 && incoming().fullName.size() <= 100)) &&
                        (!incoming().diff(resource.data).affectedKeys().hasAny(['manualRosterEntryIds']) ||
-                         (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10))) ||
+                         (incoming().manualRosterEntryIds is list && incoming().manualRosterEntryIds.size() <= 10)) &&
+                       (!incoming().diff(resource.data).affectedKeys().hasAny(['isAttending']) ||
+                         incoming().isAttending is bool)) ||
                        (isValidId(rsvpId) && isValidGuestRsvpSelfUpdate(incoming(), resource.data));
       // Deletes are admin-only.
       allow delete: if isAdmin();
