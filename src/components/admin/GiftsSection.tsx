@@ -467,7 +467,7 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
 
   return (
     <>
-      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {/* Total + missing count share one card (missing shown as a small
             secondary stat under the total) instead of the missing count
             getting an entire card of its own for a single number. */}
@@ -492,8 +492,14 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
               guest list below. */}
           <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-sm dark:border-slate-700">
             <span className="font-medium text-rose-600 dark:text-rose-400">{labels.missingLabel}</span>
-            <span dir="ltr" className="text-sm font-semibold text-gray-900 dark:text-slate-100">
-              {summary.missingCount} {labels.recordsWord} · {summary.missingGuestsCount} {labels.guestsWord}
+            {/* Only the raw digits get dir="ltr" - forcing it on the whole
+                mixed Hebrew-and-numbers string (as an earlier version did)
+                triggers the browser's bidi algorithm to reorder the RTL
+                Hebrew words against the LTR container, which is exactly
+                what made the numbers appear to land next to the wrong word
+                ("records" next to the guest count and vice versa). */}
+            <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+              <span dir="ltr">{summary.missingCount}</span> {labels.recordsWord} · <span dir="ltr">{summary.missingGuestsCount}</span> {labels.guestsWord}
             </span>
           </div>
         </article>
@@ -510,12 +516,10 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
           </div>
         </article>
 
-        {/* Side and attendance-status breakdowns are both short 2-3 line
-            lists, so they now share one card (separated by a divider)
-            instead of each taking a full card - this is also what makes it
-            clear that gifts from non-attending/undecided guests aren't
-            silently folded into the same total as confirmed guests (see
-            giftRecords in AdminDashboard.tsx). */}
+        {/* Side and category are both "which group is this guest part of"
+            breakdowns, so they share one card (separated by a divider) -
+            attendance status is a different kind of question entirely and
+            gets its own separate card instead of being mixed in here. */}
         <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
           <div className="mb-2 flex items-center gap-2 text-gray-500 dark:text-slate-400">
             <span className="text-sm font-medium">{labels.bySideHeading}</span>
@@ -531,6 +535,24 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
           )}
 
           <div className="mb-2 mt-4 flex items-center gap-2 border-t border-gray-100 pt-3 text-gray-500 dark:border-slate-700 dark:text-slate-400">
+            <span className="text-sm font-medium">{labels.byCategoryHeading}</span>
+          </div>
+          {summary.byCategoryEntries.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-slate-400">{labels.breakdownEmpty}</p>
+          ) : (
+            <div className="space-y-1.5 text-sm">
+              {summary.byCategoryEntries.map(([category, totals]) => (
+                <AmountRow key={category} label={category} totals={totals} />
+              ))}
+            </div>
+          )}
+        </article>
+
+        {/* Attendance status stands on its own now - a different question
+            ("who's actually coming") from the side/category grouping above,
+            so it shouldn't be visually mixed in with it. */}
+        <article className="rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+          <div className="mb-2 flex items-center gap-2 text-gray-500 dark:text-slate-400">
             <span className="text-sm font-medium">{labels.byAttendanceHeading}</span>
           </div>
           {/* Each row's label includes the actual guest count (not just a
@@ -544,27 +566,6 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
             <AmountRow label={`${labels.attendancePending} · ${summary.byAttendanceGuestsCount.pending} ${labels.guestsWord}`} totals={summary.byAttendance.pending} />
           </div>
         </article>
-      </div>
-
-      {/* By-category breakdown gets its own full-width section rather than a
-          cramped grid card - unlike side (usually just 2 values), the number
-          of categories can be large enough that a small card can't fit them
-          all legibly. Each category is its own bordered tile (via AmountRow)
-          so it's clear at a glance where one group ends and the next
-          begins. */}
-      <div className="mb-6 rounded-3xl border border-white/30 bg-white/90 p-5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-        <div className="mb-3 flex items-center gap-2 text-gray-500 dark:text-slate-400">
-          <span className="text-sm font-medium">{labels.byCategoryHeading}</span>
-        </div>
-        {summary.byCategoryEntries.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-slate-400">{labels.breakdownEmpty}</p>
-        ) : (
-          <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            {summary.byCategoryEntries.map(([category, totals]) => (
-              <AmountRow key={category} label={category} totals={totals} />
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-white/30 bg-white/95 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95">
