@@ -144,6 +144,14 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
   const canvasRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const clipboardRef = useRef<{ kind: ItemKind; item: SeatingTable | VenueObject } | null>(null);
+  // Tracks a press that started directly on the canvas background (not on a
+  // table/object - those call stopPropagation in startDrag, so this never
+  // fires for them). Used to tell "tapped empty space to deselect" apart
+  // from "started panning/scrolling the canvas from a spot between tables" -
+  // without this, deselecting on the raw pointerdown fired the instant a
+  // finger touched down to pan around a large floor plan, clearing whichever
+  // table was selected before the pan gesture even registered as movement.
+  const backgroundPressRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
 
   useImperativeHandle(ref, () => ({
     exportImage: async (fileName: string) => {
@@ -365,9 +373,28 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
               transform: `scale(${scale})`,
               transformOrigin: 'top left',
             }}
-            onPointerDown={() => {
-              onSelectTable(null);
-              onSelectObject(null);
+            onPointerDown={(event) => {
+              backgroundPressRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+            }}
+            onPointerMove={(event) => {
+              const press = backgroundPressRef.current;
+              if (!press || event.pointerId !== press.pointerId) return;
+              if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_THRESHOLD) {
+                // Moved enough to be a pan/scroll, not a tap - stop tracking
+                // it as a potential deselect-click.
+                backgroundPressRef.current = null;
+              }
+            }}
+            onPointerUp={(event) => {
+              const press = backgroundPressRef.current;
+              backgroundPressRef.current = null;
+              if (press && event.pointerId === press.pointerId) {
+                onSelectTable(null);
+                onSelectObject(null);
+              }
+            }}
+            onPointerCancel={() => {
+              backgroundPressRef.current = null;
             }}
           >
             {tables.map((table) => {
