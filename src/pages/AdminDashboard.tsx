@@ -543,6 +543,19 @@ export function AdminDashboard() {
         };
     }, [isActionsMenuOpen]);
 
+    // The "notifications enabled on this device" success banner used to stay
+    // on screen forever until the next page reload - harmless, but Gil found
+    // it just sits there cluttering the header. Only the success case
+    // auto-dismisses; denied/unsupported/error stay visible since those
+    // actually need the admin to notice and do something about them.
+    useEffect(() => {
+        if (notificationsStatus !== 'enabled') {
+            return;
+        }
+        const timeoutId = window.setTimeout(() => setNotificationsStatus('idle'), 5000);
+        return () => window.clearTimeout(timeoutId);
+    }, [notificationsStatus]);
+
     useEffect(() => {
         if (typeof window === 'undefined') {
             return;
@@ -3085,6 +3098,7 @@ export function AdminDashboard() {
                             currencyLabel: t.adminGiftsCurrencyLabel,
                             filterAll: t.adminGiftsFilterAll,
                             filterMissing: t.adminGiftsFilterMissing,
+                            filterHasAmount: t.adminGiftsFilterHasAmount,
                             sideFilterAll: t.adminGiftsSideFilterAll,
                             categoryFilterAll: t.adminGiftsCategoryFilterAll,
                             searchPlaceholder: t.adminGiftsSearchPlaceholder,
@@ -3105,6 +3119,7 @@ export function AdminDashboard() {
                             attendancePending: t.adminRosterPending,
                             attendanceFilterAll: t.adminGiftsAttendanceFilterAll,
                             byAttendanceHeading: t.adminGiftsByAttendanceHeading,
+                            attendanceConfirmedLabel: t.adminGiftsAttendanceConfirmedLabel,
                         }}
                     />
                 </motion.section>

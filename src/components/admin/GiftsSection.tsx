@@ -46,6 +46,7 @@ interface GiftsSectionLabels {
   currencyLabel: string;
   filterAll: string;
   filterMissing: string;
+  filterHasAmount: string;
   sideFilterAll: string;
   categoryFilterAll: string;
   searchPlaceholder: string;
@@ -66,6 +67,7 @@ interface GiftsSectionLabels {
   attendancePending: string;
   attendanceFilterAll: string;
   byAttendanceHeading: string;
+  attendanceConfirmedLabel: string;
 }
 
 interface GiftsSectionProps {
@@ -343,7 +345,7 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
   const [sideFilter, setSideFilter] = useState<'all' | string>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
   const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'yes' | 'no' | 'pending'>('all');
-  const [filterMode, setFilterMode] = useState<'all' | 'missing'>('all');
+  const [filterMode, setFilterMode] = useState<'all' | 'missing' | 'has'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   const sides = useMemo(
@@ -365,10 +367,18 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
     // responded yet) is visible as its own line instead of being silently
     // folded into the same total as confirmed guests.
     const byAttendance: Record<'yes' | 'no' | 'pending', GiftCurrencyTotals> = { yes: {}, no: {}, pending: {} };
+    // Actual guest counts (sum of guestsCount, not a count of roster rows) -
+    // computed across every invited guest regardless of whether they gave a
+    // gift, so "attending" can be reported as "X out of Y guests confirmed"
+    // instead of a raw invited-guest total that isn't actually useful here.
+    const byAttendanceGuestsCount: Record<'yes' | 'no' | 'pending', number> = { yes: 0, no: 0, pending: 0 };
     let totalByCurrency: GiftCurrencyTotals = {};
     let missingCount = 0;
 
     records.forEach((record) => {
+      const attendanceKey = record.attendanceStatus === 'yes' ? 'yes' : record.attendanceStatus === 'no' ? 'no' : 'pending';
+      byAttendanceGuestsCount[attendanceKey] += record.guestsCount;
+
       if (isEmptyGiftAmounts(record.giftAmounts)) {
         missingCount += 1;
         return;
@@ -385,14 +395,18 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
       const categoryKey = record.category || '-';
       bySide.set(sideKey, mergeCurrencyTotals(bySide.get(sideKey) ?? {}, recordTotals));
       byCategory.set(categoryKey, mergeCurrencyTotals(byCategory.get(categoryKey) ?? {}, recordTotals));
-      const attendanceKey = record.attendanceStatus === 'yes' ? 'yes' : record.attendanceStatus === 'no' ? 'no' : 'pending';
       byAttendance[attendanceKey] = mergeCurrencyTotals(byAttendance[attendanceKey], recordTotals);
     });
+
+    const totalGuestsCount = byAttendanceGuestsCount.yes + byAttendanceGuestsCount.no + byAttendanceGuestsCount.pending;
 
     return {
       totalByCurrency,
       byMethod,
       byAttendance,
+      byAttendanceGuestsCount,
+      totalGuestsCount,
+      confirmedGuestsCount: byAttendanceGuestsCount.yes,
       missingCount,
       bySideEntries: Array.from(bySide.entries()).sort((first, second) => first[0].localeCompare(second[0])),
       byCategoryEntries: Array.from(byCategory.entries()).sort((first, second) => first[0].localeCompare(second[0])),
@@ -402,7 +416,11 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
   const visibleRecords = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return records
-      .filter((record) => (filterMode === 'missing' ? isEmptyGiftAmounts(record.giftAmounts) : true))
+      .filter((record) => {
+        if (filterMode === 'missing') return isEmptyGiftAmounts(record.giftAmounts);
+        if (filterMode === 'has') return !isEmptyGiftAmounts(record.giftAmounts);
+        return true;
+      })
       .filter((record) => (sideFilter === 'all' ? true : record.side === sideFilter))
       .filter((record) => (categoryFilter === 'all' ? true : record.category === categoryFilter))
       .filter((record) => {
@@ -413,6 +431,15 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
       .filter((record) => (normalizedSearch ? record.fullName.toLowerCase().includes(normalizedSearch) : true))
       .sort((first, second) => first.fullName.localeCompare(second.fullName, 'he'));
   }, [records, filterMode, sideFilter, categoryFilter, attendanceFilter, searchTerm]);
+
+  // Actual guest count among the currently-visible (filtered) rows - shown
+  // alongside the row count so "12 records shown" doesn't get misread as "12
+  // guests" when those 12 rows might represent, say, 30 actual people once
+  // families/couples are counted.
+  const visibleGuestsCount = useMemo(
+    () => visibleRecords.reduce((sum, record) => sum + record.guestsCount, 0),
+    [visibleRecords],
+  );
 
   return (
     <>
@@ -426,7 +453,15 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
             <span className="text-sm font-medium">{labels.totalLabel}</span>
           </div>
           <CurrencyAmounts totals={summary.totalByCurrency} size="lg" direction="row" />
+          {/* Actual confirmed-attendance guest count (X out of Y), not a raw
+              "all invited guests" total - that number on its own doesn't say
+              anything useful in a money tab, but "how many confirmed out of
+              how many" does. */}
           <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-sm dark:border-slate-700">
+            <span className="font-medium text-gray-600 dark:text-slate-300">{labels.attendanceConfirmedLabel}</span>
+            <span dir="ltr" className="text-lg font-semibold text-gray-900 dark:text-slate-100">{summary.confirmedGuestsCount} / {summary.totalGuestsCount}</span>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-sm dark:border-slate-700">
             <span className="font-medium text-rose-600 dark:text-rose-400">{labels.missingLabel}</span>
             <span dir="ltr" className="text-lg font-semibold text-gray-900 dark:text-slate-100">{summary.missingCount}</span>
           </div>
@@ -467,10 +502,15 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
           <div className="mb-2 mt-4 flex items-center gap-2 border-t border-gray-100 pt-3 text-gray-500 dark:border-slate-700 dark:text-slate-400">
             <span className="text-sm font-medium">{labels.byAttendanceHeading}</span>
           </div>
+          {/* Each row's label includes the actual guest count (not just a
+              money total derived from however many rows happen to fall in
+              that bucket) - so "attending" reads as e.g. "Attending · 42
+              guests", not just a currency figure with no sense of how many
+              people that represents. */}
           <div className="space-y-1.5 text-sm">
-            <AmountRow label={labels.attendanceAttending} totals={summary.byAttendance.yes} />
-            <AmountRow label={labels.attendanceNotAttending} totals={summary.byAttendance.no} />
-            <AmountRow label={labels.attendancePending} totals={summary.byAttendance.pending} />
+            <AmountRow label={`${labels.attendanceAttending} · ${summary.byAttendanceGuestsCount.yes} ${labels.guestsWord}`} totals={summary.byAttendance.yes} />
+            <AmountRow label={`${labels.attendanceNotAttending} · ${summary.byAttendanceGuestsCount.no} ${labels.guestsWord}`} totals={summary.byAttendance.no} />
+            <AmountRow label={`${labels.attendancePending} · ${summary.byAttendanceGuestsCount.pending} ${labels.guestsWord}`} totals={summary.byAttendance.pending} />
           </div>
         </article>
       </div>
@@ -521,17 +561,24 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setFilterMode('missing')}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${filterMode === 'missing' ? 'bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
-            >
-              {labels.filterMissing}
-            </button>
-            <button
-              type="button"
               onClick={() => setFilterMode('all')}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${filterMode === 'all' ? 'bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
             >
               {labels.filterAll}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterMode('has')}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${filterMode === 'has' ? 'bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+            >
+              {labels.filterHasAmount}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterMode('missing')}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${filterMode === 'missing' ? 'bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+            >
+              {labels.filterMissing}
             </button>
 
             <select
@@ -579,7 +626,9 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
             </div>
           </div>
 
-          <p className="text-xs text-gray-500 dark:text-slate-400">{visibleRecords.length} {labels.countLabel}</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">
+            {visibleRecords.length} {labels.countLabel} · {visibleGuestsCount} {labels.guestsWord}
+          </p>
         </div>
 
         {isLoading ? (
