@@ -3131,8 +3131,7 @@ export function AdminDashboard() {
                             attendancePending: t.adminRosterPending,
                             attendanceFilterAll: t.adminGiftsAttendanceFilterAll,
                             byAttendanceHeading: t.adminGiftsByAttendanceHeading,
-                            attendancePaidRecordsLabel: t.adminGiftsAttendancePaidRecordsLabel,
-                            attendancePaidGuestsLabel: t.adminGiftsAttendancePaidGuestsLabel,
+                            notAttendingPaidLabel: t.adminGiftsNotAttendingPaidLabel,
                         }}
                     />
                 </motion.section>

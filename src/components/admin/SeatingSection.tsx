@@ -1279,7 +1279,6 @@ export function SeatingSection({
 
               {tablesView === 'map' && (
               <>
-              <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">{labels.canvasHint}</p>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">{labels.objectsHeading} ({venueObjects.length})</h4>
                 <button
@@ -1349,6 +1348,13 @@ export function SeatingSection({
               )}
 
               <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">{labels.canvasHint}</p>
+              {/* Two-column layout on wide screens: canvas on the left,
+                  selected-item details pinned in a sticky column on the
+                  right so it's always visible - never requires scrolling
+                  past the canvas to see who's seated at the table you just
+                  selected. Below the lg breakpoint it just stacks (details
+                  under the canvas), same as before. */}
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
               <SeatingFloorPlan
                 ref={floorPlanRef}
                 tables={sortedTables}
@@ -1380,6 +1386,7 @@ export function SeatingSection({
                 deleteCheckboxLabel={labels.deleteCheckboxLabel}
               />
 
+              <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
               {(() => {
                 const object = selectedObjectId ? venueObjects.find((candidate) => candidate.id === selectedObjectId) : null;
                 if (!object) return null;
@@ -1579,6 +1586,8 @@ export function SeatingSection({
                   </div>
                 );
               })()}
+              </div>
+              </div>
               </>
               )}
 

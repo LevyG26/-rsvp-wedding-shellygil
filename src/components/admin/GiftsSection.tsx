@@ -67,8 +67,7 @@ interface GiftsSectionLabels {
   attendancePending: string;
   attendanceFilterAll: string;
   byAttendanceHeading: string;
-  attendancePaidRecordsLabel: string;
-  attendancePaidGuestsLabel: string;
+  notAttendingPaidLabel: string;
 }
 
 interface GiftsSectionProps {
@@ -373,15 +372,12 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
     // gift, so each attendance bucket can be reported by real headcount, not
     // just by however many rows happen to fall in it.
     const byAttendanceGuestsCount: Record<'yes' | 'no' | 'pending', number> = { yes: 0, no: 0, pending: 0 };
-    // Scoped specifically to guests who confirmed attendance (Gil doesn't
-    // care about a raw "all invited guests" total here) - of THOSE, how many
-    // records have an amount recorded, and how many actual people that
-    // covers. E.g. one row "Avi & Ziva" (guestsCount 2) with ₪1000 entered
-    // shows as "1 record" on one hand but "2 guests" on the other - both
-    // numbers are meaningful and neither substitutes for the other.
-    let attendingRecordsCount = 0;
-    let attendingRecordsPaidCount = 0;
-    let attendingGuestsPaidCount = 0;
+    // A plain count (not a ratio) of records that said they're NOT attending
+    // but still gave a gift - Gil specifically wants this as "how many, and
+    // how much", not "X out of Y". The corresponding money total is just
+    // summary.byAttendance.no, which (see below) already only ever includes
+    // records that have an amount.
+    let notAttendingPaidCount = 0;
     let totalByCurrency: GiftCurrencyTotals = {};
     let missingCount = 0;
 
@@ -390,12 +386,8 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
       byAttendanceGuestsCount[attendanceKey] += record.guestsCount;
       const hasAmount = !isEmptyGiftAmounts(record.giftAmounts);
 
-      if (attendanceKey === 'yes') {
-        attendingRecordsCount += 1;
-        if (hasAmount) {
-          attendingRecordsPaidCount += 1;
-          attendingGuestsPaidCount += record.guestsCount;
-        }
+      if (attendanceKey === 'no' && hasAmount) {
+        notAttendingPaidCount += 1;
       }
 
       if (!hasAmount) {
@@ -422,10 +414,7 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
       byMethod,
       byAttendance,
       byAttendanceGuestsCount,
-      attendingRecordsCount,
-      attendingRecordsPaidCount,
-      attendingGuestsCount: byAttendanceGuestsCount.yes,
-      attendingGuestsPaidCount,
+      notAttendingPaidCount,
       missingCount,
       bySideEntries: Array.from(bySide.entries()).sort((first, second) => first[0].localeCompare(second[0])),
       byCategoryEntries: Array.from(byCategory.entries()).sort((first, second) => first[0].localeCompare(second[0])),
@@ -472,19 +461,14 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
             <span className="text-sm font-medium">{labels.totalLabel}</span>
           </div>
           <CurrencyAmounts totals={summary.totalByCurrency} size="lg" direction="row" />
-          {/* Scoped to guests who confirmed attendance only - two numbers,
-              not one, since they answer different questions: how many
-              records (rows) have an amount vs how many actual people that
-              covers. E.g. one row "Avi & Ziva" (2 guests) with an amount
-              entered is "1 record" but "2 guests" - collapsing that into a
-              single ratio would hide one side of it. */}
-          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-sm dark:border-slate-700">
-            <span className="font-medium text-gray-600 dark:text-slate-300">{labels.attendancePaidRecordsLabel}</span>
-            <span dir="ltr" className="text-lg font-semibold text-gray-900 dark:text-slate-100">{summary.attendingRecordsPaidCount} / {summary.attendingRecordsCount}</span>
-          </div>
-          <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-sm dark:border-slate-700">
-            <span className="font-medium text-gray-600 dark:text-slate-300">{labels.attendancePaidGuestsLabel}</span>
-            <span dir="ltr" className="text-lg font-semibold text-gray-900 dark:text-slate-100">{summary.attendingGuestsPaidCount} / {summary.attendingGuestsCount}</span>
+          {/* A plain count + amount, not a ratio - how many guests who said
+              they're NOT attending still gave something, and how much. */}
+          <div className="mt-4 border-t border-gray-100 pt-3 dark:border-slate-700">
+            <div className="mb-1.5 flex items-center justify-between text-sm">
+              <span className="font-medium text-gray-600 dark:text-slate-300">{labels.notAttendingPaidLabel}</span>
+              <span dir="ltr" className="text-lg font-semibold text-gray-900 dark:text-slate-100">{summary.notAttendingPaidCount}</span>
+            </div>
+            <CurrencyAmounts totals={summary.byAttendance.no} direction="row" />
           </div>
           <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-sm dark:border-slate-700">
             <span className="font-medium text-rose-600 dark:text-rose-400">{labels.missingLabel}</span>
