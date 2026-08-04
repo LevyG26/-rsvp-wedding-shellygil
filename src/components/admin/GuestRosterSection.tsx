@@ -43,6 +43,7 @@ export interface GuestRosterLabels {
   linkNone: string;
   linkAmbiguous: string;
   linkReverted: string;
+  linkConflict: string;
   linkError: string;
   resetSideButton: string;
   resettingSide: string;
@@ -361,6 +362,7 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
       const suffixParts: string[] = [];
       if (result.ambiguousCount > 0) suffixParts.push(`${labels.linkAmbiguous}: ${result.ambiguousCount}`);
       if (result.revertedCount > 0) suffixParts.push(`${labels.linkReverted}: ${result.revertedCount}`);
+      if (result.conflictCount > 0) suffixParts.push(`${labels.linkConflict}: ${result.conflictCount}`);
       const suffix = suffixParts.length > 0 ? ` (${suffixParts.join(' · ')})` : '';
 
       if (result.updatedCount > 0) {

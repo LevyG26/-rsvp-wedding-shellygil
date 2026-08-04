@@ -28,6 +28,15 @@ export interface RosterLinkResult {
   // exists (deleted, or edited enough to stop matching) and were reverted
   // back to "not yet responded".
   revertedCount: number;
+  // Roster entries claimed by more than one DIFFERENT rsvp submission this
+  // run (e.g. a guest who accidentally submitted the form twice, with
+  // different answers) - left exactly as they were rather than picked
+  // arbitrarily. See the comment above the two-pass loop below for why this
+  // matters: without it, which submission "wins" would depend on iteration
+  // order and could flip every time either submission changes, which is
+  // exactly the kind of rapid back-and-forth Gil reported seeing in the
+  // roster stats.
+  conflictCount: number;
 }
 
 // Strips Hebrew niqqud/cantillation marks, Latin accents (é/è/ë -> e, so
@@ -361,10 +370,23 @@ export async function linkGuestRosterWithRsvps(
   let matchedNoChangeCount = 0;
   let ambiguousCount = 0;
   let revertedCount = 0;
+  let conflictCount = 0;
 
   // Tracks which entries still have a current RSVP match this run, so the
   // revert pass below only touches entries that truly lost theirs.
   const stillMatchedEntryIds = new Set<string>();
+
+  // First pass: figure out, for every roster entry that has at least one
+  // single-match rsvp this run, exactly which rsvp(s) claim it - without
+  // writing anything yet. An entry can end up claimed by more than one
+  // DIFFERENT rsvp submission (most often a guest who accidentally
+  // submitted the RSVP form twice, with two separate documents that both
+  // happen to name-match the same roster row) - deciding which one "wins"
+  // by iteration order would make the row's status depend on incidental
+  // ordering, and could flip back and forth every time either submission is
+  // edited or the list re-sorts. That's surfaced as a conflict for a human
+  // to resolve (usually by deleting the duplicate submission) instead.
+  const claimsByEntryId = new Map<string, Array<{ rsvp: LinkableRsvp; rsvpMatchCount: number }>>();
 
   for (const rsvp of rsvps) {
     const hasManualPick = (rsvp.manualRosterEntryIds ?? []).length > 0;
@@ -382,44 +404,61 @@ export async function linkGuestRosterWithRsvps(
       continue;
     }
 
+    for (const entry of matches) {
+      const claims = claimsByEntryId.get(entry.id) ?? [];
+      claims.push({ rsvp, rsvpMatchCount: matches.length });
+      claimsByEntryId.set(entry.id, claims);
+    }
+  }
+
+  for (const [entryId, claims] of claimsByEntryId) {
+    const entry = entries.find((candidate) => candidate.id === entryId);
+    if (!entry) continue;
+
+    // This entry has a real, current claim either way - don't touch it in
+    // the revert pass below, whether or not we can safely write to it.
+    stillMatchedEntryIds.add(entryId);
+
+    if (claims.length > 1) {
+      conflictCount += 1;
+      continue;
+    }
+
+    const { rsvp, rsvpMatchCount } = claims[0];
     const desiredKnownResponse = rsvp.isAttending ? 'yes' : 'no';
 
-    for (const entry of matches) {
-      stillMatchedEntryIds.add(entry.id);
+    // Only overwrite invitedCount with the response's own reported
+    // guestsCount when this response maps to exactly one roster row - that
+    // number is that one person's real headcount. When one response covers
+    // several rows (a manual multi-pick), each row keeps its own original
+    // invitedCount instead - applying the combined headcount to every row
+    // would multiply it (e.g. a couple's shared guestsCount of 2 would
+    // otherwise double-count to 4 across their two rows).
+    const desiredInvitedCount = rsvpMatchCount === 1 && rsvp.isAttending && rsvp.guestsCount > 0
+      ? rsvp.guestsCount
+      : entry.invitedCount;
 
-      // Only overwrite invitedCount with the response's own reported
-      // guestsCount when this response maps to exactly one roster row - that
-      // number is that one person's real headcount. When one response
-      // covers several rows (a manual multi-pick), each row keeps its own
-      // original invitedCount instead - applying the combined headcount to
-      // every row would multiply it (e.g. a couple's shared guestsCount of 2
-      // would otherwise double-count to 4 across their two rows).
-      const desiredInvitedCount = matches.length === 1 && rsvp.isAttending && rsvp.guestsCount > 0
-        ? rsvp.guestsCount
-        : entry.invitedCount;
-
-      if (entry.knownResponse === desiredKnownResponse && entry.invitedCount === desiredInvitedCount && entry.linkedFromRsvp) {
-        matchedNoChangeCount += 1;
-        continue;
-      }
-
-      const input: GuestRosterEntryInput = {
-        side: entry.side,
-        category: entry.category,
-        firstName: entry.firstName,
-        lastName: entry.lastName,
-        invitedCount: desiredInvitedCount,
-        knownResponse: desiredKnownResponse,
-        linkedFromRsvp: true,
-        // Only capture the pre-link count the first time this entry gets
-        // linked - a later re-run (e.g. the guest changing their headcount)
-        // must not overwrite it with a value that's already post-link.
-        preLinkInvitedCount: entry.linkedFromRsvp ? entry.preLinkInvitedCount : entry.invitedCount,
-      };
-
-      await updateGuestRosterEntry(entry.id, input);
-      updatedCount += 1;
+    if (entry.knownResponse === desiredKnownResponse && entry.invitedCount === desiredInvitedCount && entry.linkedFromRsvp) {
+      matchedNoChangeCount += 1;
+      continue;
     }
+
+    const input: GuestRosterEntryInput = {
+      side: entry.side,
+      category: entry.category,
+      firstName: entry.firstName,
+      lastName: entry.lastName,
+      invitedCount: desiredInvitedCount,
+      knownResponse: desiredKnownResponse,
+      linkedFromRsvp: true,
+      // Only capture the pre-link count the first time this entry gets
+      // linked - a later re-run (e.g. the guest changing their headcount)
+      // must not overwrite it with a value that's already post-link.
+      preLinkInvitedCount: entry.linkedFromRsvp ? entry.preLinkInvitedCount : entry.invitedCount,
+    };
+
+    await updateGuestRosterEntry(entry.id, input);
+    updatedCount += 1;
   }
 
   // Any entry that was previously auto-linked from an RSVP but no longer
@@ -447,5 +486,5 @@ export async function linkGuestRosterWithRsvps(
     revertedCount += 1;
   }
 
-  return { updatedCount, matchedNoChangeCount, ambiguousCount, revertedCount };
+  return { updatedCount, matchedNoChangeCount, ambiguousCount, revertedCount, conflictCount };
 }

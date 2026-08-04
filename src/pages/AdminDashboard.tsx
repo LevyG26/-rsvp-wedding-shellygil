@@ -2138,6 +2138,7 @@ export function AdminDashboard() {
                             linkNone: t.adminRosterLinkNone,
                             linkAmbiguous: t.adminRosterLinkAmbiguous,
                             linkReverted: t.adminRosterLinkReverted,
+                            linkConflict: t.adminRosterLinkConflict,
                             linkError: t.adminRosterLinkError,
                             resetSideButton: t.adminRosterResetSideButton,
                             resettingSide: t.adminRosterResettingSide,
