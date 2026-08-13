@@ -251,6 +251,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
 const OBJECT_ICONS: Record<VenueObjectType, typeof Music> = {
   stage: Music,
   bar: Wine,
@@ -299,6 +303,19 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
   // from Firestore).
   const [draftLayout, setDraftLayout] = useState<DraftLayout | null>(null);
   const [scale, setScale] = useState(1);
+  // Canvas position, in on-screen CSS pixels, relative to the (fixed-size,
+  // overflow-hidden) viewport - lets Gil pan around a floor plan bigger than
+  // the visible area with a one-finger drag or a mouse drag, and lets pinch
+  // zoom keep whatever point was between his fingers fixed on screen while
+  // it zooms. Deliberately not native browser scrolling (see the pointer
+  // handlers below) - a plain overflow:auto container's scroll direction
+  // gets confusing/inconsistent in RTL layouts across mobile browsers, which
+  // is exactly the "can't move left" bug Gil reported; driving panning
+  // ourselves from raw pointer deltas sidesteps that entirely, and also
+  // means the exact same code path works for mouse-drag, one-finger touch
+  // drag, and the translate half of a two-finger pinch.
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
   // While true, labels render without truncation/ellipsis. html2canvas
   // mis-renders Hebrew text combined with CSS text-overflow: ellipsis (it
   // garbles/reorders the characters), so we briefly switch to full, wrapped
@@ -308,20 +325,36 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
   const canvasRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const clipboardRef = useRef<{ kind: ItemKind; item: SeatingTable | VenueObject } | null>(null);
-  // Tracks a press that started directly on the canvas background (not on a
-  // table/object - those call stopPropagation in startDrag, so this never
-  // fires for them). Used to tell "tapped empty space to deselect" apart
-  // from "started panning/scrolling the canvas from a spot between tables" -
-  // without this, deselecting on the raw pointerdown fired the instant a
-  // finger touched down to pan around a large floor plan, clearing whichever
-  // table was selected before the pan gesture even registered as movement.
-  const backgroundPressRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  // Every pointer (mouse or finger) currently pressed down directly on the
+  // canvas background - keyed by pointerId so a two-finger pinch can track
+  // both touches independently. Tables/objects never end up in here (their
+  // own handlers call stopPropagation before a background handler ever
+  // sees that pointerId).
+  const activeBackgroundPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  // Set on the FIRST background pointer to go down (mouse drag, or the
+  // first finger of what might become a one- or two-finger gesture).
+  // `moved` tracks whether it ever exceeded CLICK_THRESHOLD, so a plain tap
+  // still deselects at pointerup while an actual pan never does - without
+  // this, deselecting on the raw pointerdown fired the instant a finger
+  // touched down to pan around a large floor plan, clearing whichever table
+  // was selected before the pan gesture even registered as movement.
+  const panDragRef = useRef<{ pointerId: number; startClientX: number; startClientY: number; startPanX: number; startPanY: number; moved: boolean } | null>(null);
+  // Set the instant a second finger touches down alongside the first -
+  // records the pinch's starting finger-distance/scale/pan so every later
+  // pointermove can compute a fresh scale + pan purely from "how has this
+  // changed since the pinch started", instead of accumulating small
+  // per-event deltas (which drifts).
+  const pinchRef = useRef<{ startDistance: number; startScale: number; startPanX: number; startPanY: number } | null>(null);
 
   useImperativeHandle(ref, () => ({
     exportImage: async (fileName: string) => {
       const previousScale = scale;
+      const previousPanX = panX;
+      const previousPanY = panY;
       setIsCapturing(true);
       setScale(1);
+      setPanX(0);
+      setPanY(0);
       await waitForNextPaint();
       try {
         if (document.fonts?.ready) {
@@ -343,9 +376,11 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
       } finally {
         setIsCapturing(false);
         setScale(previousScale);
+        setPanX(previousPanX);
+        setPanY(previousPanY);
       }
     },
-  }), [scale]);
+  }), [scale, panX, panY]);
 
   const layoutForTable = (table: SeatingTable): SeatingTableLayout => {
     if (draftLayout && draftLayout.kind === 'table' && draftLayout.itemId === table.id) return draftLayout.layout;
@@ -455,7 +490,14 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
 
   const zoomOut = () => setScale((prev) => clamp(Math.round((prev - SCALE_STEP) * 100) / 100, MIN_SCALE, MAX_SCALE));
   const zoomIn = () => setScale((prev) => clamp(Math.round((prev + SCALE_STEP) * 100) / 100, MIN_SCALE, MAX_SCALE));
-  const zoomReset = () => setScale(1);
+  // Also recenters the pan - a full "reset the view" rather than just the
+  // zoom level, since there's no other one-tap way back to center once
+  // you've panned somewhere on a phone.
+  const zoomReset = () => {
+    setScale(1);
+    setPanX(0);
+    setPanY(0);
+  };
 
   // Ctrl+scroll (or a trackpad pinch, which browsers report as a wheel event
   // with ctrlKey set) zooms the canvas - an addition to the +/- buttons so
@@ -533,42 +575,107 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
       </div>
       <div
         ref={scrollContainerRef}
-        className="overflow-auto rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/40 dark:border-slate-700 dark:bg-slate-800/40"
-        style={{ height: 480, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+        className="relative touch-none overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/40 dark:border-slate-700 dark:bg-slate-800/40"
+        style={{ height: 480 }}
       >
-        <div style={{ width: CANVAS_WIDTH * scale, height: CANVAS_HEIGHT * scale }}>
           <div
             ref={canvasRef}
             dir={dir}
-            className="relative bg-[radial-gradient(circle,rgba(0,0,0,0.06)_1px,transparent_1px)] bg-[length:24px_24px] dark:bg-[radial-gradient(circle,rgba(255,255,255,0.12)_1px,transparent_1px)]"
+            className="absolute left-0 top-0 bg-[radial-gradient(circle,rgba(0,0,0,0.06)_1px,transparent_1px)] bg-[length:24px_24px] dark:bg-[radial-gradient(circle,rgba(255,255,255,0.12)_1px,transparent_1px)]"
             style={{
               width: CANVAS_WIDTH,
               height: CANVAS_HEIGHT,
-              transform: `scale(${scale})`,
+              transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
               transformOrigin: 'top left',
+              touchAction: 'none',
             }}
             onPointerDown={(event) => {
-              backgroundPressRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+              const pointers = activeBackgroundPointersRef.current;
+              pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+              (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+
+              if (pointers.size === 1) {
+                panDragRef.current = {
+                  pointerId: event.pointerId,
+                  startClientX: event.clientX,
+                  startClientY: event.clientY,
+                  startPanX: panX,
+                  startPanY: panY,
+                  moved: false,
+                };
+              } else if (pointers.size === 2) {
+                // A second finger just landed - this is now a pinch, not a
+                // one-finger pan/tap, so the single-pointer gesture above is
+                // no longer relevant.
+                panDragRef.current = null;
+                const [p1, p2] = Array.from(pointers.values());
+                pinchRef.current = {
+                  startDistance: pointerDistance(p1, p2),
+                  startScale: scale,
+                  startPanX: panX,
+                  startPanY: panY,
+                };
+              }
             }}
             onPointerMove={(event) => {
-              const press = backgroundPressRef.current;
-              if (!press || event.pointerId !== press.pointerId) return;
-              if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_THRESHOLD) {
-                // Moved enough to be a pan/scroll, not a tap - stop tracking
-                // it as a potential deselect-click.
-                backgroundPressRef.current = null;
+              const pointers = activeBackgroundPointersRef.current;
+              if (!pointers.has(event.pointerId)) return;
+              pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+              const pinch = pinchRef.current;
+              if (pinch && pointers.size === 2) {
+                const container = scrollContainerRef.current;
+                if (!container) return;
+                const [p1, p2] = Array.from(pointers.values());
+                const containerRect = container.getBoundingClientRect();
+                const midX = (p1.x + p2.x) / 2 - containerRect.left;
+                const midY = (p1.y + p2.y) / 2 - containerRect.top;
+                const newDistance = pointerDistance(p1, p2);
+                const newScale = clamp(Math.round((pinch.startScale * (newDistance / pinch.startDistance)) * 100) / 100, MIN_SCALE, MAX_SCALE);
+                // Keep whichever canvas point was under the fingers' midpoint
+                // when the pinch started pinned under that midpoint now -
+                // the standard "zoom toward where your fingers are" feel,
+                // instead of always zooming from the top-left corner.
+                const canvasPointX = (midX - pinch.startPanX) / pinch.startScale;
+                const canvasPointY = (midY - pinch.startPanY) / pinch.startScale;
+                setScale(newScale);
+                setPanX(midX - canvasPointX * newScale);
+                setPanY(midY - canvasPointY * newScale);
+                return;
               }
+
+              const drag = panDragRef.current;
+              if (!drag || drag.pointerId !== event.pointerId || pointers.size !== 1) return;
+              const deltaX = event.clientX - drag.startClientX;
+              const deltaY = event.clientY - drag.startClientY;
+              if (!drag.moved && Math.hypot(deltaX, deltaY) > CLICK_THRESHOLD) {
+                drag.moved = true;
+              }
+              setPanX(drag.startPanX + deltaX);
+              setPanY(drag.startPanY + deltaY);
             }}
             onPointerUp={(event) => {
-              const press = backgroundPressRef.current;
-              backgroundPressRef.current = null;
-              if (press && event.pointerId === press.pointerId) {
-                onSelectTable(null);
-                onSelectObject(null);
+              const pointers = activeBackgroundPointersRef.current;
+              pointers.delete(event.pointerId);
+
+              const drag = panDragRef.current;
+              if (drag && drag.pointerId === event.pointerId) {
+                panDragRef.current = null;
+                if (!drag.moved) {
+                  // A plain tap/click on empty space, never a pan - clear
+                  // whichever table/object was selected, same as before.
+                  onSelectTable(null);
+                  onSelectObject(null);
+                }
+              }
+              if (pointers.size < 2) {
+                pinchRef.current = null;
               }
             }}
-            onPointerCancel={() => {
-              backgroundPressRef.current = null;
+            onPointerCancel={(event) => {
+              activeBackgroundPointersRef.current.delete(event.pointerId);
+              panDragRef.current = null;
+              pinchRef.current = null;
             }}
           >
             {tables.map((table) => {
@@ -693,7 +800,6 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
               );
             })}
           </div>
-        </div>
       </div>
     </div>
   );
