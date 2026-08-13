@@ -325,12 +325,18 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
   const canvasRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const clipboardRef = useRef<{ kind: ItemKind; item: SeatingTable | VenueObject } | null>(null);
-  // Every pointer (mouse or finger) currently pressed down directly on the
-  // canvas background - keyed by pointerId so a two-finger pinch can track
-  // both touches independently. Tables/objects never end up in here (their
-  // own handlers call stopPropagation before a background handler ever
-  // sees that pointerId).
-  const activeBackgroundPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  // EVERY pointer (mouse or finger) currently pressed down anywhere on the
+  // canvas - tables and venue objects included, not just the background -
+  // tracked via a capture-phase listener (see the onPointerDownCapture/
+  // MoveCapture/UpCapture handlers below) so a second finger landing on a
+  // table, not just on empty space, still starts a proper two-finger pan/
+  // zoom instead of being ignored. Capture phase runs before each item's own
+  // bubble-phase handler can call stopPropagation, so this always sees every
+  // touch regardless of what's underneath it - without this, tables placed
+  // right at the edges of the canvas (exactly where Gil's floor plan has
+  // its top and bottom rows) would swallow a finger that landed on them,
+  // leaving no way to two-finger-pan/zoom from those parts of the screen.
+  const allPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   // Set on the FIRST background pointer to go down (mouse drag, or the
   // first finger of what might become a one- or two-finger gesture).
   // `moved` tracks whether it ever exceeded CLICK_THRESHOLD, so a plain tap
@@ -399,6 +405,12 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     mode: 'move' | 'resize',
   ) => {
     event.stopPropagation();
+    // A second finger landing on a table/object (not just on empty space)
+    // has already turned this into a two-finger pinch/pan by the time this
+    // runs - the capture-phase handler above always fires first for the
+    // same event. Don't also start an independent single-item drag for that
+    // second finger; let the pinch own it instead.
+    if (allPointersRef.current.size >= 2) return;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     const next: DragState = {
       kind,
@@ -589,26 +601,27 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
               transformOrigin: 'top left',
               touchAction: 'none',
             }}
-            onPointerDown={(event) => {
-              const pointers = activeBackgroundPointersRef.current;
-              pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-              (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-
-              if (pointers.size === 1) {
-                panDragRef.current = {
-                  pointerId: event.pointerId,
-                  startClientX: event.clientX,
-                  startClientY: event.clientY,
-                  startPanX: panX,
-                  startPanY: panY,
-                  moved: false,
-                };
-              } else if (pointers.size === 2) {
-                // A second finger just landed - this is now a pinch, not a
-                // one-finger pan/tap, so the single-pointer gesture above is
-                // no longer relevant.
+            // Capture-phase: runs before ANY child's own bubble-phase handler
+            // (including a table/object's stopPropagation), so this always
+            // sees every finger that touches the canvas, table/object or not
+            // - see the long comment on allPointersRef above for why that
+            // matters. Only concerned with counting pointers and running the
+            // two-finger pinch/pan; a lone finger's tap-to-deselect/pan is
+            // still handled by the plain (bubble-phase) handlers below,
+            // which only ever see pointers that land on true empty space.
+            onPointerDownCapture={(event) => {
+              allPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+              if (allPointersRef.current.size === 2) {
+                // A second finger just landed - anywhere, even on a table or
+                // object - so this becomes a two-finger pinch/pan. Cancel
+                // whatever single-item drag or single-finger pan the first
+                // finger might have started; its own move/up handlers no-op
+                // once their state is cleared like this.
+                dragStateRef.current = null;
+                setDragState(null);
+                setDraftLayout(null);
                 panDragRef.current = null;
-                const [p1, p2] = Array.from(pointers.values());
+                const [p1, p2] = Array.from(allPointersRef.current.values());
                 pinchRef.current = {
                   startDistance: pointerDistance(p1, p2),
                   startScale: scale,
@@ -617,35 +630,62 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                 };
               }
             }}
-            onPointerMove={(event) => {
-              const pointers = activeBackgroundPointersRef.current;
-              if (!pointers.has(event.pointerId)) return;
-              pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            onPointerMoveCapture={(event) => {
+              if (!allPointersRef.current.has(event.pointerId)) return;
+              allPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
               const pinch = pinchRef.current;
-              if (pinch && pointers.size === 2) {
-                const container = scrollContainerRef.current;
-                if (!container) return;
-                const [p1, p2] = Array.from(pointers.values());
-                const containerRect = container.getBoundingClientRect();
-                const midX = (p1.x + p2.x) / 2 - containerRect.left;
-                const midY = (p1.y + p2.y) / 2 - containerRect.top;
-                const newDistance = pointerDistance(p1, p2);
-                const newScale = clamp(Math.round((pinch.startScale * (newDistance / pinch.startDistance)) * 100) / 100, MIN_SCALE, MAX_SCALE);
-                // Keep whichever canvas point was under the fingers' midpoint
-                // when the pinch started pinned under that midpoint now -
-                // the standard "zoom toward where your fingers are" feel,
-                // instead of always zooming from the top-left corner.
-                const canvasPointX = (midX - pinch.startPanX) / pinch.startScale;
-                const canvasPointY = (midY - pinch.startPanY) / pinch.startScale;
-                setScale(newScale);
-                setPanX(midX - canvasPointX * newScale);
-                setPanY(midY - canvasPointY * newScale);
-                return;
-              }
-
+              if (!pinch || allPointersRef.current.size !== 2) return;
+              const container = scrollContainerRef.current;
+              if (!container) return;
+              const [p1, p2] = Array.from(allPointersRef.current.values());
+              const containerRect = container.getBoundingClientRect();
+              const midX = (p1.x + p2.x) / 2 - containerRect.left;
+              const midY = (p1.y + p2.y) / 2 - containerRect.top;
+              const newDistance = pointerDistance(p1, p2);
+              const newScale = clamp(Math.round((pinch.startScale * (newDistance / pinch.startDistance)) * 100) / 100, MIN_SCALE, MAX_SCALE);
+              // Keep whichever canvas point was under the fingers' midpoint
+              // when the pinch started pinned under that midpoint now - the
+              // standard "zoom toward where your fingers are" feel, instead
+              // of always zooming from the top-left corner.
+              const canvasPointX = (midX - pinch.startPanX) / pinch.startScale;
+              const canvasPointY = (midY - pinch.startPanY) / pinch.startScale;
+              setScale(newScale);
+              setPanX(midX - canvasPointX * newScale);
+              setPanY(midY - canvasPointY * newScale);
+            }}
+            onPointerUpCapture={(event) => {
+              allPointersRef.current.delete(event.pointerId);
+              if (allPointersRef.current.size < 2) pinchRef.current = null;
+            }}
+            onPointerCancelCapture={(event) => {
+              allPointersRef.current.delete(event.pointerId);
+              if (allPointersRef.current.size < 2) pinchRef.current = null;
+            }}
+            // Bubble-phase: only ever fires for a pointer that landed on
+            // true empty canvas background (a table/object's own handler
+            // calls stopPropagation before its bubble phase would reach
+            // here) - handles the plain one-finger/mouse pan and "tap empty
+            // space to deselect" cases. Deliberately gated on
+            // allPointersRef.current.size (already updated by the capture
+            // phase above, which always runs first for the same event) so a
+            // background touch that happens to be the SECOND finger of a
+            // pinch never also starts a competing one-finger pan.
+            onPointerDown={(event) => {
+              (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+              if (allPointersRef.current.size !== 1) return;
+              panDragRef.current = {
+                pointerId: event.pointerId,
+                startClientX: event.clientX,
+                startClientY: event.clientY,
+                startPanX: panX,
+                startPanY: panY,
+                moved: false,
+              };
+            }}
+            onPointerMove={(event) => {
               const drag = panDragRef.current;
-              if (!drag || drag.pointerId !== event.pointerId || pointers.size !== 1) return;
+              if (!drag || drag.pointerId !== event.pointerId || allPointersRef.current.size !== 1) return;
               const deltaX = event.clientX - drag.startClientX;
               const deltaY = event.clientY - drag.startClientY;
               if (!drag.moved && Math.hypot(deltaX, deltaY) > CLICK_THRESHOLD) {
@@ -655,27 +695,18 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
               setPanY(drag.startPanY + deltaY);
             }}
             onPointerUp={(event) => {
-              const pointers = activeBackgroundPointersRef.current;
-              pointers.delete(event.pointerId);
-
               const drag = panDragRef.current;
-              if (drag && drag.pointerId === event.pointerId) {
-                panDragRef.current = null;
-                if (!drag.moved) {
-                  // A plain tap/click on empty space, never a pan - clear
-                  // whichever table/object was selected, same as before.
-                  onSelectTable(null);
-                  onSelectObject(null);
-                }
-              }
-              if (pointers.size < 2) {
-                pinchRef.current = null;
+              if (!drag || drag.pointerId !== event.pointerId) return;
+              panDragRef.current = null;
+              if (!drag.moved) {
+                // A plain tap/click on empty space, never a pan - clear
+                // whichever table/object was selected, same as before.
+                onSelectTable(null);
+                onSelectObject(null);
               }
             }}
-            onPointerCancel={(event) => {
-              activeBackgroundPointersRef.current.delete(event.pointerId);
+            onPointerCancel={() => {
               panDragRef.current = null;
-              pinchRef.current = null;
             }}
           >
             {tables.map((table) => {
