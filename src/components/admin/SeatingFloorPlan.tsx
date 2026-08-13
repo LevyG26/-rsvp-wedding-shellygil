@@ -33,13 +33,17 @@ const DUPLICATE_OFFSET = 30;
 // sketch (04/10/12/18) once rotated to the right orientation per table.
 const TEARDROP_PATH = 'M50 4C50 4 18 46 18 70C18 87.12 32.88 100 50 100C67.12 100 82 87.12 82 70C82 46 50 4 50 4Z';
 // 'curved': the same thick crescent/arc-band idea as above, but with the
-// outer edge built from a chain of small outward bumps (like the individual
-// chair backs in the sketch) instead of one perfectly smooth arc - a plain
-// smooth crescent reads as a "moon", not the long scalloped row of chairs
-// bent around a shared curve that these booth tables actually are (07/08/
-// 09/13/14/21 in the sketch).
+// outer edge riding a single smooth, even sine wave (a handful of points
+// blended with Catmull-Rom-to-Bezier curves, all the same amplitude and
+// spacing) instead of one perfectly plain arc - a smooth crescent alone reads
+// as a "moon", not the long scalloped row of chairs bent around a shared
+// curve that these booth tables actually are (07/08/09/13/14/21 in the
+// sketch). Deliberately a gentle, uniform ripple rather than sharp individual
+// bumps - an earlier version used one bump per "chair" with sharp joins
+// between them, which read as jagged/hand-drawn rather than a deliberate
+// wave.
 const CURVED_PATH =
-  'M 10.0,95.0 Q 6.8,78.6 15.4,64.2 Q 18.0,47.7 31.1,37.1 Q 39.2,22.5 55.0,17.1 Q 67.6,6.1 84.4,6.4 Q 100.0,0.4 115.6,6.4 Q 132.4,6.1 145.0,17.1 Q 160.8,22.5 168.9,37.1 Q 182.0,47.7 184.6,64.2 Q 193.2,78.6 190.0,95.0 L 160,95 A 60,60 0 0 0 40,95 Z';
+  'M10.0,95.0C9.5,92.3 6.9,84.0 7.1,78.6C7.3,73.2 8.9,67.5 11.4,62.7C13.9,58.0 18.2,53.8 22.1,50.0C25.9,46.2 30.6,43.4 34.4,39.9C38.2,36.5 41.5,33.2 44.9,29.4C48.4,25.6 51.2,20.9 55.0,17.1C58.8,13.2 63.0,8.9 67.7,6.4C72.5,3.9 78.2,2.3 83.6,2.1C89.0,1.9 94.8,3.6 100.0,5.0C105.2,6.4 110.0,9.0 114.9,10.6C119.8,12.2 124.3,13.4 129.3,14.5C134.3,15.6 139.8,15.7 145.0,17.1C150.2,18.4 156.1,19.9 160.6,22.7C165.2,25.6 169.4,29.8 172.3,34.4C175.1,38.9 176.6,44.8 177.9,50.0C179.3,55.2 179.4,60.7 180.5,65.7C181.6,70.7 182.8,75.2 184.4,80.1C186.0,85.0 189.1,92.5 190.0,95.0L160.0,95.0A60,60 0 0 0 40.0,95.0Z';
 
 // Renders the freeform outline for a 'teardrop'/'curved' table as a fill +
 // stroke pair (Tailwind's fill-current/stroke-current + text-* color classes
