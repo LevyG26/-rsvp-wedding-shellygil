@@ -19,26 +19,52 @@ const CLICK_THRESHOLD = 4;
 // happened.
 const DUPLICATE_OFFSET = 30;
 
-// Freeform shape outlines for 'teardrop' and 'curved' tables - a plain
-// Tailwind border-radius can only ever draw a circle/ellipse or a rounded
-// rectangle, never an actual petal or scalloped-booth silhouette, so these
-// two shapes are drawn as their own SVG path instead. Each path lives in its
-// own small, fixed viewBox and is stretched to fill whatever box Gil resizes
-// the table to (preserveAspectRatio="none") - not pixel-perfect at extreme
-// aspect ratios, but reads clearly as "teardrop"/"curved booth" at the sizes
+// Freeform shape outlines for 'round', 'teardrop', and 'curved' tables - a
+// plain Tailwind border-radius can only ever draw a circle/ellipse or a
+// rounded rectangle with a plain, empty interior, never the ring of
+// individual chair icons Gil's actual venue sketch shows around every table,
+// so all three are drawn as their own SVG instead (only 'rect' keeps the
+// plain Tailwind treatment - Gil never asked for chairs around a rectangle).
+// Each shape lives in its own small, fixed viewBox and is stretched to fill
+// whatever box Gil resizes the table to (preserveAspectRatio="none") - not
+// pixel-perfect at extreme aspect ratios, but reads clearly at the sizes
 // tables actually get used at.
-//
+type Chair = { x: number; y: number; rotationDeg: number };
+
 // 'teardrop': a simple, unmistakable water-drop outline - point at the top,
 // rounded bulb at the bottom. Matches the petal-shaped tables in the venue
 // sketch (04/10/12/18) once rotated to the right orientation per table.
 const TEARDROP_PATH = 'M50 4C50 4 18 46 18 70C18 87.12 32.88 100 50 100C67.12 100 82 87.12 82 70C82 46 50 4 50 4Z';
-// 'curved': the same thick crescent/arc-band idea, but - per Gil's reference
-// crop of the actual sketch - what makes it read as a booth isn't a wavy
-// outline at all, it's a ring of individual chair icons (little squares)
-// lined up along the outer edge, sitting on top of a perfectly smooth band.
-// CURVED_CHAIR_COUNT/CURVED_CHAIR_ANGLE_* below generate that ring at render
-// time (see curvedChairs() and its use in FreeformTableShape) instead of
-// baking chair positions into the path string itself.
+// Precomputed (not derived at render time) by sampling 14 evenly-spaced
+// points by arc length along the four cubic Bezier segments of
+// TEARDROP_PATH above, then offsetting each 2.5 units inward along its
+// outward normal - mirrors what curvedChairs()/roundChairs() compute live,
+// just baked in ahead of time since a teardrop's Bezier curve is a lot more
+// code to walk at render time than a circle or the curved booth's plain
+// arcs.
+const TEARDROP_CHAIRS: Chair[] = [
+  { x: 47.05, y: 12.37, rotationDeg: 304.82 },
+  { x: 37.73, y: 26.64, rotationDeg: 301.36 },
+  { x: 29.25, y: 41.87, rotationDeg: 296.46 },
+  { x: 22.76, y: 57.53, rotationDeg: 287.42 },
+  { x: 20.9, y: 74.57, rotationDeg: 260.01 },
+  { x: 28.22, y: 88.56, rotationDeg: 225.37 },
+  { x: 42.3, y: 96.54, rotationDeg: 194.2 },
+  { x: 57.7, y: 96.54, rotationDeg: 165.8 },
+  { x: 71.78, y: 88.56, rotationDeg: 134.63 },
+  { x: 79.1, y: 74.57, rotationDeg: 99.99 },
+  { x: 77.66, y: 58.89, rotationDeg: 73.78 },
+  { x: 70.75, y: 41.87, rotationDeg: 63.54 },
+  { x: 62.27, y: 26.64, rotationDeg: 58.64 },
+  { x: 52.95, y: 12.37, rotationDeg: 55.18 },
+];
+const TEARDROP_CHAIR_WIDTH = 8;
+const TEARDROP_CHAIR_HEIGHT = 9.5;
+
+// 'curved': a thick, perfectly smooth crescent/arc band with a ring of
+// individual chair icons (little squares) lined up along the outer edge -
+// per Gil's reference crop of the actual sketch, that ring of chairs (not a
+// wavy outline) is what makes it read as a booth.
 const CURVED_PATH = 'M10,95 A90,90 0 0 1 190,95 L160,95 A60,60 0 0 0 40,95 Z';
 const CURVED_CENTER_X = 100;
 const CURVED_CENTER_Y = 95;
@@ -53,8 +79,8 @@ const CURVED_CHAIR_HEIGHT = 13;
 // booth, half poking past it), matching the sketch.
 const CURVED_CHAIR_INSET = 5;
 
-function curvedChairs(): Array<{ x: number; y: number; rotationDeg: number }> {
-  const chairs: Array<{ x: number; y: number; rotationDeg: number }> = [];
+function curvedChairs(): Chair[] {
+  const chairs: Chair[] = [];
   for (let i = 0; i < CURVED_CHAIR_COUNT; i += 1) {
     const angleDeg = CURVED_CHAIR_ANGLE_START + ((CURVED_CHAIR_ANGLE_END - CURVED_CHAIR_ANGLE_START) * i) / (CURVED_CHAIR_COUNT - 1);
     const angleRad = (angleDeg * Math.PI) / 180;
@@ -70,16 +96,41 @@ function curvedChairs(): Array<{ x: number; y: number; rotationDeg: number }> {
   return chairs;
 }
 
-// Renders the freeform outline for a 'teardrop'/'curved' table as a fill +
-// stroke pair (Tailwind's fill-current/stroke-current + text-* color classes
-// mirror the plain round/rect tables' border+background classes exactly, so
-// the selected/full/default color states stay visually consistent across
-// every shape). Absolutely fills its parent and never intercepts pointer
-// events itself - the table's own div still owns dragging/resizing/clicking
-// exactly as it did before this shape existed.
-function FreeformTableShape({ shape, rotation, fillClassName, strokeClassName }: { shape: 'teardrop' | 'curved'; rotation: number; fillClassName: string; strokeClassName: string }) {
-  const d = shape === 'teardrop' ? TEARDROP_PATH : CURVED_PATH;
-  const viewBox = shape === 'teardrop' ? '0 0 100 104' : '0 0 200 100';
+// 'round': a plain circle, but - same reasoning as 'curved' above - with a
+// full ring of chairs around it instead of a bare Tailwind rounded-full div.
+const ROUND_CENTER = 50;
+const ROUND_OUTER_RADIUS = 42;
+const ROUND_CHAIR_COUNT = 12;
+const ROUND_CHAIR_WIDTH = 9;
+const ROUND_CHAIR_HEIGHT = 10.5;
+const ROUND_CHAIR_INSET = 4;
+
+function roundChairs(): Chair[] {
+  const chairs: Chair[] = [];
+  for (let i = 0; i < ROUND_CHAIR_COUNT; i += 1) {
+    const angleDeg = (360 * i) / ROUND_CHAIR_COUNT - 90;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const r = ROUND_OUTER_RADIUS - ROUND_CHAIR_INSET;
+    chairs.push({
+      x: ROUND_CENTER + r * Math.cos(angleRad),
+      y: ROUND_CENTER + r * Math.sin(angleRad),
+      rotationDeg: angleDeg + 90,
+    });
+  }
+  return chairs;
+}
+
+// Renders the freeform outline for a 'round'/'teardrop'/'curved' table as a
+// fill + stroke pair (Tailwind's fill-current/stroke-current + text-* color
+// classes mirror the plain rect tables' border+background classes exactly,
+// so the selected/full/default color states stay visually consistent across
+// every shape), plus its ring of chair icons. Absolutely fills its parent
+// and never intercepts pointer events itself - the table's own div still
+// owns dragging/resizing/clicking exactly as it did before this shape
+// existed.
+function FreeformTableShape({ shape, rotation, fillClassName, strokeClassName }: { shape: 'round' | 'teardrop' | 'curved'; rotation: number; fillClassName: string; strokeClassName: string }) {
+  const d = shape === 'teardrop' ? TEARDROP_PATH : shape === 'curved' ? CURVED_PATH : undefined;
+  const viewBox = shape === 'teardrop' ? '0 0 100 104' : shape === 'curved' ? '0 0 200 100' : '0 0 100 100';
   // Center of the viewBox above - used as the pivot for the SVG-native
   // rotate(angle, cx, cy) transform. Deliberately an SVG attribute rather
   // than a CSS `transform` style on the <svg> itself - a CSS transform on a
@@ -87,27 +138,46 @@ function FreeformTableShape({ shape, rotation, fillClassName, strokeClassName }:
   // (confirmed while building this: it silently no-ops in some SVG
   // renderers), where the plain SVG transform attribute on an inner <g> is
   // universally supported.
-  const [cx, cy] = shape === 'teardrop' ? [50, 52] : [CURVED_CENTER_X, 50];
+  const [cx, cy] = shape === 'teardrop' ? [50, 52] : shape === 'curved' ? [CURVED_CENTER_X, 50] : [ROUND_CENTER, ROUND_CENTER];
+  const chairs = shape === 'curved' ? curvedChairs() : shape === 'teardrop' ? TEARDROP_CHAIRS : roundChairs();
+  const chairWidth = shape === 'curved' ? CURVED_CHAIR_WIDTH : shape === 'teardrop' ? TEARDROP_CHAIR_WIDTH : ROUND_CHAIR_WIDTH;
+  const chairHeight = shape === 'curved' ? CURVED_CHAIR_HEIGHT : shape === 'teardrop' ? TEARDROP_CHAIR_HEIGHT : ROUND_CHAIR_HEIGHT;
   return (
     <svg viewBox={viewBox} preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
       <g transform={`rotate(${rotation} ${cx} ${cy})`}>
-        <path d={d} className={`fill-current ${fillClassName}`} />
-        <path d={d} className={`stroke-current ${strokeClassName}`} fill="none" strokeWidth={2} vectorEffect="non-scaling-stroke" />
-        {shape === 'curved' &&
-          curvedChairs().map((chair, index) => (
-            <rect
-              key={index}
-              x={-CURVED_CHAIR_WIDTH / 2}
-              y={-CURVED_CHAIR_HEIGHT / 2}
-              width={CURVED_CHAIR_WIDTH}
-              height={CURVED_CHAIR_HEIGHT}
-              rx={1.5}
-              transform={`translate(${chair.x} ${chair.y}) rotate(${chair.rotationDeg})`}
-              className={`fill-white stroke-current ${strokeClassName} dark:fill-slate-900`}
-              strokeWidth={1.5}
+        {shape === 'round' ? (
+          <>
+            <circle cx={ROUND_CENTER} cy={ROUND_CENTER} r={ROUND_OUTER_RADIUS} className={`fill-current ${fillClassName}`} />
+            <circle
+              cx={ROUND_CENTER}
+              cy={ROUND_CENTER}
+              r={ROUND_OUTER_RADIUS}
+              className={`stroke-current ${strokeClassName}`}
+              fill="none"
+              strokeWidth={2}
               vectorEffect="non-scaling-stroke"
             />
-          ))}
+          </>
+        ) : (
+          <>
+            <path d={d} className={`fill-current ${fillClassName}`} />
+            <path d={d} className={`stroke-current ${strokeClassName}`} fill="none" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+          </>
+        )}
+        {chairs.map((chair, index) => (
+          <rect
+            key={index}
+            x={-chairWidth / 2}
+            y={-chairHeight / 2}
+            width={chairWidth}
+            height={chairHeight}
+            rx={1.3}
+            transform={`translate(${chair.x} ${chair.y}) rotate(${chair.rotationDeg})`}
+            className={`fill-white stroke-current ${strokeClassName} dark:fill-slate-900`}
+            strokeWidth={1.3}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
       </g>
     </svg>
   );
@@ -507,11 +577,12 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
               const isFull = used >= table.seatCount;
               const isSelected = selectedTableId === table.id;
               const isDragging = dragState?.kind === 'table' && dragState.itemId === table.id;
-              // 'teardrop'/'curved' draw their own outline via an SVG path
-              // (see FreeformTableShape) instead of a Tailwind border-radius
-              // trick, since neither shape is expressible as a circle,
-              // ellipse, or rounded rectangle.
-              const isFreeform = table.shape === 'teardrop' || table.shape === 'curved';
+              // 'round'/'teardrop'/'curved' all draw their own outline (plus
+              // a ring of chair icons) via SVG (see FreeformTableShape)
+              // instead of a plain Tailwind border-radius trick - only
+              // 'rect' keeps the old plain div treatment, since Gil never
+              // asked for chairs ringing a rectangular table.
+              const isFreeform = table.shape !== 'rect';
               const fillClassName = isSelected
                 ? 'text-white dark:text-slate-700'
                 : isFull
@@ -533,13 +604,13 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                   className={`absolute flex select-none flex-col items-center justify-center p-1 text-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${
                     isFreeform
                       ? ''
-                      : `border-2 shadow-sm dark:shadow-none ${table.shape === 'round' ? 'rounded-full' : 'rounded-xl'} ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20 dark:border-slate-100 dark:bg-slate-700 dark:ring-slate-100/30' : isFull ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-900' : 'border-blue-200 bg-blue-50/90 dark:border-blue-500 dark:bg-blue-900'}`
+                      : `border-2 rounded-xl shadow-sm dark:shadow-none ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20 dark:border-slate-100 dark:bg-slate-700 dark:ring-slate-100/30' : isFull ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-900' : 'border-blue-200 bg-blue-50/90 dark:border-blue-500 dark:bg-blue-900'}`
                   } ${deleteSelection.has(table.id) ? 'outline outline-2 outline-offset-2 outline-rose-500' : ''}`}
                   style={{ left: layout.x, top: layout.y, width: layout.width, height: layout.height, touchAction: 'none' }}
                 >
                   {isFreeform && (
                     <FreeformTableShape
-                      shape={table.shape as 'teardrop' | 'curved'}
+                      shape={table.shape as 'round' | 'teardrop' | 'curved'}
                       rotation={layout.rotation ?? 0}
                       fillClassName={fillClassName}
                       strokeClassName={strokeClassName}
