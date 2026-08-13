@@ -13,6 +13,7 @@ import {
   Map as MapIcon,
   Pencil,
   Plus,
+  RotateCw,
   Sparkles,
   Trash2,
   UserCheck,
@@ -64,6 +65,9 @@ export interface SeatingLabels {
   canvasHint: string;
   shapeRound: string;
   shapeRect: string;
+  shapeTeardrop: string;
+  shapeCurved: string;
+  rotateTableButton: string;
   tableDetailsHint: string;
   deleteTableConfirm: string;
   deleteGroupConfirm: string;
@@ -505,7 +509,15 @@ export function SeatingSection({
     setIsSavingTable(true);
     try {
       const position = nextTablePosition(tables.length);
-      const size = tableForm.shape === 'round' ? { width: 110, height: 110 } : { width: 150, height: 90 };
+      // Square-ish for 'teardrop' so rotating it 90 degrees later never looks
+      // squashed - see the rotation comment on SeatingTableLayout.
+      const size = tableForm.shape === 'round'
+        ? { width: 110, height: 110 }
+        : tableForm.shape === 'teardrop'
+          ? { width: 140, height: 140 }
+          : tableForm.shape === 'curved'
+            ? { width: 250, height: 120 }
+            : { width: 150, height: 90 };
       await onCreateTable(tableForm.name.trim(), Number.isFinite(seatCount) && seatCount > 0 ? seatCount : 8, {
         ...position,
         ...size,
@@ -538,10 +550,36 @@ export function SeatingSection({
         width: table.width,
         height: table.height,
         shape: editTableForm.shape,
+        rotation: table.rotation,
       });
       setEditingTableId(null);
     } catch (error) {
       console.error('Failed to update table', error);
+      setErrorByKey((prev) => ({ ...prev, [key]: labels.updateError }));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  // Only ever touches the decorative shape's facing direction - x/y/width/
+  // height/name/seatCount all stay exactly as they were - so Gil can orient
+  // a teardrop or curved booth to match the hall without re-entering
+  // anything else about the table.
+  const handleRotateTable = async (table: SeatingTable) => {
+    const key = `table-${table.id}`;
+    setBusyKey(key);
+    setErrorByKey((prev) => ({ ...prev, [key]: '' }));
+    try {
+      await onUpdateTable(table.id, table.name, table.seatCount, {
+        x: table.x,
+        y: table.y,
+        width: table.width,
+        height: table.height,
+        shape: table.shape,
+        rotation: (table.rotation + 90) % 360,
+      });
+    } catch (error) {
+      console.error('Failed to rotate table', error);
       setErrorByKey((prev) => ({ ...prev, [key]: labels.updateError }));
     } finally {
       setBusyKey(null);
@@ -1240,6 +1278,8 @@ export function SeatingSection({
                 >
                   <option value="round">{labels.shapeRound}</option>
                   <option value="rect">{labels.shapeRect}</option>
+                  <option value="teardrop">{labels.shapeTeardrop}</option>
+                  <option value="curved">{labels.shapeCurved}</option>
                 </select>
                 <button
                   type="submit"
@@ -1501,6 +1541,8 @@ export function SeatingSection({
                         >
                           <option value="round">{labels.shapeRound}</option>
                           <option value="rect">{labels.shapeRect}</option>
+                          <option value="teardrop">{labels.shapeTeardrop}</option>
+                          <option value="curved">{labels.shapeCurved}</option>
                         </select>
                         <button
                           type="button"
@@ -1526,6 +1568,18 @@ export function SeatingSection({
                             {used}/{table.seatCount}
                             {isFull ? ` · ${labels.tableFullBadge}` : ''}
                           </span>
+                          {(table.shape === 'teardrop' || table.shape === 'curved') && (
+                            <button
+                              type="button"
+                              onClick={() => handleRotateTable(table)}
+                              disabled={busyKey === tableKey}
+                              title={labels.rotateTableButton}
+                              aria-label={labels.rotateTableButton}
+                              className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                            >
+                              <RotateCw size={13} />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => startEditingTable(table)}

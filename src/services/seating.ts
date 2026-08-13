@@ -5,26 +5,40 @@ export const SEATING_TABLES_COLLECTION = 'seatingTables';
 export const SEATING_GROUPS_COLLECTION = 'seatingGroups';
 export const SEATING_ASSIGNMENTS_COLLECTION = 'seatingAssignments';
 
-export type SeatingTableShape = 'round' | 'rect';
+// 'teardrop' and 'curved' exist so a table can actually look like the real
+// venue sketch's petal-shaped and long scalloped-booth tables, instead of
+// only ever being approximated as a plain circle or a wide oval - see the
+// shape-drawing SVGs in SeatingFloorPlan.tsx for how each one is actually
+// rendered.
+export type SeatingTableShape = 'round' | 'rect' | 'teardrop' | 'curved';
 
 // Position/size on the free-form floor-plan canvas Gil drags and resizes by
 // hand to match the actual hall layout - kept separate from seatCount, since
 // a table's physical footprint on the plan and how many people it seats are
-// two different things he wants to control independently.
+// two different things he wants to control independently. `rotation` is
+// optional (defaults to 0 = unrotated) purely so existing code that builds a
+// layout without knowing about it still compiles - every table actually read
+// back from Firestore always has a concrete number (see normalizeTable).
 export interface SeatingTableLayout {
   x: number;
   y: number;
   width: number;
   height: number;
   shape: SeatingTableShape;
+  rotation?: number;
 }
 
-export const DEFAULT_TABLE_LAYOUT: SeatingTableLayout = { x: 40, y: 40, width: 110, height: 110, shape: 'round' };
+export const DEFAULT_TABLE_LAYOUT: SeatingTableLayout = { x: 40, y: 40, width: 110, height: 110, shape: 'round', rotation: 0 };
 
 export interface SeatingTable extends SeatingTableLayout {
   id: string;
   name: string;
   seatCount: number;
+  // Degrees clockwise, only ever applied to the decorative shape drawing
+  // itself (never to the name/seat-count text or the resize handle) - lets
+  // Gil orient a teardrop or curved booth to match which way it actually
+  // faces in the hall, independent of x/y/width/height.
+  rotation: number;
 }
 
 // An ad-hoc, named cluster of confirmed guestRoster entry IDs Gil creates on
@@ -70,6 +84,11 @@ function numberOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function normalizeShape(value: unknown): SeatingTableShape {
+  if (value === 'rect' || value === 'teardrop' || value === 'curved') return value;
+  return 'round';
+}
+
 function normalizeTable(id: string, data: Record<string, unknown>): SeatingTable {
   return {
     id,
@@ -79,7 +98,8 @@ function normalizeTable(id: string, data: Record<string, unknown>): SeatingTable
     y: numberOr(data.y, DEFAULT_TABLE_LAYOUT.y),
     width: numberOr(data.width, DEFAULT_TABLE_LAYOUT.width),
     height: numberOr(data.height, DEFAULT_TABLE_LAYOUT.height),
-    shape: data.shape === 'rect' ? 'rect' : 'round',
+    shape: normalizeShape(data.shape),
+    rotation: numberOr(data.rotation, 0),
   };
 }
 

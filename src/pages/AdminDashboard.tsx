@@ -80,7 +80,7 @@ import {
     type SeatingTable,
     type SeatingTableLayout,
 } from '../services/seating';
-import { RONIT_FARM_DINNER_TABLES } from '../admin/venueSeatingLayout';
+import { RONIT_FARM_FINAL_TABLES, RONIT_FARM_FINAL_OBJECTS } from '../admin/venueSeatingLayout';
 import {
     createVenueObject,
     deleteVenueObject,
@@ -1288,11 +1288,15 @@ export function AdminDashboard() {
         await assignGroupToTable(group, tableId, remainingByEntryId, table.seatCount - used);
     };
 
-    // One-click seed of the 14 dinner tables from the venue's own floor plan
-    // (see src/admin/venueSeatingLayout.ts) - purely additive, never touches
-    // whatever tables already exist.
+    // One-click seed of the 21 dinner tables plus the bar/production
+    // booth/restrooms from the venue's final produced seating sketch (see
+    // src/admin/venueSeatingLayout.ts) - purely additive, never touches
+    // whatever tables or objects already exist.
     const handleGenerateVenueTables = async (): Promise<void> => {
-        await createSeatingTablesBulk(RONIT_FARM_DINNER_TABLES);
+        await createSeatingTablesBulk(RONIT_FARM_FINAL_TABLES);
+        await Promise.all(
+            RONIT_FARM_FINAL_OBJECTS.map((object) => createVenueObject(object.type, object.label, object.layout)),
+        );
     };
 
     const handleCreateVenueObject = async (type: VenueObjectType, label: string, layout: SeatingTableLayout): Promise<void> => {
@@ -3026,6 +3030,9 @@ export function AdminDashboard() {
                             canvasHint: t.adminSeatingCanvasHint,
                             shapeRound: t.adminSeatingShapeRound,
                             shapeRect: t.adminSeatingShapeRect,
+                            shapeTeardrop: t.adminSeatingShapeTeardrop,
+                            shapeCurved: t.adminSeatingShapeCurved,
+                            rotateTableButton: t.adminSeatingRotateTableButton,
                             tableDetailsHint: t.adminSeatingTableDetailsHint,
                             deleteTableConfirm: t.adminSeatingDeleteTableConfirm,
                             deleteGroupConfirm: t.adminSeatingDeleteGroupConfirm,

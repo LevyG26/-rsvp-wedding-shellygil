@@ -20,6 +20,7 @@ export interface VenueObject {
   width: number;
   height: number;
   shape: SeatingTableShape;
+  rotation: number;
 }
 
 export const DEFAULT_VENUE_OBJECT_LAYOUT: SeatingTableLayout = { x: 40, y: 40, width: 160, height: 90, shape: 'rect' };
@@ -46,6 +47,7 @@ function normalizeVenueObject(id: string, data: Record<string, unknown>): VenueO
     width: numberOr(data.width, DEFAULT_VENUE_OBJECT_LAYOUT.width),
     height: numberOr(data.height, DEFAULT_VENUE_OBJECT_LAYOUT.height),
     shape: data.shape === 'round' ? 'round' : 'rect',
+    rotation: numberOr(data.rotation, 0),
   };
 }
 

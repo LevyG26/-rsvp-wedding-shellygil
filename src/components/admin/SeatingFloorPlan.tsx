@@ -19,6 +19,56 @@ const CLICK_THRESHOLD = 4;
 // happened.
 const DUPLICATE_OFFSET = 30;
 
+// Freeform shape outlines for 'teardrop' and 'curved' tables - a plain
+// Tailwind border-radius can only ever draw a circle/ellipse or a rounded
+// rectangle, never an actual petal or scalloped-booth silhouette, so these
+// two shapes are drawn as their own SVG path instead. Each path lives in its
+// own small, fixed viewBox and is stretched to fill whatever box Gil resizes
+// the table to (preserveAspectRatio="none") - not pixel-perfect at extreme
+// aspect ratios, but reads clearly as "teardrop"/"curved booth" at the sizes
+// tables actually get used at.
+//
+// 'teardrop': a simple, unmistakable water-drop outline - point at the top,
+// rounded bulb at the bottom. Matches the petal-shaped tables in the venue
+// sketch (04/10/12/18) once rotated to the right orientation per table.
+const TEARDROP_PATH = 'M50 4C50 4 18 46 18 70C18 87.12 32.88 100 50 100C67.12 100 82 87.12 82 70C82 46 50 4 50 4Z';
+// 'curved': the same thick crescent/arc-band idea as above, but with the
+// outer edge built from a chain of small outward bumps (like the individual
+// chair backs in the sketch) instead of one perfectly smooth arc - a plain
+// smooth crescent reads as a "moon", not the long scalloped row of chairs
+// bent around a shared curve that these booth tables actually are (07/08/
+// 09/13/14/21 in the sketch).
+const CURVED_PATH =
+  'M 10.0,95.0 Q 6.8,78.6 15.4,64.2 Q 18.0,47.7 31.1,37.1 Q 39.2,22.5 55.0,17.1 Q 67.6,6.1 84.4,6.4 Q 100.0,0.4 115.6,6.4 Q 132.4,6.1 145.0,17.1 Q 160.8,22.5 168.9,37.1 Q 182.0,47.7 184.6,64.2 Q 193.2,78.6 190.0,95.0 L 160,95 A 60,60 0 0 0 40,95 Z';
+
+// Renders the freeform outline for a 'teardrop'/'curved' table as a fill +
+// stroke pair (Tailwind's fill-current/stroke-current + text-* color classes
+// mirror the plain round/rect tables' border+background classes exactly, so
+// the selected/full/default color states stay visually consistent across
+// every shape). Absolutely fills its parent and never intercepts pointer
+// events itself - the table's own div still owns dragging/resizing/clicking
+// exactly as it did before this shape existed.
+function FreeformTableShape({ shape, rotation, fillClassName, strokeClassName }: { shape: 'teardrop' | 'curved'; rotation: number; fillClassName: string; strokeClassName: string }) {
+  const d = shape === 'teardrop' ? TEARDROP_PATH : CURVED_PATH;
+  const viewBox = shape === 'teardrop' ? '0 0 100 104' : '0 0 200 100';
+  // Center of the viewBox above - used as the pivot for the SVG-native
+  // rotate(angle, cx, cy) transform. Deliberately an SVG attribute rather
+  // than a CSS `transform` style on the <svg> itself - a CSS transform on a
+  // nested, preserveAspectRatio="none"-stretched <svg> renders inconsistently
+  // (confirmed while building this: it silently no-ops in some SVG
+  // renderers), where the plain SVG transform attribute on an inner <g> is
+  // universally supported.
+  const [cx, cy] = shape === 'teardrop' ? [50, 52] : [100, 50];
+  return (
+    <svg viewBox={viewBox} preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+      <g transform={`rotate(${rotation} ${cx} ${cy})`}>
+        <path d={d} className={`fill-current ${fillClassName}`} />
+        <path d={d} className={`stroke-current ${strokeClassName}`} fill="none" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+      </g>
+    </svg>
+  );
+}
+
 type ItemKind = 'table' | 'object';
 
 interface DragState {
@@ -185,12 +235,12 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
 
   const layoutForTable = (table: SeatingTable): SeatingTableLayout => {
     if (draftLayout && draftLayout.kind === 'table' && draftLayout.itemId === table.id) return draftLayout.layout;
-    return { x: table.x, y: table.y, width: table.width, height: table.height, shape: table.shape };
+    return { x: table.x, y: table.y, width: table.width, height: table.height, shape: table.shape, rotation: table.rotation };
   };
 
   const layoutForObject = (object: VenueObject): SeatingTableLayout => {
     if (draftLayout && draftLayout.kind === 'object' && draftLayout.itemId === object.id) return draftLayout.layout;
-    return { x: object.x, y: object.y, width: object.width, height: object.height, shape: object.shape };
+    return { x: object.x, y: object.y, width: object.width, height: object.height, shape: object.shape, rotation: object.rotation };
   };
 
   const startDrag = (
@@ -223,6 +273,14 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     return venueObjects.find((o) => o.id === itemId)?.shape ?? 'rect';
   };
 
+  // Dragging/resizing never changes a table's facing direction - only the
+  // dedicated rotate button does - so every draft layout built during a drag
+  // just carries the item's current rotation straight through unchanged.
+  const rotationFor = (kind: ItemKind, itemId: string): number => {
+    if (kind === 'table') return tables.find((t) => t.id === itemId)?.rotation ?? 0;
+    return venueObjects.find((o) => o.id === itemId)?.rotation ?? 0;
+  };
+
   const handlePointerMove = (event: React.PointerEvent) => {
     const current = dragStateRef.current;
     if (!current || event.pointerId !== current.pointerId) return;
@@ -238,15 +296,16 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     }
 
     const shape = shapeFor(current.kind, current.itemId);
+    const rotation = rotationFor(current.kind, current.itemId);
 
     if (current.mode === 'move') {
       const x = clamp(current.originX + deltaX, 0, CANVAS_WIDTH - current.originWidth);
       const y = clamp(current.originY + deltaY, 0, CANVAS_HEIGHT - current.originHeight);
-      setDraftLayout({ kind: current.kind, itemId: current.itemId, layout: { x, y, width: current.originWidth, height: current.originHeight, shape } });
+      setDraftLayout({ kind: current.kind, itemId: current.itemId, layout: { x, y, width: current.originWidth, height: current.originHeight, shape, rotation } });
     } else {
       const width = clamp(current.originWidth + deltaX, MIN_SIZE, MAX_SIZE);
       const height = clamp(current.originHeight + deltaY, MIN_SIZE, MAX_SIZE);
-      setDraftLayout({ kind: current.kind, itemId: current.itemId, layout: { x: current.originX, y: current.originY, width, height, shape } });
+      setDraftLayout({ kind: current.kind, itemId: current.itemId, layout: { x: current.originX, y: current.originY, width, height, shape, rotation } });
     }
   };
 
@@ -269,7 +328,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     } else {
       const finalLayout = draftLayout && draftLayout.kind === current.kind && draftLayout.itemId === current.itemId
         ? draftLayout.layout
-        : { x: current.originX, y: current.originY, width: current.originWidth, height: current.originHeight, shape: shapeFor(current.kind, current.itemId) };
+        : { x: current.originX, y: current.originY, width: current.originWidth, height: current.originHeight, shape: shapeFor(current.kind, current.itemId), rotation: rotationFor(current.kind, current.itemId) };
       if (current.kind === 'table') onLayoutChange(current.itemId, finalLayout);
       else onObjectLayoutChange(current.itemId, finalLayout);
       // Keep showing the drafted position until the next Firestore snapshot
@@ -332,6 +391,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
           width: item.width,
           height: item.height,
           shape: item.shape,
+          rotation: item.rotation,
         };
         if (kind === 'table') onDuplicateTable(item as SeatingTable, layout);
         else onDuplicateObject(item as VenueObject, layout);
@@ -403,6 +463,21 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
               const isFull = used >= table.seatCount;
               const isSelected = selectedTableId === table.id;
               const isDragging = dragState?.kind === 'table' && dragState.itemId === table.id;
+              // 'teardrop'/'curved' draw their own outline via an SVG path
+              // (see FreeformTableShape) instead of a Tailwind border-radius
+              // trick, since neither shape is expressible as a circle,
+              // ellipse, or rounded rectangle.
+              const isFreeform = table.shape === 'teardrop' || table.shape === 'curved';
+              const fillClassName = isSelected
+                ? 'text-white dark:text-slate-700'
+                : isFull
+                  ? 'text-emerald-50 dark:text-emerald-900'
+                  : 'text-blue-50/90 dark:text-blue-900';
+              const strokeClassName = isSelected
+                ? 'text-gray-900 dark:text-slate-100'
+                : isFull
+                  ? 'text-emerald-300 dark:text-emerald-500'
+                  : 'text-blue-200 dark:text-blue-500';
 
               return (
                 <div
@@ -411,9 +486,21 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
-                  className={`absolute flex select-none flex-col items-center justify-center border-2 p-1 text-center shadow-sm dark:shadow-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${table.shape === 'round' ? 'rounded-full' : 'rounded-xl'} ${deleteSelection.has(table.id) ? 'outline outline-2 outline-offset-2 outline-rose-500' : ''} ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20 dark:border-slate-100 dark:bg-slate-700 dark:ring-slate-100/30' : isFull ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-900' : 'border-blue-200 bg-blue-50/90 dark:border-blue-500 dark:bg-blue-900'}`}
+                  className={`absolute flex select-none flex-col items-center justify-center p-1 text-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${
+                    isFreeform
+                      ? ''
+                      : `border-2 shadow-sm dark:shadow-none ${table.shape === 'round' ? 'rounded-full' : 'rounded-xl'} ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20 dark:border-slate-100 dark:bg-slate-700 dark:ring-slate-100/30' : isFull ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-900' : 'border-blue-200 bg-blue-50/90 dark:border-blue-500 dark:bg-blue-900'}`
+                  } ${deleteSelection.has(table.id) ? 'outline outline-2 outline-offset-2 outline-rose-500' : ''}`}
                   style={{ left: layout.x, top: layout.y, width: layout.width, height: layout.height, touchAction: 'none' }}
                 >
+                  {isFreeform && (
+                    <FreeformTableShape
+                      shape={table.shape as 'teardrop' | 'curved'}
+                      rotation={layout.rotation ?? 0}
+                      fillClassName={fillClassName}
+                      strokeClassName={strokeClassName}
+                    />
+                  )}
                   {!isCapturing && (
                     <input
                       type="checkbox"
@@ -427,11 +514,11 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                     />
                   )}
                   <span
-                    className={`max-w-full px-1 text-xs font-semibold text-gray-900 dark:text-slate-100 ${isCapturing ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'}`}
+                    className={`relative max-w-full px-1 text-xs font-semibold text-gray-900 dark:text-slate-100 ${isCapturing ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'}`}
                   >
                     {table.name}
                   </span>
-                  <span className="text-[11px] text-gray-600 dark:text-slate-400">
+                  <span className="relative text-[11px] text-gray-600 dark:text-slate-400">
                     {used}/{table.seatCount}
                     {isFull ? ` · ${fullLabel}` : ''}
                   </span>
