@@ -308,7 +308,7 @@ service cloud.firestore {
     // like everything else guest-related.
     function isValidSeatingTable(data) {
       return data.keys().hasAll(['name', 'seatCount', 'x', 'y', 'width', 'height', 'shape', 'updatedAt']) &&
-             data.keys().hasOnly(['name', 'seatCount', 'x', 'y', 'width', 'height', 'shape', 'updatedAt']) &&
+             data.keys().hasOnly(['name', 'seatCount', 'x', 'y', 'width', 'height', 'shape', 'rotation', 'updatedAt']) &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 60 &&
              data.seatCount is int && data.seatCount >= 1 && data.seatCount <= 40 &&
              // Free-form floor-plan position/size Gil drags and resizes by
@@ -318,7 +318,14 @@ service cloud.firestore {
              data.y is number && data.y >= -2000 && data.y <= 5000 &&
              data.width is number && data.width >= 20 && data.width <= 1000 &&
              data.height is number && data.height >= 20 && data.height <= 1000 &&
-             (data.shape == 'round' || data.shape == 'rect') &&
+             // 'teardrop'/'curved' draw a real petal/scalloped-booth outline
+             // (see FreeformTableShape in SeatingFloorPlan.tsx) instead of a
+             // plain circle/rounded-rect approximation.
+             (data.shape == 'round' || data.shape == 'rect' || data.shape == 'teardrop' || data.shape == 'curved') &&
+             // Optional - degrees clockwise the decorative shape is rotated,
+             // independent of x/y/width/height. Omitted entirely on tables
+             // that were never rotated.
+             (!('rotation' in data) || (data.rotation is number && data.rotation >= 0 && data.rotation <= 359)) &&
              data.updatedAt == request.time;
     }
 
@@ -373,7 +380,7 @@ service cloud.firestore {
     // as seatingTables; no seatCount since these aren't seatable.
     function isValidVenueObject(data) {
       return data.keys().hasAll(['type', 'label', 'x', 'y', 'width', 'height', 'shape', 'updatedAt']) &&
-             data.keys().hasOnly(['type', 'label', 'x', 'y', 'width', 'height', 'shape', 'updatedAt']) &&
+             data.keys().hasOnly(['type', 'label', 'x', 'y', 'width', 'height', 'shape', 'rotation', 'updatedAt']) &&
              data.type in ['stage', 'bar', 'entrance', 'danceFloor', 'custom'] &&
              data.label is string && data.label.size() > 0 && data.label.size() <= 60 &&
              data.x is number && data.x >= -2000 && data.x <= 5000 &&
@@ -381,6 +388,10 @@ service cloud.firestore {
              data.width is number && data.width >= 20 && data.width <= 1000 &&
              data.height is number && data.height >= 20 && data.height <= 1000 &&
              (data.shape == 'round' || data.shape == 'rect') &&
+             // Optional - kept in step with seatingTables' rotation field
+             // even though the object shape picker never offers 'teardrop'/
+             // 'curved' today, so the two stay consistent if that changes.
+             (!('rotation' in data) || (data.rotation is number && data.rotation >= 0 && data.rotation <= 359)) &&
              data.updatedAt == request.time;
     }
 
