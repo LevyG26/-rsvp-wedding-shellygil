@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -21,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import type { GuestRosterEntry } from '../../services/guestRoster';
-import type { SeatingAssignment, SeatingGroup, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
+import type { SeatingAlert, SeatingAssignment, SeatingGroup, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
 import type { VenueObject, VenueObjectType } from '../../services/venueObjects';
 import { exportSeatingChart, type SeatingExportGuest, type SeatingExportTable, type SeatingExportUnseatedGuest } from '../../admin/exportSeatingChart';
 import { SeatingFloorPlan, type SeatingFloorPlanHandle } from './SeatingFloorPlan';
@@ -122,6 +123,11 @@ export interface SeatingLabels {
   deleteObjectConfirm: string;
   deleteSelectedObjectsConfirm: string;
   duplicateSuffix: string;
+  alertsHeading: string;
+  alertReasonNotConfirmed: string;
+  alertReasonReducedCount: string;
+  alertMessage: string;
+  dismissAlert: string;
 }
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status';
@@ -157,6 +163,7 @@ interface SeatingSectionProps {
   venueObjects: VenueObject[];
   groups: SeatingGroup[];
   assignments: SeatingAssignment[];
+  alerts: SeatingAlert[];
   isLoading: boolean;
   locale: string;
   labels: SeatingLabels;
@@ -175,6 +182,7 @@ interface SeatingSectionProps {
   onRemoveAssignment: (rosterEntryId: string, tableId: string) => Promise<void>;
   onAssignGroupToTable: (group: SeatingGroup, tableId: string) => Promise<void>;
   onGenerateVenueTables: () => Promise<void>;
+  onDismissAlert: (id: string) => Promise<void>;
 }
 
 function entryName(entry: GuestRosterEntry): string {
@@ -220,6 +228,7 @@ export function SeatingSection({
   venueObjects,
   groups,
   assignments,
+  alerts,
   isLoading,
   locale,
   labels,
@@ -238,6 +247,7 @@ export function SeatingSection({
   onRemoveAssignment,
   onAssignGroupToTable,
   onGenerateVenueTables,
+  onDismissAlert,
 }: SeatingSectionProps) {
   const [search, setSearch] = useState('');
   const [rowState, setRowState] = useState<Record<string, { seats: string; tableId: string }>>({});
@@ -902,6 +912,19 @@ export function SeatingSection({
     });
   };
 
+  const handleDismissAlert = async (alert: SeatingAlert) => {
+    const key = `alert-${alert.id}`;
+    setBusyKey(key);
+    try {
+      await onDismissAlert(alert.id);
+    } catch (error) {
+      console.error('Failed to dismiss seating alert', error);
+      setErrorByKey((prev) => ({ ...prev, [key]: labels.deleteError }));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const handleGuestListSort = (key: GuestListSortKey) => {
     setListSort((previous) => (previous.key === key ? { key, direction: previous.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' }));
   };
@@ -948,6 +971,45 @@ export function SeatingSection({
       </div>
 
       <div className="space-y-6 p-5">
+        {/* Seating alerts - auto-generated whenever a seated guest's confirmed
+            status/headcount changed enough that some of their seats had to
+            be freed automatically (see syncSeatingAssignmentsWithRoster).
+            Dismissed by deleting, one at a time, once Gil has seen it. */}
+        {alerts.length > 0 && (
+          <div className="space-y-1.5 rounded-2xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300">
+              <AlertTriangle size={15} aria-hidden="true" />
+              {labels.alertsHeading} ({alerts.length})
+            </h3>
+            <div className="space-y-1">
+              {alerts.map((alert) => {
+                const alertKey = `alert-${alert.id}`;
+                const reasonText = alert.reason === 'reducedCount' ? labels.alertReasonReducedCount : labels.alertReasonNotConfirmed;
+                const message = labels.alertMessage
+                  .replace('{name}', alert.guestName)
+                  .replace('{table}', alert.tableName)
+                  .replace('{seats}', String(alert.seatsRemoved))
+                  .replace('{reason}', reasonText);
+                return (
+                  <div key={alert.id} className="flex items-start justify-between gap-2 rounded-xl bg-white/70 px-3 py-2 text-sm text-amber-900 dark:bg-slate-900/40 dark:text-amber-200">
+                    <span className="min-w-0 flex-1">{message}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDismissAlert(alert)}
+                      disabled={busyKey === alertKey}
+                      title={labels.dismissAlert}
+                      aria-label={labels.dismissAlert}
+                      className="shrink-0 rounded-lg p-1 text-amber-500 hover:bg-amber-100 disabled:opacity-60 dark:text-amber-400 dark:hover:bg-amber-900/40"
+                    >
+                      {busyKey === alertKey ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Summary */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-300">
@@ -1614,7 +1676,10 @@ export function SeatingSection({
                           const assignmentKey = `assignment-${assignment.id}`;
                           return (
                             <div key={assignment.id} className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 dark:bg-slate-800">
-                              <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-slate-200">{entry ? entryName(entry) : '-'}</span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm text-gray-800 dark:text-slate-200">{entry ? entryName(entry) : '-'}</p>
+                                {entry && <p className="truncate text-xs text-gray-400 dark:text-slate-500">{entry.side} · {entry.category}</p>}
+                              </div>
                               <input
                                 type="number"
                                 min={0}

@@ -1,9 +1,11 @@
 import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
+import type { GuestRosterEntry } from './guestRoster';
 
 export const SEATING_TABLES_COLLECTION = 'seatingTables';
 export const SEATING_GROUPS_COLLECTION = 'seatingGroups';
 export const SEATING_ASSIGNMENTS_COLLECTION = 'seatingAssignments';
+export const SEATING_ALERTS_COLLECTION = 'seatingAlerts';
 
 // 'teardrop' and 'curved' exist so a table can actually look like the real
 // venue sketch's petal-shaped and long scalloped-booth tables, instead of
@@ -122,6 +124,39 @@ function normalizeAssignment(id: string, data: Record<string, unknown>): Seating
   };
 }
 
+// Why this can never be one of the two reasons that free a seat is left
+// implicit ("notConfirmed" covers no/null/deleted, "reducedCount" covers a
+// still-confirmed entry whose headcount just dropped) - see
+// syncSeatingAssignmentsWithRoster below for exactly when each is used.
+export type SeatingAlertReason = 'notConfirmed' | 'reducedCount';
+
+// A record of "Gil had seated this guest, then their confirmed status/count
+// changed enough that some of their seats had to be freed automatically" -
+// purely informational (Gil dismisses these by deleting them once he's seen
+// them), so the guest's name/category/table name are snapshotted onto the
+// alert itself rather than looked up live - the whole point is to stay
+// meaningful even after the roster entry or table that caused it is gone.
+export interface SeatingAlert {
+  id: string;
+  guestName: string;
+  category: string;
+  tableName: string;
+  seatsRemoved: number;
+  reason: SeatingAlertReason;
+}
+
+function normalizeAlert(id: string, data: Record<string, unknown>): SeatingAlert {
+  const seatsRemovedValue = data.seatsRemoved;
+  return {
+    id,
+    guestName: typeof data.guestName === 'string' ? data.guestName : '',
+    category: typeof data.category === 'string' ? data.category : '',
+    tableName: typeof data.tableName === 'string' ? data.tableName : '',
+    seatsRemoved: typeof seatsRemovedValue === 'number' && Number.isFinite(seatsRemovedValue) ? seatsRemovedValue : 0,
+    reason: data.reason === 'reducedCount' ? 'reducedCount' : 'notConfirmed',
+  };
+}
+
 export function subscribeToSeatingTables(onChange: (tables: SeatingTable[]) => void, onError?: (error: unknown) => void): () => void {
   return onSnapshot(
     collection(db, SEATING_TABLES_COLLECTION),
@@ -153,6 +188,21 @@ export function subscribeToSeatingAssignments(onChange: (assignments: SeatingAss
       onError?.(error);
     },
   );
+}
+
+export function subscribeToSeatingAlerts(onChange: (alerts: SeatingAlert[]) => void, onError?: (error: unknown) => void): () => void {
+  return onSnapshot(
+    collection(db, SEATING_ALERTS_COLLECTION),
+    (snapshot) => onChange(snapshot.docs.map((docSnapshot) => normalizeAlert(docSnapshot.id, docSnapshot.data() as Record<string, unknown>))),
+    (error) => {
+      console.error('Seating alerts live listener failed', error);
+      onError?.(error);
+    },
+  );
+}
+
+export async function dismissSeatingAlert(id: string): Promise<void> {
+  await deleteDoc(doc(db, SEATING_ALERTS_COLLECTION, id));
 }
 
 export async function createSeatingTable(name: string, seatCount: number, layout: SeatingTableLayout = DEFAULT_TABLE_LAYOUT): Promise<string> {
@@ -294,4 +344,85 @@ export async function assignGroupToTable(
   }
 
   await batch.commit();
+}
+
+async function createSeatingAlert(input: {
+  guestName: string;
+  category: string;
+  tableName: string;
+  seatsRemoved: number;
+  reason: SeatingAlertReason;
+}): Promise<void> {
+  const id = makeId();
+  await setDoc(doc(db, SEATING_ALERTS_COLLECTION, id), {
+    ...input,
+    createdAt: serverTimestamp(),
+  });
+}
+
+// Keeps seating assignments honest against each roster entry's CURRENT
+// confirmed status/headcount - meant to be called every time the roster or
+// the assignments change (see the guarded effect in AdminDashboard.tsx), so
+// this reacts automatically whenever a guest edits their RSVP, Gil edits
+// their status by hand, or a linked RSVP is deleted/reverted - not just when
+// someone happens to click a "sync" button.
+//
+// Without this, a guest who un-RSVPs (or whose invitedCount drops) after
+// already being seated would silently keep "occupying" their seat forever:
+// the seatingAssignment row survives on its own, but the seating UI only
+// ever looks up CONFIRMED roster entries, so the table would just show a
+// mysterious "-" using up a seat with no way to tell who it was or free it.
+//
+// For each roster entry with more seats assigned than it's currently allowed
+// (0 if not confirmed/deleted, invitedCount if confirmed), trims just enough
+// of that entry's assignments - starting from whichever tables they're
+// seated at, in no particular order, since which specific table loses a
+// seat first doesn't matter here - down to what they're actually allowed,
+// and writes a SeatingAlert per table touched so Gil can see exactly who
+// came out, from which table, how many seats freed up, and why.
+export async function syncSeatingAssignmentsWithRoster(
+  entries: GuestRosterEntry[],
+  assignments: SeatingAssignment[],
+  tables: SeatingTable[],
+): Promise<void> {
+  const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
+  const tablesById = new Map(tables.map((table) => [table.id, table]));
+
+  const assignmentsByEntry = new Map<string, SeatingAssignment[]>();
+  assignments.forEach((assignment) => {
+    const list = assignmentsByEntry.get(assignment.rosterEntryId) ?? [];
+    list.push(assignment);
+    assignmentsByEntry.set(assignment.rosterEntryId, list);
+  });
+
+  for (const [rosterEntryId, entryAssignments] of assignmentsByEntry) {
+    const entry = entriesById.get(rosterEntryId);
+    const allowedSeats = entry && entry.knownResponse === 'yes' ? entry.invitedCount : 0;
+    const totalAssigned = entryAssignments.reduce((sum, assignment) => sum + assignment.seatsCount, 0);
+    if (totalAssigned <= allowedSeats) continue;
+
+    const guestName = entry ? `${entry.firstName} ${entry.lastName}`.trim() : '';
+    const category = entry?.category ?? '';
+    const reason: SeatingAlertReason = entry && entry.knownResponse === 'yes' ? 'reducedCount' : 'notConfirmed';
+
+    let seatsToFree = totalAssigned - allowedSeats;
+    for (const assignment of entryAssignments) {
+      if (seatsToFree <= 0) break;
+      const removeFromThis = Math.min(seatsToFree, assignment.seatsCount);
+      const nextSeats = assignment.seatsCount - removeFromThis;
+      seatsToFree -= removeFromThis;
+
+      const table = tablesById.get(assignment.tableId);
+      // eslint-disable-next-line no-await-in-loop
+      await setSeatingAssignment(rosterEntryId, assignment.tableId, nextSeats);
+      // eslint-disable-next-line no-await-in-loop
+      await createSeatingAlert({
+        guestName: guestName || '-',
+        category,
+        tableName: table?.name ?? '-',
+        seatsRemoved: removeFromThis,
+        reason,
+      });
+    }
+  }
 }

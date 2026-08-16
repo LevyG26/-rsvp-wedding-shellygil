@@ -374,6 +374,29 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Auto-generated the moment a seated guest's confirmed status/headcount
+    // changes enough that some of their seats had to be freed automatically
+    // (see syncSeatingAssignmentsWithRoster in services/seating.ts) - a
+    // snapshot of who/where/how-many/why, so Gil can see what came out even
+    // after the roster entry or table involved is gone. Never updated once
+    // created (Gil dismisses one by deleting it, not editing it).
+    function isValidSeatingAlert(data) {
+      return data.keys().hasAll(['guestName', 'category', 'tableName', 'seatsRemoved', 'reason', 'createdAt']) &&
+             data.keys().hasOnly(['guestName', 'category', 'tableName', 'seatsRemoved', 'reason', 'createdAt']) &&
+             data.guestName is string && data.guestName.size() > 0 && data.guestName.size() <= 120 &&
+             data.category is string && data.category.size() <= 120 &&
+             data.tableName is string && data.tableName.size() > 0 && data.tableName.size() <= 60 &&
+             data.seatsRemoved is int && data.seatsRemoved >= 1 && data.seatsRemoved <= 40 &&
+             data.reason in ['notConfirmed', 'reducedCount'] &&
+             data.createdAt == request.time;
+    }
+
+    match /seatingAlerts/{alertId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidId(alertId) && isValidSeatingAlert(incoming());
+      allow delete: if isAdmin();
+    }
+
     // Non-seating decor on the floor-plan canvas (stage, bar, entrance, dance
     // floor, or a free-text custom label) - lets Gil actually lay out the
     // hall, not just the dinner tables. Same free-form position/size bounds

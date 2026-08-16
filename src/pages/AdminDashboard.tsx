@@ -67,14 +67,18 @@ import {
     createSeatingTablesBulk,
     deleteSeatingGroup,
     deleteSeatingTable,
+    dismissSeatingAlert,
     removeSeatingAssignment,
     setSeatingAssignment,
+    subscribeToSeatingAlerts,
     subscribeToSeatingAssignments,
     subscribeToSeatingGroups,
     subscribeToSeatingTables,
+    syncSeatingAssignmentsWithRoster,
     updateSeatingGroup,
     updateSeatingTable,
     updateSeatingTableLayout,
+    type SeatingAlert,
     type SeatingAssignment,
     type SeatingGroup,
     type SeatingTable,
@@ -502,6 +506,7 @@ export function AdminDashboard() {
     const [seatingTables, setSeatingTables] = useState<SeatingTable[]>([]);
     const [seatingGroups, setSeatingGroups] = useState<SeatingGroup[]>([]);
     const [seatingAssignments, setSeatingAssignments] = useState<SeatingAssignment[]>([]);
+    const [seatingAlerts, setSeatingAlerts] = useState<SeatingAlert[]>([]);
     const [venueObjects, setVenueObjects] = useState<VenueObject[]>([]);
     const [isLoadingSeating, setIsLoadingSeating] = useState(true);
     const { theme, toggleTheme } = useAdminTheme();
@@ -717,6 +722,10 @@ export function AdminDashboard() {
                 markSeatingLoadedIfReady();
             },
         );
+        // Doesn't gate isLoadingSeating - alerts are purely supplementary
+        // (a "here's what came out" log), never something the rest of the
+        // seating tab needs to wait on before it can render.
+        const unsubscribeSeatingAlerts = subscribeToSeatingAlerts((loaded) => setSeatingAlerts(loaded));
 
         return () => {
             unsubscribeRsvps();
@@ -725,6 +734,7 @@ export function AdminDashboard() {
             unsubscribeSeatingGroups();
             unsubscribeSeatingAssignments();
             unsubscribeVenueObjects();
+            unsubscribeSeatingAlerts();
         };
     }, [isAuthChecked, isSignedIn, t.adminLoadError]);
 
@@ -1433,6 +1443,38 @@ export function AdminDashboard() {
                 isAutoFillingGroupRef.current = false;
             });
     }, [records, guestRoster, isAuthChecked, isSignedIn]);
+
+    // Keeps the seating chart honest whenever a confirmed guest's status or
+    // headcount changes underneath it - whether that's the guest editing
+    // their own RSVP (which flows into guestRoster via the auto-link effect
+    // above), Gil editing their status/count by hand, or a linked RSVP being
+    // deleted. Runs automatically on every guestRoster/seatingAssignments
+    // change rather than needing a button, same pattern as the auto-link and
+    // auto-fill-group effects above - and just as safe to re-trigger, since
+    // syncSeatingAssignmentsWithRoster only ever touches an assignment that's
+    // actually over its entry's current allowance, so a second pass after its
+    // own writes finds nothing left to do. Waits for isLoadingSeating to
+    // clear first so it never acts on a still-empty (not yet loaded)
+    // assignments/tables list.
+    const isSyncingSeatingRef = useRef(false);
+    useEffect(() => {
+        if (!isAuthChecked || !isSignedIn) return;
+        if (isLoadingSeating) return;
+        if (isSyncingSeatingRef.current) return;
+
+        isSyncingSeatingRef.current = true;
+        syncSeatingAssignmentsWithRoster(guestRoster, seatingAssignments, seatingTables)
+            .catch((syncError) => {
+                console.error('Automatic seating sync with roster failed', syncError);
+            })
+            .finally(() => {
+                isSyncingSeatingRef.current = false;
+            });
+    }, [guestRoster, seatingAssignments, seatingTables, isLoadingSeating, isAuthChecked, isSignedIn]);
+
+    const handleDismissSeatingAlert = async (id: string): Promise<void> => {
+        await dismissSeatingAlert(id);
+    };
 
     const handleCreateGuestRosterEntry = async (input: GuestRosterEntryInput) => {
         await createGuestRosterEntry(input);
@@ -2974,6 +3016,7 @@ export function AdminDashboard() {
                         venueObjects={venueObjects}
                         groups={seatingGroups}
                         assignments={seatingAssignments}
+                        alerts={seatingAlerts}
                         isLoading={isLoadingSeating}
                         locale={locale}
                         onCreateTable={handleCreateSeatingTable}
@@ -2991,6 +3034,7 @@ export function AdminDashboard() {
                         onRemoveAssignment={handleRemoveSeatingAssignment}
                         onAssignGroupToTable={handleAssignSeatingGroupToTable}
                         onGenerateVenueTables={handleGenerateVenueTables}
+                        onDismissAlert={handleDismissSeatingAlert}
                         labels={{
                             title: t.adminSeatingTitle,
                             subtitle: t.adminSeatingSubtitle,
@@ -3087,6 +3131,11 @@ export function AdminDashboard() {
                             deleteObjectConfirm: t.adminSeatingDeleteObjectConfirm,
                             deleteSelectedObjectsConfirm: t.adminSeatingDeleteSelectedObjectsConfirm,
                             duplicateSuffix: t.adminSeatingDuplicateSuffix,
+                            alertsHeading: t.adminSeatingAlertsHeading,
+                            alertReasonNotConfirmed: t.adminSeatingAlertReasonNotConfirmed,
+                            alertReasonReducedCount: t.adminSeatingAlertReasonReducedCount,
+                            alertMessage: t.adminSeatingAlertMessage,
+                            dismissAlert: t.adminSeatingDismissAlert,
                         }}
                     />
                 </motion.section>
