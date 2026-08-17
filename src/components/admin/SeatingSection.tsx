@@ -128,6 +128,8 @@ export interface SeatingLabels {
   alertReasonReducedCount: string;
   alertMessage: string;
   dismissAlert: string;
+  lockLayoutButton: string;
+  unlockLayoutButton: string;
 }
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status';
@@ -164,6 +166,8 @@ interface SeatingSectionProps {
   groups: SeatingGroup[];
   assignments: SeatingAssignment[];
   alerts: SeatingAlert[];
+  layoutLocked: boolean;
+  onToggleLayoutLock: (locked: boolean) => Promise<void>;
   isLoading: boolean;
   locale: string;
   labels: SeatingLabels;
@@ -229,6 +233,8 @@ export function SeatingSection({
   groups,
   assignments,
   alerts,
+  layoutLocked,
+  onToggleLayoutLock,
   isLoading,
   locale,
   labels,
@@ -925,6 +931,12 @@ export function SeatingSection({
     }
   };
 
+  const handleToggleLayoutLock = () => {
+    onToggleLayoutLock(!layoutLocked).catch((error) => {
+      console.error('Failed to toggle seating layout lock', error);
+    });
+  };
+
   const handleGuestListSort = (key: GuestListSortKey) => {
     setListSort((previous) => (previous.key === key ? { key, direction: previous.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' }));
   };
@@ -1486,6 +1498,10 @@ export function SeatingSection({
                 deleteObjectSelection={objectDeleteSelection}
                 onToggleDeleteObjectSelection={toggleObjectDeleteSelection}
                 deleteCheckboxLabel={labels.deleteCheckboxLabel}
+                locked={layoutLocked}
+                onToggleLocked={handleToggleLayoutLock}
+                lockLabel={labels.lockLayoutButton}
+                unlockLabel={labels.unlockLayoutButton}
               />
 
               <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">

@@ -397,6 +397,24 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Whether free-drag repositioning on the floor-plan canvas is frozen -
+    // shared by every admin (not a personal per-browser setting), so one
+    // person locking it protects the layout for anyone else with the
+    // dashboard open too. A single well-known doc id, since there's only
+    // ever one floor plan.
+    function isValidSeatingSettings(data) {
+      return data.keys().hasAll(['layoutLocked', 'updatedAt']) &&
+             data.keys().hasOnly(['layoutLocked', 'updatedAt']) &&
+             data.layoutLocked is bool &&
+             data.updatedAt == request.time;
+    }
+
+    match /seatingSettings/{settingsId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isValidId(settingsId) && isValidSeatingSettings(incoming());
+      allow delete: if false;
+    }
+
     // Non-seating decor on the floor-plan canvas (stage, bar, entrance, dance
     // floor, or a free-text custom label) - lets Gil actually lay out the
     // hall, not just the dinner tables. Same free-form position/size bounds

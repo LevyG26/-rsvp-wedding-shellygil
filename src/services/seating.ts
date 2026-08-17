@@ -6,6 +6,10 @@ export const SEATING_TABLES_COLLECTION = 'seatingTables';
 export const SEATING_GROUPS_COLLECTION = 'seatingGroups';
 export const SEATING_ASSIGNMENTS_COLLECTION = 'seatingAssignments';
 export const SEATING_ALERTS_COLLECTION = 'seatingAlerts';
+export const SEATING_SETTINGS_COLLECTION = 'seatingSettings';
+// Single, well-known doc id - there's only ever one floor plan, so this
+// isn't keyed per-table/per-user the way everything else here is.
+export const SEATING_SETTINGS_DOC_ID = 'floorPlan';
 
 // 'teardrop' and 'curved' exist so a table can actually look like the real
 // venue sketch's petal-shaped and long scalloped-booth tables, instead of
@@ -203,6 +207,30 @@ export function subscribeToSeatingAlerts(onChange: (alerts: SeatingAlert[]) => v
 
 export async function dismissSeatingAlert(id: string): Promise<void> {
   await deleteDoc(doc(db, SEATING_ALERTS_COLLECTION, id));
+}
+
+// Whether free-drag repositioning on the floor-plan canvas is frozen -
+// shared across every device/admin (not a personal per-browser preference),
+// since the whole point is that whoever locks it protects the layout from
+// anyone else who has the dashboard open, not just themselves. Defaults to
+// unlocked (false) when the doc doesn't exist yet, so nothing changes for
+// existing users until someone actually locks it once.
+export function subscribeToSeatingLayoutLock(onChange: (locked: boolean) => void, onError?: (error: unknown) => void): () => void {
+  return onSnapshot(
+    doc(db, SEATING_SETTINGS_COLLECTION, SEATING_SETTINGS_DOC_ID),
+    (snapshot) => onChange(snapshot.data()?.layoutLocked === true),
+    (error) => {
+      console.error('Seating layout lock live listener failed', error);
+      onError?.(error);
+    },
+  );
+}
+
+export async function setSeatingLayoutLock(locked: boolean): Promise<void> {
+  await setDoc(doc(db, SEATING_SETTINGS_COLLECTION, SEATING_SETTINGS_DOC_ID), {
+    layoutLocked: locked,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function createSeatingTable(name: string, seatCount: number, layout: SeatingTableLayout = DEFAULT_TABLE_LAYOUT): Promise<string> {

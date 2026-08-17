@@ -70,9 +70,11 @@ import {
     dismissSeatingAlert,
     removeSeatingAssignment,
     setSeatingAssignment,
+    setSeatingLayoutLock,
     subscribeToSeatingAlerts,
     subscribeToSeatingAssignments,
     subscribeToSeatingGroups,
+    subscribeToSeatingLayoutLock,
     subscribeToSeatingTables,
     syncSeatingAssignmentsWithRoster,
     updateSeatingGroup,
@@ -507,6 +509,7 @@ export function AdminDashboard() {
     const [seatingGroups, setSeatingGroups] = useState<SeatingGroup[]>([]);
     const [seatingAssignments, setSeatingAssignments] = useState<SeatingAssignment[]>([]);
     const [seatingAlerts, setSeatingAlerts] = useState<SeatingAlert[]>([]);
+    const [seatingLayoutLocked, setSeatingLayoutLocked] = useState(false);
     const [venueObjects, setVenueObjects] = useState<VenueObject[]>([]);
     const [isLoadingSeating, setIsLoadingSeating] = useState(true);
     const { theme, toggleTheme } = useAdminTheme();
@@ -726,6 +729,9 @@ export function AdminDashboard() {
         // (a "here's what came out" log), never something the rest of the
         // seating tab needs to wait on before it can render.
         const unsubscribeSeatingAlerts = subscribeToSeatingAlerts((loaded) => setSeatingAlerts(loaded));
+        // Same - the lock defaults to false (unlocked) until this resolves,
+        // so the canvas is never wrongly stuck locked for a moment on load.
+        const unsubscribeSeatingLayoutLock = subscribeToSeatingLayoutLock((locked) => setSeatingLayoutLocked(locked));
 
         return () => {
             unsubscribeRsvps();
@@ -735,6 +741,7 @@ export function AdminDashboard() {
             unsubscribeSeatingAssignments();
             unsubscribeVenueObjects();
             unsubscribeSeatingAlerts();
+            unsubscribeSeatingLayoutLock();
         };
     }, [isAuthChecked, isSignedIn, t.adminLoadError]);
 
@@ -1474,6 +1481,10 @@ export function AdminDashboard() {
 
     const handleDismissSeatingAlert = async (id: string): Promise<void> => {
         await dismissSeatingAlert(id);
+    };
+
+    const handleToggleSeatingLayoutLock = async (locked: boolean): Promise<void> => {
+        await setSeatingLayoutLock(locked);
     };
 
     const handleCreateGuestRosterEntry = async (input: GuestRosterEntryInput) => {
@@ -3017,6 +3028,8 @@ export function AdminDashboard() {
                         groups={seatingGroups}
                         assignments={seatingAssignments}
                         alerts={seatingAlerts}
+                        layoutLocked={seatingLayoutLocked}
+                        onToggleLayoutLock={handleToggleSeatingLayoutLock}
                         isLoading={isLoadingSeating}
                         locale={locale}
                         onCreateTable={handleCreateSeatingTable}
@@ -3136,6 +3149,8 @@ export function AdminDashboard() {
                             alertReasonReducedCount: t.adminSeatingAlertReasonReducedCount,
                             alertMessage: t.adminSeatingAlertMessage,
                             dismissAlert: t.adminSeatingDismissAlert,
+                            lockLayoutButton: t.adminSeatingLockLayoutButton,
+                            unlockLayoutButton: t.adminSeatingUnlockLayoutButton,
                         }}
                     />
                 </motion.section>

@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Disc3, DoorOpen, Maximize2, Minus, Music, Plus, Tag, Wine } from 'lucide-react';
+import { Disc3, DoorOpen, Lock, Maximize2, Minus, Music, Plus, Tag, Unlock, Wine } from 'lucide-react';
 import type { SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
 import type { VenueObject, VenueObjectType } from '../../services/venueObjects';
 
@@ -239,6 +239,16 @@ interface SeatingFloorPlanProps {
   deleteObjectSelection: Set<string>;
   onToggleDeleteObjectSelection: (id: string) => void;
   deleteCheckboxLabel: string;
+  // Freezes only free-drag repositioning of tables/objects (the accidental
+  // "it moved without me meaning to" gesture two people sharing this canvas
+  // ran into) - selecting an item, resizing via its corner handle, rotating,
+  // editing through the side-panel form, panning, and zooming all keep
+  // working exactly as before regardless of this flag. See handlePointerMove
+  // below for where it's actually enforced.
+  locked: boolean;
+  onToggleLocked: () => void;
+  lockLabel: string;
+  unlockLabel: string;
 }
 
 function waitForNextPaint(): Promise<void> {
@@ -294,6 +304,10 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     deleteObjectSelection,
     onToggleDeleteObjectSelection,
     deleteCheckboxLabel,
+    locked,
+    onToggleLocked,
+    lockLabel,
+    unlockLabel,
   },
   ref,
 ) {
@@ -445,6 +459,12 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
   const handlePointerMove = (event: React.PointerEvent) => {
     const current = dragStateRef.current;
     if (!current || event.pointerId !== current.pointerId) return;
+    // Locked freezes repositioning only (mode 'move') - resize keeps
+    // working. `current.moved` deliberately never gets set to true here, so
+    // handlePointerUp below just treats the release as a plain tap and
+    // selects the item instead - a locked table stays fully viewable and
+    // selectable, it just can't be dragged to a new spot.
+    if (locked && current.mode === 'move') return;
 
     // Screen-space pointer movement has to be divided by the current zoom
     // level to get the equivalent movement in canvas coordinates - otherwise
@@ -572,6 +592,19 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
   return (
     <div>
       <div className="mb-2 flex items-center justify-end gap-1">
+        <button
+          type="button"
+          onClick={onToggleLocked}
+          title={locked ? unlockLabel : lockLabel}
+          aria-label={locked ? unlockLabel : lockLabel}
+          className={`rounded-lg border p-1.5 ${
+            locked
+              ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/40'
+              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+          }`}
+        >
+          {locked ? <Lock size={14} /> : <Unlock size={14} />}
+        </button>
         <button type="button" onClick={zoomOut} title={zoomOutLabel} className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
           <Minus size={14} />
         </button>
@@ -739,7 +772,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
-                  className={`absolute flex select-none flex-col items-center justify-center p-1 text-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${
+                  className={`absolute flex select-none flex-col items-center justify-center p-1 text-center ${isDragging ? 'cursor-grabbing' : locked ? 'cursor-pointer' : 'cursor-grab'} ${
                     isFreeform
                       ? ''
                       : `border-2 rounded-xl shadow-sm dark:shadow-none ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20 dark:border-slate-100 dark:bg-slate-700 dark:ring-slate-100/30' : isFull ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-900' : 'border-blue-200 bg-blue-50/90 dark:border-blue-500 dark:bg-blue-900'}`
@@ -800,7 +833,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
-                  className={`absolute flex select-none flex-col items-center justify-center gap-0.5 border-2 border-dashed p-1 text-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${object.shape === 'round' ? 'rounded-full' : 'rounded-lg'} ${deleteObjectSelection.has(object.id) ? 'outline outline-2 outline-offset-2 outline-rose-500' : ''} ${isSelected ? 'ring-2 ring-gray-900/30 dark:ring-slate-100/30' : ''} ${OBJECT_COLOR_CLASSES[object.type]}`}
+                  className={`absolute flex select-none flex-col items-center justify-center gap-0.5 border-2 border-dashed p-1 text-center ${isDragging ? 'cursor-grabbing' : locked ? 'cursor-pointer' : 'cursor-grab'} ${object.shape === 'round' ? 'rounded-full' : 'rounded-lg'} ${deleteObjectSelection.has(object.id) ? 'outline outline-2 outline-offset-2 outline-rose-500' : ''} ${isSelected ? 'ring-2 ring-gray-900/30 dark:ring-slate-100/30' : ''} ${OBJECT_COLOR_CLASSES[object.type]}`}
                   style={{ left: layout.x, top: layout.y, width: layout.width, height: layout.height, touchAction: 'none' }}
                 >
                   {!isCapturing && (
