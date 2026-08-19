@@ -30,6 +30,7 @@ import { db } from '../firebase';
 import { useAdminTheme } from '../hooks/useAdminTheme';
 import { Language, translations } from '../i18n';
 import { logoutAdmin, onAdminAuthStateChanged } from '../admin/auth';
+import { isEventStaffUid } from '../admin/roles';
 import { exportRsvpWorkbook } from '../admin/exportRsvpWorkbook';
 import { exportGiftsWorkbook } from '../admin/exportGiftsWorkbook';
 import { GuestCountInput } from '../components/admin/GuestCountInput';
@@ -504,7 +505,15 @@ export function AdminDashboard() {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'createdAt', direction: 'desc' });
     const [isAuthChecked, setIsAuthChecked] = useState(false);
     const [isSignedIn, setIsSignedIn] = useState(false);
+    const [currentUid, setCurrentUid] = useState<string | null>(null);
+    // Event-day seating staff only ever get the Seating tab - see
+    // src/admin/roles.ts for what this is and how to grant it. `displayedTab`
+    // (used everywhere content is gated below) is forced to 'seating' for
+    // them regardless of the underlying `activeTab` state, so there's never
+    // even a one-render flash of a tab they shouldn't see.
+    const isEventStaff = isEventStaffUid(currentUid);
     const [activeTab, setActiveTab] = useState<'roster' | 'responses' | 'reminders' | 'seating' | 'gifts'>('roster');
+    const displayedTab = isEventStaff ? 'seating' : activeTab;
     const [seatingTables, setSeatingTables] = useState<SeatingTable[]>([]);
     const [seatingGroups, setSeatingGroups] = useState<SeatingGroup[]>([]);
     const [seatingAssignments, setSeatingAssignments] = useState<SeatingAssignment[]>([]);
@@ -589,6 +598,7 @@ export function AdminDashboard() {
     useEffect(() => {
         const unsubscribe = onAdminAuthStateChanged((user) => {
             setIsSignedIn(user !== null);
+            setCurrentUid(user ? user.uid : null);
             setIsAuthChecked(true);
 
             if (user === null) {
@@ -1470,14 +1480,14 @@ export function AdminDashboard() {
         if (isSyncingSeatingRef.current) return;
 
         isSyncingSeatingRef.current = true;
-        syncSeatingAssignmentsWithRoster(guestRoster, seatingAssignments, seatingTables)
+        syncSeatingAssignmentsWithRoster(guestRoster, seatingAssignments, seatingTables, seatingAlerts)
             .catch((syncError) => {
                 console.error('Automatic seating sync with roster failed', syncError);
             })
             .finally(() => {
                 isSyncingSeatingRef.current = false;
             });
-    }, [guestRoster, seatingAssignments, seatingTables, isLoadingSeating, isAuthChecked, isSignedIn]);
+    }, [guestRoster, seatingAssignments, seatingTables, seatingAlerts, isLoadingSeating, isAuthChecked, isSignedIn]);
 
     const handleDismissSeatingAlert = async (id: string): Promise<void> => {
         await dismissSeatingAlert(id);
@@ -2070,12 +2080,17 @@ export function AdminDashboard() {
                         control (like a native app's tab switcher) instead of
                         a row of underlined text links, and scales better now
                         that there are five tabs: the active one is a solid
-                        "chip", not just a thin line that's easy to miss. */}
+                        "chip", not just a thin line that's easy to miss.
+                        Event-day seating staff only ever have the one tab
+                        available (see isEventStaff above), so there's
+                        nothing to switch between - the whole bar is hidden
+                        for them rather than showing four dead buttons. */}
+                    {!isEventStaff && (
                     <div className="mt-5 flex flex-wrap gap-1 rounded-2xl bg-gray-100/80 p-1.5 dark:bg-slate-800/60">
                         <button
                             type="button"
                             onClick={() => setActiveTab('roster')}
-                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'roster'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${displayedTab === 'roster'
                                 ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
                                 : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
@@ -2085,7 +2100,7 @@ export function AdminDashboard() {
                         <button
                             type="button"
                             onClick={() => setActiveTab('responses')}
-                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'responses'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${displayedTab === 'responses'
                                 ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
                                 : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
@@ -2095,7 +2110,7 @@ export function AdminDashboard() {
                         <button
                             type="button"
                             onClick={() => setActiveTab('reminders')}
-                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'reminders'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${displayedTab === 'reminders'
                                 ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
                                 : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
@@ -2105,7 +2120,7 @@ export function AdminDashboard() {
                         <button
                             type="button"
                             onClick={() => setActiveTab('seating')}
-                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'seating'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${displayedTab === 'seating'
                                 ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
                                 : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
@@ -2115,7 +2130,7 @@ export function AdminDashboard() {
                         <button
                             type="button"
                             onClick={() => setActiveTab('gifts')}
-                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'gifts'
+                            className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${displayedTab === 'gifts'
                                 ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
                                 : 'text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-200'
                                 }`}
@@ -2123,6 +2138,7 @@ export function AdminDashboard() {
                             {t.adminTabGifts}
                         </button>
                     </div>
+                    )}
                 </motion.header>
 
                 {(notificationsStatus === 'enabled' || notificationsStatus === 'denied' || notificationsStatus === 'unsupported' || notificationsStatus === 'error') && (
@@ -2140,7 +2156,7 @@ export function AdminDashboard() {
                     </div>
                 )}
 
-                {activeTab === 'roster' && (
+                {displayedTab === 'roster' && (
                 <motion.section
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -2221,7 +2237,7 @@ export function AdminDashboard() {
                 </motion.section>
                 )}
 
-                {activeTab === 'roster' && (
+                {displayedTab === 'roster' && (
                 <motion.section
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -2232,7 +2248,7 @@ export function AdminDashboard() {
                 </motion.section>
                 )}
 
-                {activeTab === 'roster' && (
+                {displayedTab === 'roster' && (
                 <motion.section
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -2243,7 +2259,7 @@ export function AdminDashboard() {
                 </motion.section>
                 )}
 
-                {activeTab === 'responses' && (
+                {displayedTab === 'responses' && (
                 <>
                 <motion.section
                     initial={{ opacity: 0, y: 16 }}
@@ -2952,7 +2968,7 @@ export function AdminDashboard() {
                 </>
                 )}
 
-                {activeTab === 'reminders' && (
+                {displayedTab === 'reminders' && (
                 <motion.section
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -3015,7 +3031,7 @@ export function AdminDashboard() {
                 </motion.section>
                 )}
 
-                {activeTab === 'seating' && (
+                {displayedTab === 'seating' && (
                 <motion.section
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -3023,6 +3039,7 @@ export function AdminDashboard() {
                 >
                     <SeatingSection
                         confirmedEntries={confirmedRosterEntries}
+                        allEntries={guestRoster}
                         tables={seatingTables}
                         venueObjects={venueObjects}
                         groups={seatingGroups}
@@ -3148,15 +3165,22 @@ export function AdminDashboard() {
                             alertReasonNotConfirmed: t.adminSeatingAlertReasonNotConfirmed,
                             alertReasonReducedCount: t.adminSeatingAlertReasonReducedCount,
                             alertMessage: t.adminSeatingAlertMessage,
+                            alertMessageNeedsMoreSeats: t.adminSeatingAlertMessageNeedsMoreSeats,
                             dismissAlert: t.adminSeatingDismissAlert,
                             lockLayoutButton: t.adminSeatingLockLayoutButton,
                             unlockLayoutButton: t.adminSeatingUnlockLayoutButton,
+                            guestLookupHeading: t.adminSeatingGuestLookupHeading,
+                            guestLookupPlaceholder: t.adminSeatingGuestLookupPlaceholder,
+                            guestLookupEmpty: t.adminSeatingGuestLookupEmpty,
+                            guestLookupStatusConfirmed: t.adminSeatingGuestLookupStatusConfirmed,
+                            guestLookupStatusDeclined: t.adminSeatingGuestLookupStatusDeclined,
+                            guestLookupStatusPending: t.adminSeatingGuestLookupStatusPending,
                         }}
                     />
                 </motion.section>
                 )}
 
-                {activeTab === 'gifts' && (
+                {displayedTab === 'gifts' && (
                 <motion.section
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}

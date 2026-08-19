@@ -16,6 +16,26 @@ service cloud.firestore {
       ];
     }
 
+    // Second-tier login for people helping run seating on the day of the
+    // event - far more limited than isAdmin() above. Granted read-only
+    // access to the guest roster (so they can check whether a surprise
+    // walk-in actually confirmed) and full read/write on the seating-related
+    // collections only - never rsvps, giftEntries, baseList, or
+    // adminNotificationTokens. Empty by default (no staff access at all)
+    // until Gil creates the login and this list is filled in - keep this in
+    // sync with EVENT_STAFF_UIDS in src/admin/roles.ts, which is what
+    // decides what the dashboard UI shows (this is what actually enforces
+    // it server-side).
+    function isEventStaff() {
+      return request.auth != null && request.auth.uid in [
+        // 'PASTE-THE-STAFF-USER-UID-HERE'
+      ];
+    }
+
+    function canManageSeating() {
+      return isAdmin() || isEventStaff();
+    }
+
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -249,9 +269,11 @@ service cloud.firestore {
     }
 
     match /guestRoster/{entryId} {
-      // Only signed-in admins can read, add, edit, or remove roster entries -
-      // the dashboard is the source of truth for this collection.
-      allow read: if isAdmin();
+      // Event-day seating staff can READ the full roster too (so they can
+      // check whether a surprise walk-in actually confirmed), but only a
+      // full admin can add, edit, or remove entries - the dashboard remains
+      // the source of truth for this collection, and staff never touch it.
+      allow read: if isAdmin() || isEventStaff();
       allow create: if isAdmin() && isValidId(entryId) && isValidGuestRosterEntry(incoming());
       allow update: if isAdmin() && isValidGuestRosterEntry(incoming());
       allow delete: if isAdmin();
@@ -330,10 +352,10 @@ service cloud.firestore {
     }
 
     match /seatingTables/{tableId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin() && isValidId(tableId) && isValidSeatingTable(incoming());
-      allow update: if isAdmin() && isValidSeatingTable(incoming());
-      allow delete: if isAdmin();
+      allow read: if canManageSeating();
+      allow create: if canManageSeating() && isValidId(tableId) && isValidSeatingTable(incoming());
+      allow update: if canManageSeating() && isValidSeatingTable(incoming());
+      allow delete: if canManageSeating();
     }
 
     // Ad-hoc named clusters of confirmed guestRoster entry IDs, purely for
@@ -348,10 +370,10 @@ service cloud.firestore {
     }
 
     match /seatingGroups/{groupId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin() && isValidId(groupId) && isValidSeatingGroup(incoming());
-      allow update: if isAdmin() && isValidSeatingGroup(incoming());
-      allow delete: if isAdmin();
+      allow read: if canManageSeating();
+      allow create: if canManageSeating() && isValidId(groupId) && isValidSeatingGroup(incoming());
+      allow update: if canManageSeating() && isValidSeatingGroup(incoming());
+      allow delete: if canManageSeating();
     }
 
     // How many of a given roster entry's confirmed seats sit at a given
@@ -368,33 +390,39 @@ service cloud.firestore {
     }
 
     match /seatingAssignments/{assignmentId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin() && isValidId(assignmentId) && isValidSeatingAssignment(incoming());
-      allow update: if isAdmin() && isValidSeatingAssignment(incoming());
-      allow delete: if isAdmin();
+      allow read: if canManageSeating();
+      allow create: if canManageSeating() && isValidId(assignmentId) && isValidSeatingAssignment(incoming());
+      allow update: if canManageSeating() && isValidSeatingAssignment(incoming());
+      allow delete: if canManageSeating();
     }
 
     // Auto-generated the moment a seated guest's confirmed status/headcount
-    // changes enough that some of their seats had to be freed automatically
-    // (see syncSeatingAssignmentsWithRoster in services/seating.ts) - a
-    // snapshot of who/where/how-many/why, so Gil can see what came out even
-    // after the roster entry or table involved is gone. Never updated once
-    // created (Gil dismisses one by deleting it, not editing it).
+    // no longer matches their seating - either seats freed up automatically
+    // (declined, or headcount dropped) or extra seats are now needed
+    // (headcount grew past what's assigned) - see
+    // syncSeatingAssignmentsWithRoster in services/seating.ts. A snapshot of
+    // who/where/how-many/why, so Gil can see what happened even after the
+    // roster entry or table involved is gone. Uses a deterministic doc id
+    // (entryId + table or "needsMore") rather than a random one specifically
+    // so two admin sessions racing to notice the same event collapse into
+    // one update instead of two duplicate alerts - that's also why update is
+    // allowed here (Gil otherwise dismisses one by deleting it).
     function isValidSeatingAlert(data) {
-      return data.keys().hasAll(['guestName', 'category', 'tableName', 'seatsRemoved', 'reason', 'createdAt']) &&
-             data.keys().hasOnly(['guestName', 'category', 'tableName', 'seatsRemoved', 'reason', 'createdAt']) &&
+      return data.keys().hasAll(['guestName', 'category', 'tableName', 'seatsCount', 'reason', 'createdAt']) &&
+             data.keys().hasOnly(['guestName', 'category', 'tableName', 'seatsCount', 'reason', 'createdAt']) &&
              data.guestName is string && data.guestName.size() > 0 && data.guestName.size() <= 120 &&
              data.category is string && data.category.size() <= 120 &&
              data.tableName is string && data.tableName.size() > 0 && data.tableName.size() <= 60 &&
-             data.seatsRemoved is int && data.seatsRemoved >= 1 && data.seatsRemoved <= 40 &&
-             data.reason in ['notConfirmed', 'reducedCount'] &&
+             data.seatsCount is int && data.seatsCount >= 1 && data.seatsCount <= 40 &&
+             data.reason in ['notConfirmed', 'reducedCount', 'needsMoreSeats'] &&
              data.createdAt == request.time;
     }
 
     match /seatingAlerts/{alertId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin() && isValidId(alertId) && isValidSeatingAlert(incoming());
-      allow delete: if isAdmin();
+      allow read: if canManageSeating();
+      allow create: if canManageSeating() && isValidId(alertId) && isValidSeatingAlert(incoming());
+      allow update: if canManageSeating() && isValidSeatingAlert(incoming());
+      allow delete: if canManageSeating();
     }
 
     // Whether free-drag repositioning on the floor-plan canvas is frozen -
@@ -410,8 +438,8 @@ service cloud.firestore {
     }
 
     match /seatingSettings/{settingsId} {
-      allow read: if isAdmin();
-      allow create, update: if isAdmin() && isValidId(settingsId) && isValidSeatingSettings(incoming());
+      allow read: if canManageSeating();
+      allow create, update: if canManageSeating() && isValidId(settingsId) && isValidSeatingSettings(incoming());
       allow delete: if false;
     }
 
@@ -437,10 +465,10 @@ service cloud.firestore {
     }
 
     match /venueObjects/{objectId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin() && isValidId(objectId) && isValidVenueObject(incoming());
-      allow update: if isAdmin() && isValidVenueObject(incoming());
-      allow delete: if isAdmin();
+      allow read: if canManageSeating();
+      allow create: if canManageSeating() && isValidId(objectId) && isValidVenueObject(incoming());
+      allow update: if canManageSeating() && isValidVenueObject(incoming());
+      allow delete: if canManageSeating();
     }
 
     // One doc per device that opted in to mobile push notifications for new/

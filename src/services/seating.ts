@@ -128,36 +128,41 @@ function normalizeAssignment(id: string, data: Record<string, unknown>): Seating
   };
 }
 
-// Why this can never be one of the two reasons that free a seat is left
-// implicit ("notConfirmed" covers no/null/deleted, "reducedCount" covers a
-// still-confirmed entry whose headcount just dropped) - see
+// "notConfirmed" covers no/null/deleted (all their seats freed), "reducedCount"
+// covers a still-confirmed entry whose headcount dropped (some seats freed),
+// "needsMoreSeats" covers the opposite case - a still-confirmed entry whose
+// headcount GREW past what's currently assigned - see
 // syncSeatingAssignmentsWithRoster below for exactly when each is used.
-export type SeatingAlertReason = 'notConfirmed' | 'reducedCount';
+export type SeatingAlertReason = 'notConfirmed' | 'reducedCount' | 'needsMoreSeats';
 
 // A record of "Gil had seated this guest, then their confirmed status/count
-// changed enough that some of their seats had to be freed automatically" -
-// purely informational (Gil dismisses these by deleting them once he's seen
-// them), so the guest's name/category/table name are snapshotted onto the
-// alert itself rather than looked up live - the whole point is to stay
-// meaningful even after the roster entry or table that caused it is gone.
+// changed enough that seating needs attention" - purely informational (Gil
+// dismisses one by deleting it once he's seen it, or the sync itself clears
+// a "needsMoreSeats" one automatically once he's added the extra seat(s)),
+// so the guest's name/category/table name are snapshotted onto the alert
+// itself rather than looked up live - the whole point is to stay meaningful
+// even after the roster entry or table that caused it is gone. `seatsCount`
+// means "seats freed up" for notConfirmed/reducedCount, and "seats still
+// needed" for needsMoreSeats - see the message copy in SeatingSection.tsx,
+// which phrases each reason differently.
 export interface SeatingAlert {
   id: string;
   guestName: string;
   category: string;
   tableName: string;
-  seatsRemoved: number;
+  seatsCount: number;
   reason: SeatingAlertReason;
 }
 
 function normalizeAlert(id: string, data: Record<string, unknown>): SeatingAlert {
-  const seatsRemovedValue = data.seatsRemoved;
+  const seatsCountValue = data.seatsCount;
   return {
     id,
     guestName: typeof data.guestName === 'string' ? data.guestName : '',
     category: typeof data.category === 'string' ? data.category : '',
     tableName: typeof data.tableName === 'string' ? data.tableName : '',
-    seatsRemoved: typeof seatsRemovedValue === 'number' && Number.isFinite(seatsRemovedValue) ? seatsRemovedValue : 0,
-    reason: data.reason === 'reducedCount' ? 'reducedCount' : 'notConfirmed',
+    seatsCount: typeof seatsCountValue === 'number' && Number.isFinite(seatsCountValue) ? seatsCountValue : 0,
+    reason: data.reason === 'reducedCount' ? 'reducedCount' : data.reason === 'needsMoreSeats' ? 'needsMoreSeats' : 'notConfirmed',
   };
 }
 
@@ -374,14 +379,30 @@ export async function assignGroupToTable(
   await batch.commit();
 }
 
-async function createSeatingAlert(input: {
+// Deterministic per-(entry, cause) id rather than a random one - critical
+// when two admins have the dashboard open at once (see Gil's report of
+// duplicate alerts): both sessions can independently notice the same
+// over/under-assignment before either one's write has propagated back to
+// the other, and both would otherwise create their own separate alert doc
+// for the exact same event. A shared, predictable id means the second
+// session's write just overwrites the first session's - one doc, not two -
+// and it doubles as the key a later pass uses to update or clear that same
+// alert in place instead of piling up a fresh one every time this runs.
+function removalAlertId(rosterEntryId: string, tableId: string): string {
+  return `${rosterEntryId}__${tableId}`;
+}
+
+function needsMoreSeatsAlertId(rosterEntryId: string): string {
+  return `${rosterEntryId}__needsMore`;
+}
+
+async function upsertSeatingAlert(id: string, input: {
   guestName: string;
   category: string;
   tableName: string;
-  seatsRemoved: number;
+  seatsCount: number;
   reason: SeatingAlertReason;
 }): Promise<void> {
-  const id = makeId();
   await setDoc(doc(db, SEATING_ALERTS_COLLECTION, id), {
     ...input,
     createdAt: serverTimestamp(),
@@ -389,32 +410,41 @@ async function createSeatingAlert(input: {
 }
 
 // Keeps seating assignments honest against each roster entry's CURRENT
-// confirmed status/headcount - meant to be called every time the roster or
-// the assignments change (see the guarded effect in AdminDashboard.tsx), so
-// this reacts automatically whenever a guest edits their RSVP, Gil edits
-// their status by hand, or a linked RSVP is deleted/reverted - not just when
-// someone happens to click a "sync" button.
+// confirmed status/headcount - meant to be called every time the roster,
+// the assignments, or the alerts themselves change (see the guarded effect
+// in AdminDashboard.tsx), so this reacts automatically whenever a guest
+// edits their RSVP, Gil edits their status/count by hand, or a linked RSVP
+// is deleted/reverted - not just when someone happens to click a "sync"
+// button.
 //
-// Without this, a guest who un-RSVPs (or whose invitedCount drops) after
-// already being seated would silently keep "occupying" their seat forever:
-// the seatingAssignment row survives on its own, but the seating UI only
-// ever looks up CONFIRMED roster entries, so the table would just show a
-// mysterious "-" using up a seat with no way to tell who it was or free it.
+// Handles both directions of "seating no longer matches the roster":
 //
-// For each roster entry with more seats assigned than it's currently allowed
-// (0 if not confirmed/deleted, invitedCount if confirmed), trims just enough
-// of that entry's assignments - starting from whichever tables they're
-// seated at, in no particular order, since which specific table loses a
-// seat first doesn't matter here - down to what they're actually allowed,
-// and writes a SeatingAlert per table touched so Gil can see exactly who
-// came out, from which table, how many seats freed up, and why.
+// 1. Over-assigned (the guest un-RSVP'd, or their headcount dropped below
+//    what's currently seated) - without this, the seatingAssignment row
+//    would just survive on its own forever, quietly "occupying" a seat the
+//    seating UI can no longer identify (it only ever looks up CONFIRMED
+//    roster entries, so the table would just show a mysterious "-"). Trims
+//    just enough of that entry's assignments - starting from whichever
+//    tables they're seated at, in no particular order, since which specific
+//    table loses a seat first doesn't matter here - down to what they're
+//    actually allowed, and raises one alert per table touched.
+//
+// 2. Under-assigned (the guest is still confirmed and already seated, but
+//    their headcount GREW past what's currently assigned - e.g. edited from
+//    1 to 2 people). Never auto-picks a table for the extra seat(s) - there
+//    might not be room at their current table - so this only ever raises a
+//    visible alert naming their current table(s) and how many more seats
+//    are needed, for Gil to place by hand. Automatically clears that alert
+//    again once he's added enough seats to catch up.
 export async function syncSeatingAssignmentsWithRoster(
   entries: GuestRosterEntry[],
   assignments: SeatingAssignment[],
   tables: SeatingTable[],
+  alerts: SeatingAlert[],
 ): Promise<void> {
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
   const tablesById = new Map(tables.map((table) => [table.id, table]));
+  const alertIds = new Set(alerts.map((alert) => alert.id));
 
   const assignmentsByEntry = new Map<string, SeatingAssignment[]>();
   assignments.forEach((assignment) => {
@@ -427,30 +457,73 @@ export async function syncSeatingAssignmentsWithRoster(
     const entry = entriesById.get(rosterEntryId);
     const allowedSeats = entry && entry.knownResponse === 'yes' ? entry.invitedCount : 0;
     const totalAssigned = entryAssignments.reduce((sum, assignment) => sum + assignment.seatsCount, 0);
-    if (totalAssigned <= allowedSeats) continue;
+    const needsMoreId = needsMoreSeatsAlertId(rosterEntryId);
 
-    const guestName = entry ? `${entry.firstName} ${entry.lastName}`.trim() : '';
-    const category = entry?.category ?? '';
-    const reason: SeatingAlertReason = entry && entry.knownResponse === 'yes' ? 'reducedCount' : 'notConfirmed';
+    if (totalAssigned > allowedSeats) {
+      const guestName = entry ? `${entry.firstName} ${entry.lastName}`.trim() : '';
+      const category = entry?.category ?? '';
+      const reason: SeatingAlertReason = entry && entry.knownResponse === 'yes' ? 'reducedCount' : 'notConfirmed';
 
-    let seatsToFree = totalAssigned - allowedSeats;
-    for (const assignment of entryAssignments) {
-      if (seatsToFree <= 0) break;
-      const removeFromThis = Math.min(seatsToFree, assignment.seatsCount);
-      const nextSeats = assignment.seatsCount - removeFromThis;
-      seatsToFree -= removeFromThis;
+      let seatsToFree = totalAssigned - allowedSeats;
+      for (const assignment of entryAssignments) {
+        if (seatsToFree <= 0) break;
+        const removeFromThis = Math.min(seatsToFree, assignment.seatsCount);
+        const nextSeats = assignment.seatsCount - removeFromThis;
+        seatsToFree -= removeFromThis;
+        const table = tablesById.get(assignment.tableId);
 
-      const table = tablesById.get(assignment.tableId);
-      // eslint-disable-next-line no-await-in-loop
-      await setSeatingAssignment(rosterEntryId, assignment.tableId, nextSeats);
-      // eslint-disable-next-line no-await-in-loop
-      await createSeatingAlert({
-        guestName: guestName || '-',
-        category,
-        tableName: table?.name ?? '-',
-        seatsRemoved: removeFromThis,
-        reason,
-      });
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await setSeatingAssignment(rosterEntryId, assignment.tableId, nextSeats);
+          // eslint-disable-next-line no-await-in-loop
+          await upsertSeatingAlert(removalAlertId(rosterEntryId, assignment.tableId), {
+            guestName: guestName || '-',
+            category,
+            tableName: table?.name ?? '-',
+            seatsCount: removeFromThis,
+            reason,
+          });
+        } catch (error) {
+          console.error('Failed to sync an over-assigned seating entry', error);
+        }
+      }
+      // Being over- and under-assigned at once isn't possible, so there's
+      // nothing left to check for this entry this pass.
+      continue;
+    }
+
+    if (allowedSeats > 0 && totalAssigned > 0 && totalAssigned < allowedSeats) {
+      const confirmedEntry = entry as GuestRosterEntry; // allowedSeats > 0 implies entry exists and is confirmed
+      const guestName = `${confirmedEntry.firstName} ${confirmedEntry.lastName}`.trim();
+      const tableName = entryAssignments
+        .map((assignment) => tablesById.get(assignment.tableId)?.name)
+        .filter((name): name is string => Boolean(name))
+        .join(', ');
+
+      try {
+        await upsertSeatingAlert(needsMoreId, {
+          guestName: guestName || '-',
+          category: confirmedEntry.category,
+          tableName: tableName || '-',
+          seatsCount: allowedSeats - totalAssigned,
+          reason: 'needsMoreSeats',
+        });
+      } catch (error) {
+        console.error('Failed to raise a needs-more-seats seating alert', error);
+      }
+      continue;
+    }
+
+    // Fully in sync - clear a stale needsMoreSeats alert left over from
+    // before Gil added the extra seat(s), so it doesn't keep showing a
+    // resolved issue. Only bothers if one is actually known to exist, so a
+    // normally-seated entry never causes a pointless write every pass.
+    if (alertIds.has(needsMoreId)) {
+      try {
+        await dismissSeatingAlert(needsMoreId);
+      } catch (error) {
+        console.error('Failed to clear a resolved needs-more-seats seating alert', error);
+      }
     }
   }
 }

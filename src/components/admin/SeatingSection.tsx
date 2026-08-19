@@ -15,6 +15,7 @@ import {
   Pencil,
   Plus,
   RotateCw,
+  Search,
   Sparkles,
   Trash2,
   UserCheck,
@@ -127,9 +128,16 @@ export interface SeatingLabels {
   alertReasonNotConfirmed: string;
   alertReasonReducedCount: string;
   alertMessage: string;
+  alertMessageNeedsMoreSeats: string;
   dismissAlert: string;
   lockLayoutButton: string;
   unlockLayoutButton: string;
+  guestLookupHeading: string;
+  guestLookupPlaceholder: string;
+  guestLookupEmpty: string;
+  guestLookupStatusConfirmed: string;
+  guestLookupStatusDeclined: string;
+  guestLookupStatusPending: string;
 }
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status';
@@ -161,6 +169,12 @@ function GuestListSortableHeader({ label, sortKey, activeSort, onSort }: GuestLi
 
 interface SeatingSectionProps {
   confirmedEntries: GuestRosterEntry[];
+  // Every roster entry regardless of status - used only by the guest status
+  // lookup panel below, so anyone managing seating (including event-day
+  // staff, who otherwise never see the Roster tab at all) can check whether
+  // a surprise walk-in actually confirmed. Never used to populate the
+  // seating pool itself - that stays confirmedEntries-only.
+  allEntries: GuestRosterEntry[];
   tables: SeatingTable[];
   venueObjects: VenueObject[];
   groups: SeatingGroup[];
@@ -228,6 +242,7 @@ const OBJECT_DEFAULT_SIZE: Record<VenueObjectType, { width: number; height: numb
 
 export function SeatingSection({
   confirmedEntries,
+  allEntries,
   tables,
   venueObjects,
   groups,
@@ -255,6 +270,7 @@ export function SeatingSection({
   onGenerateVenueTables,
   onDismissAlert,
 }: SeatingSectionProps) {
+  const [guestLookupQuery, setGuestLookupQuery] = useState('');
   const [search, setSearch] = useState('');
   const [rowState, setRowState] = useState<Record<string, { seats: string; tableId: string }>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -426,6 +442,21 @@ export function SeatingSection({
       .sort((a, b) => entryName(a).localeCompare(entryName(b), locale));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confirmedEntries, search, locale, seatsAssignedByEntry]);
+
+  // "Is this surprise walk-in actually on the list?" lookup - deliberately
+  // searches EVERY roster entry regardless of status (unlike the unseated
+  // pool above, which is confirmed-only), so it can also surface someone who
+  // declined or never responded. Only computes/renders anything once Gil (or
+  // event staff) actually types something, and caps the result count, so
+  // this never turns into "the entire guest list" by accident.
+  const guestLookupResults = useMemo(() => {
+    const query = guestLookupQuery.trim().toLowerCase();
+    if (!query) return [];
+    return allEntries
+      .filter((entry) => entryName(entry).toLowerCase().includes(query) || entry.category.toLowerCase().includes(query))
+      .sort((a, b) => entryName(a).localeCompare(entryName(b), locale))
+      .slice(0, 15);
+  }, [allEntries, guestLookupQuery, locale]);
 
   const getRowState = (entry: GuestRosterEntry) => {
     const remaining = remainingForEntry(entry);
@@ -996,12 +1027,17 @@ export function SeatingSection({
             <div className="space-y-1">
               {alerts.map((alert) => {
                 const alertKey = `alert-${alert.id}`;
-                const reasonText = alert.reason === 'reducedCount' ? labels.alertReasonReducedCount : labels.alertReasonNotConfirmed;
-                const message = labels.alertMessage
-                  .replace('{name}', alert.guestName)
-                  .replace('{table}', alert.tableName)
-                  .replace('{seats}', String(alert.seatsRemoved))
-                  .replace('{reason}', reasonText);
+                const message = alert.reason === 'needsMoreSeats'
+                  ? labels.alertMessageNeedsMoreSeats
+                    .replace('{name}', alert.guestName)
+                    .replace('{category}', alert.category)
+                    .replace('{table}', alert.tableName)
+                    .replace('{seats}', String(alert.seatsCount))
+                  : labels.alertMessage
+                    .replace('{name}', alert.guestName)
+                    .replace('{table}', alert.tableName)
+                    .replace('{seats}', String(alert.seatsCount))
+                    .replace('{reason}', alert.reason === 'reducedCount' ? labels.alertReasonReducedCount : labels.alertReasonNotConfirmed);
                 return (
                   <div key={alert.id} className="flex items-start justify-between gap-2 rounded-xl bg-white/70 px-3 py-2 text-sm text-amber-900 dark:bg-slate-900/40 dark:text-amber-200">
                     <span className="min-w-0 flex-1">{message}</span>
@@ -1021,6 +1057,49 @@ export function SeatingSection({
             </div>
           </div>
         )}
+
+        {/* Guest status lookup - answers "is this surprise walk-in actually
+            on the list?" against the FULL roster (confirmed, declined, or
+            never responded), not just the confirmed/seatable pool below.
+            Especially useful for event-day seating staff, who never see the
+            Roster tab at all. */}
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.guestLookupHeading}</h3>
+          <div className="relative">
+            <Search size={14} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 rtl:right-3 ltr:left-3" />
+            <input
+              type="text"
+              value={guestLookupQuery}
+              onChange={(event) => setGuestLookupQuery(event.target.value)}
+              placeholder={labels.guestLookupPlaceholder}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700 rtl:pr-9 ltr:pl-9"
+            />
+          </div>
+          {guestLookupQuery.trim() && (
+            guestLookupResults.length === 0 ? (
+              <p className="mt-2 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">{labels.guestLookupEmpty}</p>
+            ) : (
+              <div className="mt-2 max-h-72 divide-y divide-gray-100 overflow-y-auto rounded-2xl border border-gray-100 dark:divide-slate-700 dark:border-slate-700">
+                {guestLookupResults.map((entry) => {
+                  const badge = entry.knownResponse === 'yes'
+                    ? { text: labels.guestLookupStatusConfirmed, className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' }
+                    : entry.knownResponse === 'no'
+                      ? { text: labels.guestLookupStatusDeclined, className: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' }
+                      : { text: labels.guestLookupStatusPending, className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' };
+                  return (
+                    <div key={entry.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100">{entryName(entry)}</p>
+                        <p className="truncate text-xs text-gray-500 dark:text-slate-400">{entry.side} · {entry.category}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+        </div>
 
         {/* Summary */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
