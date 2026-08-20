@@ -105,7 +105,6 @@ export interface SeatingLabels {
   listColumnInvited: string;
   listColumnStatus: string;
   listColumnTables: string;
-  listColumnGroups: string;
   listEmpty: string;
   deleteCheckboxLabel: string;
   deleteSelectedButton: string;
@@ -140,7 +139,7 @@ export interface SeatingLabels {
   guestLookupStatusPending: string;
 }
 
-type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status';
+type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status' | 'table';
 type GuestListStatusFilter = 'all' | 'seated' | 'partial' | 'unseated';
 
 interface GuestListSortableHeaderProps {
@@ -392,13 +391,9 @@ export function SeatingSection({
         })
         .filter((value): value is string => value !== null)
         .join(', ');
-      const groupSummary = groups
-        .filter((group) => group.memberEntryIds.includes(entry.id))
-        .map((group) => group.name)
-        .join(', ');
-      return { entry, name: entryName(entry), status, tableSummary, groupSummary, assignedTableIds: entryAssignments.map((a) => a.tableId) };
+      return { entry, name: entryName(entry), status, tableSummary, assignedTableIds: entryAssignments.map((a) => a.tableId) };
     });
-  }, [confirmedEntries, assignmentsByEntry, tablesById, groups]);
+  }, [confirmedEntries, assignmentsByEntry, tablesById]);
 
   const filteredSortedGuestListRows = useMemo(() => {
     const query = listSearch.trim().toLowerCase();
@@ -425,6 +420,8 @@ export function SeatingSection({
           return (a.entry.invitedCount - b.entry.invitedCount) * direction;
         case 'status':
           return a.status.localeCompare(b.status) * direction;
+        case 'table':
+          return a.tableSummary.localeCompare(b.tableSummary, locale) * direction;
         default:
           return 0;
       }
@@ -1849,8 +1846,7 @@ export function SeatingSection({
                             <GuestListSortableHeader label={labels.listColumnCategory} sortKey="category" activeSort={listSort} onSort={handleGuestListSort} />
                             <GuestListSortableHeader label={labels.listColumnInvited} sortKey="invitedCount" activeSort={listSort} onSort={handleGuestListSort} />
                             <GuestListSortableHeader label={labels.listColumnStatus} sortKey="status" activeSort={listSort} onSort={handleGuestListSort} />
-                            <th className="px-3 py-2 text-start font-semibold">{labels.listColumnTables}</th>
-                            <th className="px-3 py-2 text-start font-semibold">{labels.listColumnGroups}</th>
+                            <GuestListSortableHeader label={labels.listColumnTables} sortKey="table" activeSort={listSort} onSort={handleGuestListSort} />
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 bg-white dark:divide-slate-700 dark:bg-slate-900">
@@ -1874,7 +1870,6 @@ export function SeatingSection({
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{row.tableSummary || '-'}</td>
-                              <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{row.groupSummary || '-'}</td>
                             </tr>
                           ))}
                         </tbody>

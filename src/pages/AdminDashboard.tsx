@@ -3176,7 +3176,6 @@ export function AdminDashboard() {
                             listColumnInvited: t.adminSeatingListColumnInvited,
                             listColumnStatus: t.adminSeatingListColumnStatus,
                             listColumnTables: t.adminSeatingListColumnTables,
-                            listColumnGroups: t.adminSeatingListColumnGroups,
                             listEmpty: t.adminSeatingListEmpty,
                             deleteCheckboxLabel: t.adminSeatingDeleteCheckboxLabel,
                             deleteSelectedButton: t.adminSeatingDeleteSelectedButton,
