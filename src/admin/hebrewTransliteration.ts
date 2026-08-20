@@ -6,18 +6,34 @@
 // so there is no way to algorithmically recover which vowels belong between
 // consonants from the text alone (e.g. unpointed "דוד" could be "David",
 // "Dvir", or "Dod" - all valid readings of the same three letters). This
-// can only ever be an approximation, not a real translation.
+// can only ever be an approximation, not a real translation - a per-guest
+// manual English-name override is the only way to guarantee every name is
+// exactly right.
 //
-// Two layers, in order:
+// Three layers, in order:
 // 1. KNOWN_WORDS - an exact-match dictionary of words we can get right with
-//    confidence: the couple's own two side names (which must match how
-//    they're already spelled in the English UI - see i18n.ts's `names`
-//    key), "שולחן" (every table name is "שולחן NN"), and a curated list of
-//    very common Israeli first names and guest-category/relationship words.
-// 2. A plain per-letter consonant map as a fallback for anything not in the
-//    dictionary - this will often read oddly (no inferred vowels beyond
-//    what י/ו contribute) but at least produces *something* readable in
-//    Latin script rather than leaving the cell blank or crashing the export.
+//    confidence: the couple's own two side names (must match the English
+//    spelling already used elsewhere in the app - i18n.ts's `names` key),
+//    "שולחן" (every table name is "שולחן NN"), guest-category/relationship
+//    words, common Israeli first names AND surnames (including Sephardi/
+//    Mizrahi/North-African surnames, since a letter-by-letter fallback on a
+//    surname like "לוי" produced nonsense like "Lvi" instead of "Levi"),
+//    and common French-origin first names as they're spelled in Hebrew
+//    (many Israeli guests of French/North-African background have names
+//    that are a Hebrew phonetic spelling of a French name, e.g. "ז'קלין"
+//    for Jacqueline - these need their real French/French-transliterated
+//    spelling, not a literal letter-for-letter guess).
+// 2. DIGRAPHS - geresh-marked letter pairs (ג׳/ז׳/צ׳) used specifically to
+//    write sounds foreign to Hebrew (zh/j/ch) - almost always a sign the
+//    word is a loanword or foreign name. Applied before the plain per-
+//    letter fallback so a French name that ISN'T in KNOWN_WORDS at least
+//    gets its consonants right (e.g. "ז'ראר" -> "zhrr" is wrong either way
+//    without inferred vowels, but "zh" instead of "z" + apostrophe still
+//    reads closer to the real sound than a plain letter map would).
+// 3. LETTER_MAP - a plain per-letter consonant fallback for anything not
+//    covered above - will often read oddly (no inferred vowels beyond what
+//    י/ו contribute) but at least produces *something* readable in Latin
+//    script rather than leaving the cell blank or crashing the export.
 const KNOWN_WORDS: Record<string, string> = {
   // The couple's own sides - must match the English spelling already used
   // elsewhere in the app (i18n.ts `names: "Shelly & Gil"`).
@@ -70,11 +86,46 @@ const KNOWN_WORDS: Record<string, string> = {
   'רוני': 'Roni', 'רותם': 'Rotem', 'רחל': 'Rachel', 'רני': 'Rani',
   'שולי': 'Shuli', 'שחר': 'Shachar', 'שי': 'Shai', 'שירה': 'Shira',
   'שלמה': 'Shlomo', 'שקד': 'Shaked', 'שרה': 'Sarah', 'תום': 'Tom',
-  'תמר': 'Tamar',
+  'תמר': 'Tamar', 'שמעון': 'Shimon', 'חיים': 'Chaim', 'עמי': 'Ami',
+  'שושן': 'Shoshan', 'ציון': 'Tzion',
+  // Common Israeli surnames - Ashkenazi, Sephardi, Mizrahi and North
+  // African, spelled the way they're standardly romanized (not a literal
+  // letter map, which is exactly what produced Gil's "Levi" -> "Lvi" bug).
+  'כהן': 'Cohen', 'לוי': 'Levy', 'מזרחי': 'Mizrahi', 'פרץ': 'Peretz',
+  'ביטון': 'Bitton', 'עמר': 'Amar', 'מלכה': 'Malka', 'אזולאי': 'Azoulay',
+  'טולדנו': 'Toledano', 'שוקרון': 'Chocron', 'אלמליח': 'Elmaleh',
+  'פרידמן': 'Friedman', 'כץ': 'Katz', 'רוזן': 'Rosen', 'גולן': 'Golan',
+  'שפירא': 'Shapira', 'אשכנזי': 'Ashkenazi', 'ספרדי': 'Sephardi',
+  'חדד': 'Haddad', 'דהן': 'Dahan', 'אוחיון': 'Ohayon', 'חמו': 'Hamo',
+  'סויסה': 'Suissa', 'גבאי': 'Gabay', 'נחום': 'Nachum', 'עוזרי': 'Ozeri',
+  'מור': 'Mor', 'ברק': 'Barak', 'פלד': 'Peled', 'שרון': 'Sharon',
+  'ליבוביץ': 'Leibowitz', 'גרין': 'Green', 'שוורץ': 'Schwartz',
+  'וייס': 'Weiss', 'קליין': 'Klein', 'רבין': 'Rabin', 'חסון': 'Hasson',
+  'אוחנה': 'Ohana', 'דנינו': 'Danino', 'אסולין': 'Assouline',
+  'בוזגלו': 'Bouzaglo', 'אלבז': 'Elbaz', 'נקש': 'Nakash', 'אדרי': 'Edri',
+  'אסרף': 'Assaraf', 'בכר': 'Bekhor', 'טובול': 'Toubol', 'כדורי': 'Kadouri',
+  'פינטו': 'Pinto', 'סבן': 'Saban', 'מויאל': 'Moyal', 'עמאר': 'Amar',
+  'אוחיו': 'Ohayo', 'בן חמו': 'Ben Hamo',
+  // Common French-origin first names, as spelled in Hebrew - a plain
+  // letter map gets these badly wrong (French spelling conventions don't
+  // map to Hebrew consonant sounds at all), so these need their real
+  // French spelling looked up directly.
+  "ז'קלין": 'Jacqueline', 'מישל': 'Michel', 'אנדרה': 'André',
+  'פייר': 'Pierre', 'שרל': 'Charles', 'קלוד': 'Claude', 'רנה': 'René',
+  'איב': 'Yves', 'דומיניק': 'Dominique', 'סילבי': 'Sylvie', 'אן': 'Anne',
+  "ז'אן": 'Jean', "ז'אנין": 'Jeannine', 'מוריס': 'Maurice',
+  "ז'ראר": 'Gérard', 'אליאן': 'Eliane', 'ניקול': 'Nicole', 'לוסי': 'Lucie',
+  "ז'ילברט": 'Gilberte', 'ארמנד': 'Armand', 'רולן': 'Roland',
+  'מרסל': 'Marcel', "ז'וזה": 'José', 'אלן': 'Alain', 'פרנסין': 'Francine',
+  'עמנואל': 'Emmanuel', 'פטריק': 'Patrick', 'אודט': 'Odette',
+  "ז'וזיאן": 'Josiane', 'קורין': 'Corinne', 'ליליאן': 'Liliane',
+  'רוז': 'Rose', "ז'ואל": 'Joël', 'פרנק': 'Frank', 'ברנאר': 'Bernard',
+  'ויויאן': 'Vivian', "ז'קי": 'Jacky', "ז'ילי": 'Gilly',
 };
 
 // Plain consonant map, used only when a whole word isn't in KNOWN_WORDS
-// above. Final-form letters (ך ם ן ף ץ) map the same as their base form.
+// above and doesn't start with one of the DIGRAPHS below. Final-form
+// letters (ך ם ן ף ץ) map the same as their base form.
 const LETTER_MAP: Record<string, string> = {
   'א': 'a', 'ב': 'b', 'ג': 'g', 'ד': 'd', 'ה': 'h', 'ו': 'v', 'ז': 'z',
   'ח': 'ch', 'ט': 't', 'י': 'i', 'כ': 'kh', 'ך': 'kh', 'ל': 'l',
@@ -83,6 +134,16 @@ const LETTER_MAP: Record<string, string> = {
   'ש': 'sh', 'ת': 't',
 };
 
+// Geresh-marked letters exist specifically to write sounds foreign to
+// Hebrew - almost always a loanword or a name of foreign (often French)
+// origin - so these need to be caught before the plain per-letter map
+// below, which has no idea a geresh changes the sound at all.
+const DIGRAPHS: [string, string][] = [
+  ["ג'", 'j'],
+  ["ז'", 'zh'],
+  ["צ'", 'ch'],
+];
+
 const HAS_HEBREW_LETTER = /[֐-׿]/;
 
 function capitalize(word: string): string {
@@ -90,16 +151,31 @@ function capitalize(word: string): string {
 }
 
 function transliterateWord(word: string): string {
-  if (!HAS_HEBREW_LETTER.test(word)) {
+  // Normalizes the Hebrew geresh punctuation mark (׳, U+05F3) to a plain
+  // apostrophe first, so "ז׳קלין" and "ז'קלין" (both real-world spellings
+  // Gil's guest sheet could contain) hit the same KNOWN_WORDS/DIGRAPHS
+  // entries.
+  const normalized = word.replace(/׳/g, "'");
+
+  if (!HAS_HEBREW_LETTER.test(normalized)) {
     // Already Latin/digits/punctuation (e.g. "07", "-") - leave untouched.
     return word;
   }
-  const known = KNOWN_WORDS[word];
+  const known = KNOWN_WORDS[normalized];
   if (known) return known;
 
   let result = '';
-  for (const char of word) {
+  let remaining = normalized;
+  while (remaining.length > 0) {
+    const digraph = DIGRAPHS.find(([hebrew]) => remaining.startsWith(hebrew));
+    if (digraph) {
+      result += digraph[1];
+      remaining = remaining.slice(digraph[0].length);
+      continue;
+    }
+    const char = remaining[0];
     result += LETTER_MAP[char] ?? char;
+    remaining = remaining.slice(1);
   }
   return capitalize(result);
 }

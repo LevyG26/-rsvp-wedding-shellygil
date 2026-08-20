@@ -1,7 +1,13 @@
 import type { Cell, SheetData } from 'write-excel-file/browser';
 
+// First/last name are always kept as separate fields (never a single
+// combined "name" string) all the way through the export - Gil wants to be
+// able to sort/scan by family name specifically, which a combined string
+// can't do reliably (and it lets the transliterator dictionary-match a
+// surname like "לוי" on its own instead of as part of a longer phrase).
 export interface SeatingExportGuest {
-    name: string;
+    firstName: string;
+    lastName: string;
     category: string;
     seats: number;
 }
@@ -17,7 +23,8 @@ export interface SeatingExportTable {
 }
 
 export interface SeatingExportUnseatedGuest {
-    name: string;
+    firstName: string;
+    lastName: string;
     category: string;
     remaining: number;
 }
@@ -26,7 +33,8 @@ export interface SeatingExportUnseatedGuest {
 // in-app sortable list view (SeatingSection.tsx's guestListRows) so the
 // Excel export and the on-screen list always show the same information.
 export interface SeatingExportListRow {
-    name: string;
+    firstName: string;
+    lastName: string;
     side: string;
     category: string;
     invitedCount: number;
@@ -42,12 +50,12 @@ export interface SeatingExportLabels {
     tablesSheet: string;
     unseatedSheet: string;
     fullListSheet: string;
-    guestColumn: string;
+    firstNameColumn: string;
+    lastNameColumn: string;
     categoryColumn: string;
     guestSeatsColumn: string;
     remainingColumn: string;
     tableFullBadge: string;
-    listColumnName: string;
     listColumnSide: string;
     listColumnCategory: string;
     listColumnInvited: string;
@@ -109,29 +117,30 @@ export async function exportSeatingChart({ tables, unseated, fullList, labels, i
             },
         ]);
         tablesData.push(
-            [labels.guestColumn, labels.categoryColumn, labels.guestSeatsColumn].map((value) => ({ value, type: String, ...headerStyle })),
+            [labels.firstNameColumn, labels.lastNameColumn, labels.categoryColumn, labels.guestSeatsColumn].map((value) => ({ value, type: String, ...headerStyle })),
         );
         if (table.guests.length === 0) {
-            tablesData.push([textCell('-'), textCell(''), '']);
+            tablesData.push([textCell('-'), textCell(''), textCell(''), '']);
         } else {
             table.guests.forEach((guest) => {
-                tablesData.push([textCell(guest.name), textCell(guest.category), guest.seats]);
+                tablesData.push([textCell(guest.firstName), textCell(guest.lastName), textCell(guest.category), guest.seats]);
             });
         }
         tablesData.push([]);
     });
 
     const unseatedData: SheetData = [
-        [labels.guestColumn, labels.categoryColumn, labels.remainingColumn].map((value) => ({ value, type: String, ...headerStyle })),
-        ...unseated.map((guest) => [textCell(guest.name), textCell(guest.category), guest.remaining]),
+        [labels.firstNameColumn, labels.lastNameColumn, labels.categoryColumn, labels.remainingColumn].map((value) => ({ value, type: String, ...headerStyle })),
+        ...unseated.map((guest) => [textCell(guest.firstName), textCell(guest.lastName), textCell(guest.category), guest.remaining]),
     ];
 
     // Full, flat, sorted guest list (every confirmed guest, seated or not) -
-    // the caller already sorts `fullList` by name before passing it in, same
-    // as the tables sheet above.
+    // the caller already sorts `fullList` by last name (then first name)
+    // before passing it in, same as the tables sheet above.
     const fullListData: SheetData = [
         [
-            labels.listColumnName,
+            labels.firstNameColumn,
+            labels.lastNameColumn,
             labels.listColumnSide,
             labels.listColumnCategory,
             labels.listColumnInvited,
@@ -139,7 +148,8 @@ export async function exportSeatingChart({ tables, unseated, fullList, labels, i
             labels.listColumnTables,
         ].map((value) => ({ value, type: String, ...headerStyle })),
         ...fullList.map((row, index) => [
-            bandedTextCell(row.name, index % 2 === 1),
+            bandedTextCell(row.firstName, index % 2 === 1),
+            bandedTextCell(row.lastName, index % 2 === 1),
             bandedTextCell(row.side, index % 2 === 1),
             bandedTextCell(row.category, index % 2 === 1),
             { value: row.invitedCount, type: Number, backgroundColor: index % 2 === 1 ? '#F3F4F6' : '#FFFFFF', alignVertical: 'top' as const },
@@ -156,14 +166,14 @@ export async function exportSeatingChart({ tables, unseated, fullList, labels, i
             {
                 data: tablesData,
                 sheet: labels.tablesSheet,
-                columns: [{ width: 28 }, { width: 20 }, { width: 12 }],
+                columns: [{ width: 18 }, { width: 18 }, { width: 20 }, { width: 12 }],
                 rightToLeft: isRtl,
                 orientation: 'landscape',
             },
             {
                 data: fullListData,
                 sheet: labels.fullListSheet,
-                columns: [{ width: 22 }, { width: 22 }, { width: 20 }, { width: 12 }, { width: 18 }, { width: 26 }],
+                columns: [{ width: 18 }, { width: 18 }, { width: 22 }, { width: 20 }, { width: 12 }, { width: 18 }, { width: 26 }],
                 stickyRowsCount: 1,
                 rightToLeft: isRtl,
                 orientation: 'landscape',
@@ -171,7 +181,7 @@ export async function exportSeatingChart({ tables, unseated, fullList, labels, i
             {
                 data: unseatedData,
                 sheet: labels.unseatedSheet,
-                columns: [{ width: 28 }, { width: 20 }, { width: 14 }],
+                columns: [{ width: 18 }, { width: 18 }, { width: 20 }, { width: 14 }],
                 stickyRowsCount: 1,
                 rightToLeft: isRtl,
                 orientation: 'landscape',

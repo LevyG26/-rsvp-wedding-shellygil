@@ -91,7 +91,8 @@ export interface SeatingLabels {
   exportLanguageOriginal: string;
   exportLanguageEnglish: string;
   exportError: string;
-  exportGuestColumn: string;
+  rosterFirstName: string;
+  rosterLastName: string;
   exportCategoryColumn: string;
   exportSeatsColumn: string;
   exportRemainingColumn: string;
@@ -788,19 +789,24 @@ export function SeatingSection({
       // otherwise. Column headers/status words below are real, already-
       // written English strings from translations.en - not transliterated.
       const localizeName = (value: string) => (useEnglish ? transliterateHebrew(value) : value);
+      // Sorts by last name first, then first name - Gil wants the export
+      // ordered the way a printed seating/name-card list normally is (by
+      // family name), not by first name.
+      const byLastThenFirstName = (a: { firstName: string; lastName: string }, b: { firstName: string; lastName: string }) =>
+        a.lastName.localeCompare(b.lastName, locale) || a.firstName.localeCompare(b.firstName, locale);
       const en = translations.en;
       const exportLabels = useEnglish
         ? {
             tablesSheet: en.adminSeatingTablesHeading,
             unseatedSheet: en.adminSeatingUnseatedHeading,
             fullListSheet: en.adminSeatingFullListSheet,
-            guestColumn: en.adminSeatingExportGuestColumn,
+            firstNameColumn: en.adminRosterFirstName,
+            lastNameColumn: en.adminRosterLastName,
             categoryColumn: en.adminSeatingExportCategoryColumn,
             guestSeatsColumn: en.adminSeatingExportSeatsColumn,
             remainingColumn: en.adminSeatingExportRemainingColumn,
             tableFullBadge: en.adminSeatingTableFullBadge,
             occupiedLabel: en.adminSeatingExportOccupiedLabel,
-            listColumnName: en.adminSeatingListColumnName,
             listColumnSide: en.adminSeatingListColumnSide,
             listColumnCategory: en.adminSeatingListColumnCategory,
             listColumnInvited: en.adminSeatingListColumnInvited,
@@ -811,13 +817,13 @@ export function SeatingSection({
             tablesSheet: labels.tablesHeading,
             unseatedSheet: labels.unseatedHeading,
             fullListSheet: labels.fullListSheet,
-            guestColumn: labels.exportGuestColumn,
+            firstNameColumn: labels.rosterFirstName,
+            lastNameColumn: labels.rosterLastName,
             categoryColumn: labels.exportCategoryColumn,
             guestSeatsColumn: labels.exportSeatsColumn,
             remainingColumn: labels.exportRemainingColumn,
             tableFullBadge: labels.tableFullBadge,
             occupiedLabel: labels.exportOccupiedLabel,
-            listColumnName: labels.listColumnName,
             listColumnSide: labels.listColumnSide,
             listColumnCategory: labels.listColumnCategory,
             listColumnInvited: labels.listColumnInvited,
@@ -837,10 +843,15 @@ export function SeatingSection({
           .map((assignment) => {
             const entry = entriesById.get(assignment.rosterEntryId);
             if (!entry) return null;
-            return { name: localizeName(entryName(entry)), category: localizeName(entry.category), seats: assignment.seatsCount };
+            return {
+              firstName: localizeName(entry.firstName),
+              lastName: localizeName(entry.lastName),
+              category: localizeName(entry.category),
+              seats: assignment.seatsCount,
+            };
           })
           .filter((guest): guest is SeatingExportGuest => guest !== null)
-          .sort((a, b) => a.name.localeCompare(b.name, locale));
+          .sort(byLastThenFirstName);
         const used = seatsUsedByTable.get(table.id) ?? 0;
         return {
           name: localizeName(table.name),
@@ -852,13 +863,19 @@ export function SeatingSection({
 
       const unseatedExport: SeatingExportUnseatedGuest[] = confirmedEntries
         .filter((entry) => remainingForEntry(entry) > 0)
-        .map((entry) => ({ name: localizeName(entryName(entry)), category: localizeName(entry.category), remaining: remainingForEntry(entry) }))
-        .sort((a, b) => a.name.localeCompare(b.name, locale));
+        .map((entry) => ({
+          firstName: localizeName(entry.firstName),
+          lastName: localizeName(entry.lastName),
+          category: localizeName(entry.category),
+          remaining: remainingForEntry(entry),
+        }))
+        .sort(byLastThenFirstName);
 
       const fullListExport: SeatingExportListRow[] = [...guestListRows]
-        .sort((a, b) => a.name.localeCompare(b.name, locale))
+        .sort((a, b) => byLastThenFirstName(a.entry, b.entry))
         .map((row) => ({
-          name: localizeName(row.name),
+          firstName: localizeName(row.entry.firstName),
+          lastName: localizeName(row.entry.lastName),
           side: localizeName(row.entry.side),
           category: localizeName(row.entry.category),
           invitedCount: row.entry.invitedCount,
