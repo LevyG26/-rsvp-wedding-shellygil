@@ -233,6 +233,27 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
     [entries, locale, sideFilter],
   );
 
+  // Existing categories, grouped by side, so the per-row category editor
+  // only ever offers a closed list of categories that already exist for
+  // that guest's side - never free text - avoiding typo/near-duplicate
+  // category strings (e.g. "חברים דור" vs "חברים-דור") that would otherwise
+  // silently split one group into two everywhere category is used.
+  const categoriesBySide = useMemo(() => {
+    const map = new Map<string, string[]>();
+    entries.forEach((entry) => {
+      if (!entry.category) return;
+      const list = map.get(entry.side) ?? [];
+      if (!list.includes(entry.category)) {
+        list.push(entry.category);
+      }
+      map.set(entry.side, list);
+    });
+    map.forEach((list, side) => {
+      map.set(side, [...list].sort((a, b) => a.localeCompare(b, locale)));
+    });
+    return map;
+  }, [entries, locale]);
+
   const sideTotals = useMemo(() => {
     const bySide = new Map<string, Totals>();
     entries.forEach((entry) => {
@@ -475,6 +496,38 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
       });
     } catch (updateError) {
       console.error('Failed to update guest roster count', updateError);
+      setRowErrors((prev) => ({ ...prev, [entry.id]: labels.updateError }));
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // Category is picked from a closed dropdown (categoriesBySide, above) -
+  // never free text - so this can only ever reassign a guest to another
+  // category that already exists on their side, never invent a new one or
+  // introduce a typo'd variant. Like handleNameChange below, this keeps the
+  // same document ID, so every other screen that reads this entry live
+  // (seating panels, guest lookup, exports) picks up the new category
+  // automatically without any extra sync step.
+  const handleCategoryChange = async (entry: GuestRosterEntry, value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === entry.category) {
+      return;
+    }
+
+    setSavingId(entry.id);
+    setRowErrors((prev) => ({ ...prev, [entry.id]: '' }));
+    try {
+      await onUpdate(entry.id, {
+        side: entry.side,
+        category: trimmed,
+        firstName: entry.firstName,
+        lastName: entry.lastName,
+        invitedCount: entry.invitedCount,
+        knownResponse: entry.knownResponse,
+      });
+    } catch (updateError) {
+      console.error('Failed to update guest roster category', updateError);
       setRowErrors((prev) => ({ ...prev, [entry.id]: labels.updateError }));
     } finally {
       setSavingId(null);
@@ -874,6 +927,22 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                                 className="w-full min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm font-medium text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
                               />
                             </div>
+                            <div className="mt-3">
+                              <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{labels.category}</p>
+                              <select
+                                value={entry.category}
+                                disabled={isSaving}
+                                onChange={(event) => handleCategoryChange(entry, event.target.value)}
+                                className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
+                              >
+                                {!(categoriesBySide.get(entry.side) ?? []).includes(entry.category) && (
+                                  <option value={entry.category}>{entry.category}</option>
+                                )}
+                                {(categoriesBySide.get(entry.side) ?? []).map((category) => (
+                                  <option key={category} value={category}>{category}</option>
+                                ))}
+                              </select>
+                            </div>
                             <div className="mt-3 grid grid-cols-2 gap-3">
                               <div>
                                 <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">{labels.invitedCount}</p>
@@ -964,7 +1033,21 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
                               </div>
                             </td>
                             <td className="px-4 py-2 text-gray-700 dark:text-slate-300">{entry.side}</td>
-                            <td className="px-4 py-2 text-gray-700 dark:text-slate-300">{entry.category}</td>
+                            <td className="px-4 py-2">
+                              <select
+                                value={entry.category}
+                                disabled={isSaving}
+                                onChange={(event) => handleCategoryChange(entry, event.target.value)}
+                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
+                              >
+                                {!(categoriesBySide.get(entry.side) ?? []).includes(entry.category) && (
+                                  <option value={entry.category}>{entry.category}</option>
+                                )}
+                                {(categoriesBySide.get(entry.side) ?? []).map((category) => (
+                                  <option key={category} value={category}>{category}</option>
+                                ))}
+                              </select>
+                            </td>
                             <td className="px-4 py-2 text-center">
                               <input
                                 type="number"

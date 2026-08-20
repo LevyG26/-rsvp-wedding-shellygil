@@ -1560,7 +1560,17 @@ export function AdminDashboard() {
             return;
         }
 
-        await updateGuestRosterEntry(id, input);
+        // Preserve the link flags from the existing doc: this call handles
+        // name/category/etc edits (never status/count, handled above), and
+        // GuestRosterSection never passes linkedFromRsvp/preLinkInvitedCount
+        // itself (see GuestRosterEntryInput) - without this, toEntryDocData's
+        // defaults would silently reset a linked entry's linkedFromRsvp back
+        // to false on every plain name or category edit.
+        await updateGuestRosterEntry(id, {
+            ...input,
+            linkedFromRsvp: input.linkedFromRsvp ?? previousEntry?.linkedFromRsvp ?? false,
+            preLinkInvitedCount: input.preLinkInvitedCount ?? previousEntry?.preLinkInvitedCount ?? null,
+        });
         await reloadGuestRoster();
 
         if (previousFullName && nextFullName && previousFullName !== nextFullName) {
