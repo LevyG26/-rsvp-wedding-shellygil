@@ -1521,22 +1521,31 @@ export function AdminDashboard() {
         const previousFullName = previousEntry ? `${previousEntry.firstName} ${previousEntry.lastName}`.trim() : '';
         const nextFullName = `${input.firstName} ${input.lastName}`.trim();
 
-        // A status edit on an entry that's linked to a real submission needs
-        // to change that submission itself, not just this roster row -
-        // otherwise the automatic RSVP-roster linker (the effect above, which
-        // exists specifically to keep the roster matching the real
-        // submissions) would just overwrite this edit back within moments,
-        // which is exactly the "changes revert by themselves" behavior Gil
-        // ran into before isAttending was syncable at all.
-        if (previousEntry && previousEntry.linkedFromRsvp && input.knownResponse !== previousEntry.knownResponse) {
-            if (input.knownResponse === null) {
+        // A status OR headcount edit on an entry that's linked to a real
+        // submission needs to change that submission itself, not just this
+        // roster row - otherwise the automatic RSVP-roster linker (the
+        // effect above, which exists specifically to keep the roster
+        // matching the real submissions) would just re-derive this entry's
+        // values from the RSVP again on its very next pass and silently
+        // overwrite the edit. That reverting is exactly the "changes revert
+        // by themselves" behavior Gil ran into before isAttending was
+        // syncable this way - and headcount had the exact same gap (bumping
+        // a linked guest from 1 to 2 kept snapping back to 1) until now.
+        const statusChanged = previousEntry?.linkedFromRsvp === true && input.knownResponse !== previousEntry.knownResponse;
+        const countChanged = previousEntry?.linkedFromRsvp === true && input.invitedCount !== previousEntry.invitedCount;
+
+        if (statusChanged || countChanged) {
+            if (statusChanged && input.knownResponse === null) {
                 setError(t.adminRosterCannotClearLinkedStatus);
                 throw new Error('cannot-clear-linked-status');
             }
             try {
-                await syncRosterStatusChangeToRsvp(id, input.knownResponse === 'yes');
+                await syncRosterChangeToRsvp(id, {
+                    ...(statusChanged ? { isAttending: input.knownResponse === 'yes' } : {}),
+                    ...(countChanged ? { guestsCount: input.invitedCount } : {}),
+                });
             } catch (syncError) {
-                console.error('Failed to sync roster status change back to the linked RSVP', syncError);
+                console.error('Failed to sync roster change back to the linked RSVP', syncError);
                 setError(t.adminRosterSyncToRsvpError);
                 throw syncError;
             }
@@ -1832,19 +1841,34 @@ export function AdminDashboard() {
 
     // Mirrors handleAttendanceChange above, but triggered from the guest
     // roster tab instead of the Responses tab - see handleUpdateGuestRosterEntry,
-    // which calls this only when a roster entry's status actually changed and
-    // that entry is currently linked to a real submission. Throws (rather than
-    // swallowing the error) so the roster-tab caller can surface it right next
-    // to the field the admin was just editing, instead of only in the
-    // page-level error banner.
-    const syncRosterStatusChangeToRsvp = async (rosterEntryId: string, nextIsAttending: boolean) => {
+    // which calls this only when a roster entry's status and/or headcount
+    // actually changed and that entry is currently linked to a real
+    // submission. Writes straight to the RSVP document itself (never the
+    // roster row directly) so the automatic RSVP-roster linker re-derives
+    // the SAME value on its very next pass instead of silently reverting the
+    // edit - that reverting is exactly what happened before headcount edits
+    // were covered here too (Gil bumping a linked guest from 1 to 2 kept
+    // snapping back to 1, since only isAttending used to be protected this
+    // way). Throws (rather than swallowing the error) so the roster-tab
+    // caller can surface it right next to the field the admin was just
+    // editing, instead of only in the page-level error banner.
+    const syncRosterChangeToRsvp = async (
+        rosterEntryId: string,
+        changes: { isAttending?: boolean; guestsCount?: number },
+    ) => {
         const linkedRecord = findSingleLinkedRsvpRecord(rosterEntryId);
         if (linkedRecord === 'none' || linkedRecord === 'ambiguous') {
             throw new Error(linkedRecord);
         }
-        await updateDoc(doc(db, 'rsvps', linkedRecord.id), { isAttending: nextIsAttending, attendanceSetByAdmin: true });
+        const updates: Record<string, unknown> = { ...changes };
+        if (changes.isAttending !== undefined) {
+            updates.attendanceSetByAdmin = true;
+        }
+        await updateDoc(doc(db, 'rsvps', linkedRecord.id), updates);
         setRecords((prevRecords) => prevRecords.map((record) => (
-            record.id === linkedRecord.id ? { ...record, isAttending: nextIsAttending, attendanceSetByAdmin: true } : record
+            record.id === linkedRecord.id
+                ? { ...record, ...changes, ...(changes.isAttending !== undefined ? { attendanceSetByAdmin: true } : {}) }
+                : record
         )));
     };
 
