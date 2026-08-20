@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowDown,
@@ -80,6 +80,8 @@ export interface SeatingLabels {
   zoomOutLabel: string;
   zoomInLabel: string;
   zoomResetLabel: string;
+  enterFullScreenLabel: string;
+  exitFullScreenLabel: string;
   exportListButton: string;
   exportImageButton: string;
   exportError: string;
@@ -309,6 +311,36 @@ export function SeatingSection({
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [exportError, setExportError] = useState('');
   const floorPlanRef = useRef<SeatingFloorPlanHandle>(null);
+
+  // Real Fullscreen API state for the map view. The element that actually
+  // goes fullscreen (fullScreenContainerRef, below) wraps BOTH the canvas
+  // and the sticky table-detail side panel together - not the canvas alone
+  // - so clicking a table to see its seated guests keeps working exactly the
+  // same while fullscreen. isFullScreen is driven off the browser's own
+  // fullscreenchange event (not just the button click) so it also stays
+  // correct if Gil exits with Escape instead of the button.
+  const fullScreenContainerRef = useRef<HTMLDivElement>(null);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullScreenChange = () => {
+      setIsFullScreen(document.fullscreenElement === fullScreenContainerRef.current);
+    };
+    document.addEventListener('fullscreenchange', handleFullScreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
+  }, []);
+
+  const handleToggleFullScreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await fullScreenContainerRef.current?.requestFullscreen();
+      }
+    } catch (fullScreenError) {
+      console.error('Failed to toggle seating floor plan fullscreen', fullScreenError);
+    }
+  };
 
   const [isGeneratingVenueTables, setIsGeneratingVenueTables] = useState(false);
   const [generateVenueTablesError, setGenerateVenueTablesError] = useState('');
@@ -1544,7 +1576,12 @@ export function SeatingSection({
                   past the canvas to see who's seated at the table you just
                   selected. Below the lg breakpoint it just stacks (details
                   under the canvas), same as before. */}
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+              <div
+                ref={fullScreenContainerRef}
+                className={`grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start ${
+                  isFullScreen ? 'h-screen overflow-y-auto bg-white p-4 dark:bg-slate-900' : ''
+                }`}
+              >
               <SeatingFloorPlan
                 ref={floorPlanRef}
                 tables={sortedTables}
@@ -1578,6 +1615,10 @@ export function SeatingSection({
                 onToggleLocked={handleToggleLayoutLock}
                 lockLabel={labels.lockLayoutButton}
                 unlockLabel={labels.unlockLayoutButton}
+                isFullScreen={isFullScreen}
+                onToggleFullScreen={handleToggleFullScreen}
+                enterFullScreenLabel={labels.enterFullScreenLabel}
+                exitFullScreenLabel={labels.exitFullScreenLabel}
               />
 
               <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">

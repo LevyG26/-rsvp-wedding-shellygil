@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Disc3, DoorOpen, Lock, Maximize2, Minus, Music, Plus, Tag, Unlock, Wine } from 'lucide-react';
+import { Disc3, DoorOpen, Lock, Maximize2, Minimize2, Minus, Music, Plus, Tag, Unlock, Wine } from 'lucide-react';
 import type { SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
 import type { VenueObject, VenueObjectType } from '../../services/venueObjects';
 
@@ -249,6 +249,16 @@ interface SeatingFloorPlanProps {
   onToggleLocked: () => void;
   lockLabel: string;
   unlockLabel: string;
+  // Real browser Fullscreen API state, owned by the parent (SeatingSection)
+  // since the element that actually goes fullscreen wraps this canvas AND
+  // the sticky table-detail side panel together - not just the canvas alone
+  // - so clicking a table to see who's seated there keeps working while
+  // fullscreen. This component only reads the flag to give the canvas
+  // viewport more on-screen height, and renders the toggle button.
+  isFullScreen: boolean;
+  onToggleFullScreen: () => void;
+  enterFullScreenLabel: string;
+  exitFullScreenLabel: string;
 }
 
 function waitForNextPaint(): Promise<void> {
@@ -308,6 +318,10 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     onToggleLocked,
     lockLabel,
     unlockLabel,
+    isFullScreen,
+    onToggleFullScreen,
+    enterFullScreenLabel,
+    exitFullScreenLabel,
   },
   ref,
 ) {
@@ -614,14 +628,20 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
         <button type="button" onClick={zoomIn} title={zoomInLabel} className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
           <Plus size={14} />
         </button>
-        <button type="button" onClick={zoomReset} title={zoomResetLabel} className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
-          <Maximize2 size={14} />
+        <button
+          type="button"
+          onClick={onToggleFullScreen}
+          title={isFullScreen ? exitFullScreenLabel : enterFullScreenLabel}
+          aria-label={isFullScreen ? exitFullScreenLabel : enterFullScreenLabel}
+          className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+        >
+          {isFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
       </div>
       <div
         ref={scrollContainerRef}
         className="relative touch-none overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/40 dark:border-slate-700 dark:bg-slate-800/40"
-        style={{ height: 480 }}
+        style={{ height: isFullScreen ? 'calc(100vh - 220px)' : 480 }}
       >
           <div
             ref={canvasRef}

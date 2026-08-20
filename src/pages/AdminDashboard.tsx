@@ -3151,6 +3151,8 @@ export function AdminDashboard() {
                             zoomOutLabel: t.adminSeatingZoomOut,
                             zoomInLabel: t.adminSeatingZoomIn,
                             zoomResetLabel: t.adminSeatingZoomReset,
+                            enterFullScreenLabel: t.adminSeatingEnterFullScreen,
+                            exitFullScreenLabel: t.adminSeatingExitFullScreen,
                             exportListButton: t.adminSeatingExportListButton,
                             exportImageButton: t.adminSeatingExportImageButton,
                             exportError: t.adminSeatingExportError,
