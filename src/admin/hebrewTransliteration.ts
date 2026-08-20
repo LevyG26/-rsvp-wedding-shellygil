@@ -66,6 +66,7 @@ const KNOWN_WORDS: Record<string, string> = {
   // Very common Israeli first names (best-effort coverage, not exhaustive).
   'אברהם': 'Avraham', 'אבי': 'Avi', 'אביב': 'Aviv', 'אבינועם': 'Avinoam',
   'אדם': 'Adam', 'אהוד': 'Ehud', 'אורי': 'Uri', 'אורית': 'Orit',
+  'אריאלה': 'Ariella', 'אריאל': 'Ariel',
   'איתי': 'Itai', 'איתן': 'Eitan', 'אלה': 'Ella', 'אלון': 'Alon',
   'אלי': 'Eli', 'אליה': 'Elya', 'אלישע': 'Elisha', 'אמיר': 'Amir',
   'אסף': 'Asaf', 'אסתר': 'Esther', 'ארז': 'Erez', 'בן': 'Ben',
@@ -88,6 +89,42 @@ const KNOWN_WORDS: Record<string, string> = {
   'שלמה': 'Shlomo', 'שקד': 'Shaked', 'שרה': 'Sarah', 'תום': 'Tom',
   'תמר': 'Tamar', 'שמעון': 'Shimon', 'חיים': 'Chaim', 'עמי': 'Ami',
   'שושן': 'Shoshan', 'ציון': 'Tzion',
+  // Additional common Israeli/Jewish first names (male and female).
+  'גלעד': 'Gilad', 'אבנר': 'Avner', 'אביעד': 'Aviad', 'אביחי': 'Avichai',
+  'אלעד': 'Elad', 'אסא': 'Asa', 'ברוך': 'Baruch', 'גדעון': 'Gideon',
+  'גל': 'Gal', 'דור': 'Dor', 'דורון': 'Doron', 'זוהר': 'Zohar',
+  'חגי': 'Chagai', 'טוביה': 'Tuvia', 'יגאל': 'Yigal', 'ידידיה': 'Yedidya',
+  'יובל': 'Yuval', 'יונה': 'Yona', 'יורם': 'Yoram', 'יזהר': 'Yizhar',
+  'ירון': 'Yaron', 'ישי': 'Yishai', 'כפיר': 'Kfir', 'מנחם': 'Menachem',
+  'מנשה': 'Menashe', 'נריה': 'Nerya', 'נתנאל': 'Netanel', 'סהר': 'Sahar',
+  'עדן': 'Eden', 'עוז': 'Oz', 'עוזי': 'Uzi', 'עידן': 'Idan',
+  'עציון': 'Etzion', 'פנחס': 'Pinchas', 'צביקה': 'Tzvika', 'צחי': 'Tzachi',
+  'קובי': 'Kobi', 'רם': 'Ram', 'רפי': 'Rafi', 'שאול': 'Shaul',
+  'שגיא': 'Sagi', 'תומר': 'Tomer', 'אור': 'Or', 'אורן': 'Oren',
+  'בועז': 'Boaz', 'אלירן': 'Eliran', 'אביתר': 'Evyatar', 'אסי': 'Asi',
+  'אביגיל': 'Avigail', 'אביטל': 'Avital', 'אורנה': 'Orna', 'אורלי': 'Orly',
+  'אילנה': 'Ilana', 'אילת': 'Eilat', 'גליה': 'Galia', 'גפן': 'Gefen',
+  'דבורה': 'Devora', 'הודיה': 'Hodaya', 'הילי': 'Hili', 'ורדית': 'Vardit',
+  'חגית': 'Chagit', 'חופית': 'Chofit', 'טובה': 'Tova', 'יונית': 'Yonit',
+  'יפה': 'Yafa', 'יערה': 'Yaara', 'כרמל': 'Carmel', 'לאה': 'Leah',
+  'ליטל': 'Lital', 'ליהי': 'Lihi', 'מעיין': 'Maayan', 'נדין': 'Nadine',
+  'נופר': 'Nofar', 'נחמה': 'Nechama', 'סיגל': 'Sigal', 'סתיו': 'Stav',
+  'עינת': 'Einat', 'ענבל': 'Inbal', 'פנינה': 'Penina', 'צופיה': 'Tzofia',
+  'קרן': 'Keren', 'רבקה': 'Rivka', 'רות': 'Ruth', 'שולמית': 'Shulamit',
+  'שני': 'Shani', 'תהילה': 'Tehila', 'תמי': 'Tami', 'הגר': 'Hagar',
+  'זהבה': 'Zahava', 'מרים': 'Miriam', 'שירי': 'Shiri', 'עדינה': 'Adina',
+  'ענת': 'Anat', 'עליזה': 'Aliza', 'אסתי': 'Esti',
+  // Additional common Israeli/Jewish surnames.
+  'אבידן': 'Avidan', 'אביטן': 'Avitan', 'אדלר': 'Adler', 'אלוני': 'Aloni',
+  'בוסקילה': 'Bouskila', 'בן שמעון': 'Ben Shimon', 'בן צור': 'Ben Tzur',
+  'גורן': 'Goren', 'דרוקר': 'Drucker', 'הלוי': 'HaLevy', 'וקנין': 'Vaknin',
+  'כרמי': 'Karmi', 'לחיאני': 'Lachiani', 'מלול': 'Malul', 'נבון': 'Navon',
+  'ניסים': 'Nissim', 'סומך': 'Somekh', 'פדידה': 'Pdida', 'קדוש': 'Kadosh',
+  'רז': 'Raz', 'שגב': 'Sagiv', 'אביטבול': 'Avitbol', 'גבע': 'Geva',
+  'עזרן': 'Ezran', 'מסיקה': 'Messika',
+  // The venue's own production/design team (from venueSeatingLayout.ts's
+  // source comment) - real names Gil will actually run into in exports.
+  'שוסטרמן': 'Shusterman', 'טייר': 'Tayar',
   // Common Israeli surnames - Ashkenazi, Sephardi, Mizrahi and North
   // African, spelled the way they're standardly romanized (not a literal
   // letter map, which is exactly what produced Gil's "Levi" -> "Lvi" bug).
@@ -166,16 +203,31 @@ function transliterateWord(word: string): string {
 
   let result = '';
   let remaining = normalized;
+  let isWordStart = true;
   while (remaining.length > 0) {
     const digraph = DIGRAPHS.find(([hebrew]) => remaining.startsWith(hebrew));
     if (digraph) {
       result += digraph[1];
       remaining = remaining.slice(digraph[0].length);
+      isWordStart = false;
       continue;
     }
     const char = remaining[0];
-    result += LETTER_MAP[char] ?? char;
+    // א and ע are silent/vowel-carrier letters, normally dropped (see
+    // LETTER_MAP) - but dropping them at the very start of a word leaves
+    // nothing to capitalize (e.g. "עדינה" -> "" + "dinה..." -> "dinh",
+    // never getting a capital letter at all, which is exactly the bug Gil
+    // flagged: every transliterated name must visibly start with a capital
+    // letter). 'a' is the most common word-initial vowel sound for both
+    // letters in practice (Avi, Adam, Adina, Amit...), so it's the least-
+    // wrong single default here.
+    if (isWordStart && (char === 'א' || char === 'ע')) {
+      result += 'a';
+    } else {
+      result += LETTER_MAP[char] ?? char;
+    }
     remaining = remaining.slice(1);
+    isWordStart = false;
   }
   return capitalize(result);
 }
