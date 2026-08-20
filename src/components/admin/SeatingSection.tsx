@@ -25,7 +25,9 @@ import {
 import type { GuestRosterEntry } from '../../services/guestRoster';
 import type { SeatingAlert, SeatingAssignment, SeatingGroup, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
 import type { VenueObject, VenueObjectType } from '../../services/venueObjects';
-import { exportSeatingChart, type SeatingExportGuest, type SeatingExportTable, type SeatingExportUnseatedGuest } from '../../admin/exportSeatingChart';
+import { exportSeatingChart, type SeatingExportGuest, type SeatingExportListRow, type SeatingExportTable, type SeatingExportUnseatedGuest } from '../../admin/exportSeatingChart';
+import { transliterateHebrew } from '../../admin/hebrewTransliteration';
+import { translations } from '../../i18n';
 import { SeatingFloorPlan, type SeatingFloorPlanHandle } from './SeatingFloorPlan';
 
 export interface SeatingLabels {
@@ -84,6 +86,10 @@ export interface SeatingLabels {
   exitFullScreenLabel: string;
   exportListButton: string;
   exportImageButton: string;
+  fullListSheet: string;
+  exportLanguageLabel: string;
+  exportLanguageOriginal: string;
+  exportLanguageEnglish: string;
   exportError: string;
   exportGuestColumn: string;
   exportCategoryColumn: string;
@@ -310,6 +316,13 @@ export function SeatingSection({
   const [isExportingList, setIsExportingList] = useState(false);
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [exportError, setExportError] = useState('');
+  // Guest names/categories/table names are free text Gil typed in Hebrew -
+  // there's no separate English field anywhere - so "English" here means
+  // best-effort transliteration (see hebrewTransliteration.ts), not a real
+  // translation. Column headers/status text are real, already-written
+  // English strings from i18n.ts (translations.en), independent of
+  // whatever locale the dashboard itself is currently displayed in.
+  const [exportLanguage, setExportLanguage] = useState<'original' | 'english'>('original');
   const floorPlanRef = useRef<SeatingFloorPlanHandle>(null);
 
   // Real Fullscreen API state for the map view. The element that actually
@@ -767,20 +780,71 @@ export function SeatingSection({
     setIsExportingList(true);
     setExportError('');
     try {
+      const useEnglish = exportLanguage === 'english';
+      // Guest names/categories/table names are free text Gil typed in
+      // Hebrew - localizeName runs them through the best-effort
+      // transliteration when English is selected, and leaves them exactly
+      // as-is (whatever script the dashboard's current locale is in)
+      // otherwise. Column headers/status words below are real, already-
+      // written English strings from translations.en - not transliterated.
+      const localizeName = (value: string) => (useEnglish ? transliterateHebrew(value) : value);
+      const en = translations.en;
+      const exportLabels = useEnglish
+        ? {
+            tablesSheet: en.adminSeatingTablesHeading,
+            unseatedSheet: en.adminSeatingUnseatedHeading,
+            fullListSheet: en.adminSeatingFullListSheet,
+            guestColumn: en.adminSeatingExportGuestColumn,
+            categoryColumn: en.adminSeatingExportCategoryColumn,
+            guestSeatsColumn: en.adminSeatingExportSeatsColumn,
+            remainingColumn: en.adminSeatingExportRemainingColumn,
+            tableFullBadge: en.adminSeatingTableFullBadge,
+            occupiedLabel: en.adminSeatingExportOccupiedLabel,
+            listColumnName: en.adminSeatingListColumnName,
+            listColumnSide: en.adminSeatingListColumnSide,
+            listColumnCategory: en.adminSeatingListColumnCategory,
+            listColumnInvited: en.adminSeatingListColumnInvited,
+            listColumnStatus: en.adminSeatingListColumnStatus,
+            listColumnTables: en.adminSeatingListColumnTables,
+          }
+        : {
+            tablesSheet: labels.tablesHeading,
+            unseatedSheet: labels.unseatedHeading,
+            fullListSheet: labels.fullListSheet,
+            guestColumn: labels.exportGuestColumn,
+            categoryColumn: labels.exportCategoryColumn,
+            guestSeatsColumn: labels.exportSeatsColumn,
+            remainingColumn: labels.exportRemainingColumn,
+            tableFullBadge: labels.tableFullBadge,
+            occupiedLabel: labels.exportOccupiedLabel,
+            listColumnName: labels.listColumnName,
+            listColumnSide: labels.listColumnSide,
+            listColumnCategory: labels.listColumnCategory,
+            listColumnInvited: labels.listColumnInvited,
+            listColumnStatus: labels.listColumnStatus,
+            listColumnTables: labels.listColumnTables,
+          };
+
+      const statusLabelFor = (status: 'seated' | 'partial' | 'unseated') => {
+        if (status === 'seated') return useEnglish ? en.adminSeatingListStatusFilterSeated : labels.listStatusFilterSeated;
+        if (status === 'partial') return useEnglish ? en.adminSeatingListStatusFilterPartial : labels.listStatusFilterPartial;
+        return useEnglish ? en.adminSeatingListStatusFilterUnseated : labels.listStatusFilterUnseated;
+      };
+
       const exportTables: SeatingExportTable[] = sortedTables.map((table) => {
         const tableAssignments = assignmentsByTable.get(table.id) ?? [];
         const guests: SeatingExportGuest[] = tableAssignments
           .map((assignment) => {
             const entry = entriesById.get(assignment.rosterEntryId);
             if (!entry) return null;
-            return { name: entryName(entry), category: entry.category, seats: assignment.seatsCount };
+            return { name: localizeName(entryName(entry)), category: localizeName(entry.category), seats: assignment.seatsCount };
           })
           .filter((guest): guest is SeatingExportGuest => guest !== null)
           .sort((a, b) => a.name.localeCompare(b.name, locale));
         const used = seatsUsedByTable.get(table.id) ?? 0;
         return {
-          name: table.name,
-          occupiedText: labels.exportOccupiedLabel.replace('{used}', String(used)).replace('{total}', String(table.seatCount)),
+          name: localizeName(table.name),
+          occupiedText: exportLabels.occupiedLabel.replace('{used}', String(used)).replace('{total}', String(table.seatCount)),
           isFull: used >= table.seatCount,
           guests,
         };
@@ -788,22 +852,26 @@ export function SeatingSection({
 
       const unseatedExport: SeatingExportUnseatedGuest[] = confirmedEntries
         .filter((entry) => remainingForEntry(entry) > 0)
-        .map((entry) => ({ name: entryName(entry), category: entry.category, remaining: remainingForEntry(entry) }))
+        .map((entry) => ({ name: localizeName(entryName(entry)), category: localizeName(entry.category), remaining: remainingForEntry(entry) }))
         .sort((a, b) => a.name.localeCompare(b.name, locale));
+
+      const fullListExport: SeatingExportListRow[] = [...guestListRows]
+        .sort((a, b) => a.name.localeCompare(b.name, locale))
+        .map((row) => ({
+          name: localizeName(row.name),
+          side: localizeName(row.entry.side),
+          category: localizeName(row.entry.category),
+          invitedCount: row.entry.invitedCount,
+          statusText: statusLabelFor(row.status),
+          tableSummary: localizeName(row.tableSummary) || '-',
+        }));
 
       await exportSeatingChart({
         tables: exportTables,
         unseated: unseatedExport,
-        labels: {
-          tablesSheet: labels.tablesHeading,
-          unseatedSheet: labels.unseatedHeading,
-          guestColumn: labels.exportGuestColumn,
-          categoryColumn: labels.exportCategoryColumn,
-          guestSeatsColumn: labels.exportSeatsColumn,
-          remainingColumn: labels.exportRemainingColumn,
-          tableFullBadge: labels.tableFullBadge,
-        },
-        isRtl,
+        fullList: fullListExport,
+        labels: exportLabels,
+        isRtl: useEnglish ? false : isRtl,
       });
     } catch (error) {
       console.error('Failed to export seating chart list', error);
@@ -1020,6 +1088,17 @@ export function SeatingSection({
           <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-slate-300">
+            {labels.exportLanguageLabel}
+            <select
+              value={exportLanguage}
+              onChange={(event) => setExportLanguage(event.target.value === 'english' ? 'english' : 'original')}
+              className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:ring-slate-700"
+            >
+              <option value="original">{labels.exportLanguageOriginal}</option>
+              <option value="english">{labels.exportLanguageEnglish}</option>
+            </select>
+          </label>
           <button
             type="button"
             onClick={handleExportList}
