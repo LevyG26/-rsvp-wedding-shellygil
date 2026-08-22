@@ -31,6 +31,7 @@ import { useAdminTheme } from '../hooks/useAdminTheme';
 import { Language, translations } from '../i18n';
 import { logoutAdmin, onAdminAuthStateChanged } from '../admin/auth';
 import { isEventStaffUid } from '../admin/roles';
+import { SEATING_RESTORE_20260820 } from '../admin/seatingRestore20260820';
 import { exportRsvpWorkbook } from '../admin/exportRsvpWorkbook';
 import { exportGiftsWorkbook } from '../admin/exportGiftsWorkbook';
 import { GuestCountInput } from '../components/admin/GuestCountInput';
@@ -1296,6 +1297,34 @@ export function AdminDashboard() {
 
     const handleSetSeatingAssignment = async (rosterEntryId: string, tableId: string, seatsCount: number): Promise<void> => {
         await setSeatingAssignment(rosterEntryId, tableId, seatsCount);
+    };
+
+    // One-time recovery action for the 2026-08-22 incident (see the auto-link
+    // effect fix above) that wiped everyone's seating assignments. Replays
+    // the last-known-good chart from Gil's own 2026-08-20 Excel export
+    // (src/admin/seatingRestore20260820.ts) - each entry's id was
+    // precomputed with the same makeGuestRosterId hash used live, so this
+    // writes straight back to the correct existing roster entries without
+    // needing to look anything up by name. Runs with Gil's own already
+    // signed-in session, exactly like any other seating edit he'd make by
+    // hand - just batched. Safe to re-run. Remove this handler, its button
+    // in SeatingSection, and the data file once Gil confirms the chart looks
+    // right again.
+    const handleRestoreSeatingFromBackup = async (): Promise<{ restored: number; tableNotFound: string[] }> => {
+        const tablesByName = new Map(seatingTables.map((table) => [table.name, table]));
+        const missingTableNames = new Set<string>();
+        let restored = 0;
+        for (const entry of SEATING_RESTORE_20260820) {
+            const table = tablesByName.get(entry.tableName);
+            if (!table) {
+                missingTableNames.add(entry.tableName);
+                continue;
+            }
+            // eslint-disable-next-line no-await-in-loop
+            await setSeatingAssignment(entry.id, table.id, entry.seats);
+            restored += 1;
+        }
+        return { restored, tableNotFound: Array.from(missingTableNames) };
     };
 
     const handleRemoveSeatingAssignment = async (rosterEntryId: string, tableId: string): Promise<void> => {
@@ -3139,6 +3168,7 @@ export function AdminDashboard() {
                         onUpdateGroup={handleUpdateSeatingGroup}
                         onDeleteGroup={handleDeleteSeatingGroup}
                         onSetAssignment={handleSetSeatingAssignment}
+                        onRestoreSeatingFromBackup={handleRestoreSeatingFromBackup}
                         onRemoveAssignment={handleRemoveSeatingAssignment}
                         onAssignGroupToTable={handleAssignSeatingGroupToTable}
                         onGenerateVenueTables={handleGenerateVenueTables}
@@ -3262,6 +3292,13 @@ export function AdminDashboard() {
                             guestLookupStatusPending: t.adminSeatingGuestLookupStatusPending,
                             guestLookupCheckInButton: t.adminSeatingGuestLookupCheckInButton,
                             guestLookupCheckedIn: t.adminSeatingGuestLookupCheckedIn,
+                            restoreSeatingHeading: t.adminSeatingRestoreHeading,
+                            restoreSeatingDescription: t.adminSeatingRestoreDescription,
+                            restoreSeatingButton: t.adminSeatingRestoreButton,
+                            restoreSeatingConfirm: t.adminSeatingRestoreConfirm,
+                            restoreSeatingResult: t.adminSeatingRestoreResult,
+                            restoreSeatingMissingTables: t.adminSeatingRestoreMissingTables,
+                            restoreSeatingError: t.adminSeatingRestoreError,
                         }}
                     />
                 </motion.section>

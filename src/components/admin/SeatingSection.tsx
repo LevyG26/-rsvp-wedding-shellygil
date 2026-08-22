@@ -149,6 +149,13 @@ export interface SeatingLabels {
   guestLookupStatusPending: string;
   guestLookupCheckInButton: string;
   guestLookupCheckedIn: string;
+  restoreSeatingHeading: string;
+  restoreSeatingDescription: string;
+  restoreSeatingButton: string;
+  restoreSeatingConfirm: string;
+  restoreSeatingResult: string;
+  restoreSeatingMissingTables: string;
+  restoreSeatingError: string;
 }
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status' | 'table';
@@ -213,6 +220,10 @@ interface SeatingSectionProps {
   onAssignGroupToTable: (group: SeatingGroup, tableId: string) => Promise<void>;
   onGenerateVenueTables: () => Promise<void>;
   onDismissAlert: (id: string) => Promise<void>;
+  // One-time recovery action for the 2026-08-22 incident - remove along with
+  // its button below and AdminDashboard's handler once Gil confirms the
+  // chart looks right again.
+  onRestoreSeatingFromBackup: () => Promise<{ restored: number; tableNotFound: string[] }>;
 }
 
 function entryName(entry: GuestRosterEntry): string {
@@ -282,7 +293,10 @@ export function SeatingSection({
   onAssignGroupToTable,
   onGenerateVenueTables,
   onDismissAlert,
+  onRestoreSeatingFromBackup,
 }: SeatingSectionProps) {
+  const [isRestoringSeating, setIsRestoringSeating] = useState(false);
+  const [restoreResultMessage, setRestoreResultMessage] = useState('');
   const [guestLookupQuery, setGuestLookupQuery] = useState('');
   const [checkInBusyId, setCheckInBusyId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -1099,6 +1113,24 @@ export function SeatingSection({
     }
   };
 
+  const handleRestoreSeatingFromBackup = async () => {
+    if (typeof window !== 'undefined' && !window.confirm(labels.restoreSeatingConfirm)) return;
+    setIsRestoringSeating(true);
+    setRestoreResultMessage('');
+    try {
+      const { restored, tableNotFound } = await onRestoreSeatingFromBackup();
+      const message = tableNotFound.length > 0
+        ? `${labels.restoreSeatingResult.replace('{count}', String(restored))} (${labels.restoreSeatingMissingTables}: ${tableNotFound.join(', ')})`
+        : labels.restoreSeatingResult.replace('{count}', String(restored));
+      setRestoreResultMessage(message);
+    } catch (error) {
+      console.error('Failed to restore seating from backup', error);
+      setRestoreResultMessage(labels.restoreSeatingError);
+    } finally {
+      setIsRestoringSeating(false);
+    }
+  };
+
   const handleToggleLayoutLock = () => {
     onToggleLayoutLock(!layoutLocked).catch((error) => {
       console.error('Failed to toggle seating layout lock', error);
@@ -1162,6 +1194,23 @@ export function SeatingSection({
       </div>
 
       <div className="space-y-6 p-5">
+        {/* One-time recovery banner for the 2026-08-22 incident - remove once
+            Gil confirms the chart looks right again. */}
+        <div className="space-y-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-900/40 dark:bg-rose-950/30">
+          <p className="text-sm font-semibold text-rose-800 dark:text-rose-300">{labels.restoreSeatingHeading}</p>
+          <p className="text-xs text-rose-700 dark:text-rose-400">{labels.restoreSeatingDescription}</p>
+          <button
+            type="button"
+            onClick={handleRestoreSeatingFromBackup}
+            disabled={isRestoringSeating}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
+          >
+            {isRestoringSeating ? <Loader2 size={14} className="animate-spin" /> : null}
+            {labels.restoreSeatingButton}
+          </button>
+          {restoreResultMessage && <p className="text-xs font-medium text-rose-800 dark:text-rose-300">{restoreResultMessage}</p>}
+        </div>
+
         {/* Seating alerts - auto-generated whenever a seated guest's confirmed
             status/headcount changed enough that some of their seats had to
             be freed automatically (see syncSeatingAssignmentsWithRoster).
