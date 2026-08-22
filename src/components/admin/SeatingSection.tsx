@@ -154,9 +154,12 @@ export interface SeatingLabels {
   restoreSeatingButton: string;
   restoreSeatingConfirm: string;
   restoreSeatingResult: string;
+  restoreSeatingRosterFixed: string;
   restoreSeatingMissingTables: string;
   restoreSeatingUnmatchedGuests: string;
   restoreSeatingError: string;
+  dismissAllAlertsButton: string;
+  dismissAllAlertsConfirm: string;
 }
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status' | 'table';
@@ -224,7 +227,7 @@ interface SeatingSectionProps {
   // One-time recovery action for the 2026-08-22 incident - remove along with
   // its button below and AdminDashboard's handler once Gil confirms the
   // chart looks right again.
-  onRestoreSeatingFromBackup: () => Promise<{ restored: number; tableNotFound: string[]; unmatchedGuests: string[] }>;
+  onRestoreSeatingFromBackup: () => Promise<{ restored: number; rosterFixed: number; tableNotFound: string[]; unmatchedGuests: string[] }>;
 }
 
 function entryName(entry: GuestRosterEntry): string {
@@ -298,6 +301,7 @@ export function SeatingSection({
 }: SeatingSectionProps) {
   const [isRestoringSeating, setIsRestoringSeating] = useState(false);
   const [restoreResultMessage, setRestoreResultMessage] = useState('');
+  const [isDismissingAllAlerts, setIsDismissingAllAlerts] = useState(false);
   const [guestLookupQuery, setGuestLookupQuery] = useState('');
   const [checkInBusyId, setCheckInBusyId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -1119,8 +1123,11 @@ export function SeatingSection({
     setIsRestoringSeating(true);
     setRestoreResultMessage('');
     try {
-      const { restored, tableNotFound, unmatchedGuests } = await onRestoreSeatingFromBackup();
+      const { restored, rosterFixed, tableNotFound, unmatchedGuests } = await onRestoreSeatingFromBackup();
       const parts = [labels.restoreSeatingResult.replace('{count}', String(restored))];
+      if (rosterFixed > 0) {
+        parts.push(labels.restoreSeatingRosterFixed.replace('{count}', String(rosterFixed)));
+      }
       if (tableNotFound.length > 0) {
         parts.push(`${labels.restoreSeatingMissingTables}: ${tableNotFound.join(', ')}`);
       }
@@ -1133,6 +1140,24 @@ export function SeatingSection({
       setRestoreResultMessage(labels.restoreSeatingError);
     } finally {
       setIsRestoringSeating(false);
+    }
+  };
+
+  const handleDismissAllAlerts = async () => {
+    if (typeof window !== 'undefined' && !window.confirm(labels.dismissAllAlertsConfirm)) return;
+    setIsDismissingAllAlerts(true);
+    try {
+      // Sequential, not Promise.all - keeps this identical in spirit to
+      // clicking each alert's own dismiss button one at a time, just
+      // without needing 100+ individual clicks.
+      for (const alert of alerts) {
+        // eslint-disable-next-line no-await-in-loop
+        await onDismissAlert(alert.id);
+      }
+    } catch (error) {
+      console.error('Failed to dismiss all seating alerts', error);
+    } finally {
+      setIsDismissingAllAlerts(false);
     }
   };
 
@@ -1222,10 +1247,21 @@ export function SeatingSection({
             Dismissed by deleting, one at a time, once Gil has seen it. */}
         {alerts.length > 0 && (
           <div className="space-y-1.5 rounded-2xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
-            <h3 className="flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300">
-              <AlertTriangle size={15} aria-hidden="true" />
-              {labels.alertsHeading} ({alerts.length})
-            </h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300">
+                <AlertTriangle size={15} aria-hidden="true" />
+                {labels.alertsHeading} ({alerts.length})
+              </h3>
+              <button
+                type="button"
+                onClick={handleDismissAllAlerts}
+                disabled={isDismissingAllAlerts}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-800 dark:bg-slate-800 dark:text-amber-300 dark:hover:bg-slate-700"
+              >
+                {isDismissingAllAlerts ? <Loader2 size={12} className="animate-spin" /> : null}
+                {labels.dismissAllAlertsButton}
+              </button>
+            </div>
             <div className="space-y-1">
               {alerts.map((alert) => {
                 const alertKey = `alert-${alert.id}`;

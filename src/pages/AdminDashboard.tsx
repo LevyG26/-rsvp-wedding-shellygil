@@ -1313,12 +1313,27 @@ export function AdminDashboard() {
     // precomputed id isn't found in the currently loaded roster falls back
     // to matching by first+last name against the live guestRoster instead
     // (unambiguous matches only - anything matching zero or more than one
-    // live entry is reported back by name rather than guessed at). Runs with
-    // Gil's own already signed-in session, exactly like any other seating
-    // edit he'd make by hand - just batched. Safe to re-run. Remove this
-    // handler, its button in SeatingSection, and the data file once Gil
-    // confirms the chart looks right again.
-    const handleRestoreSeatingFromBackup = async (): Promise<{ restored: number; tableNotFound: string[]; unmatchedGuests: string[] }> => {
+    // live entry is reported back by name rather than guessed at).
+    //
+    // Critically, this ALSO repairs each guest's knownResponse/invitedCount
+    // before touching their seating assignment, not just the assignment
+    // itself. The incident didn't just clear seats - for a subset of guests
+    // it reverted their roster entry to "not yet responded" and their
+    // automatic RSVP re-link keeps failing (ambiguous or no name match), so
+    // they never healed on their own. Restoring only the assignment for
+    // those guests was immediately undone again by
+    // syncSeatingAssignmentsWithRoster, which strips any assignment whose
+    // owner isn't confirmed - hence seats reappearing "restored" and then
+    // vanishing again with a fresh removal alert each time. Setting
+    // knownResponse back to 'yes' (with linkedFromRsvp left off, so the
+    // fragile auto-linker leaves these alone from now on) makes the
+    // restored seat stick.
+    //
+    // Runs with Gil's own already signed-in session, exactly like any other
+    // seating/roster edit he'd make by hand - just batched. Safe to re-run.
+    // Remove this handler, its button in SeatingSection, and the data file
+    // once Gil confirms the chart looks right again.
+    const handleRestoreSeatingFromBackup = async (): Promise<{ restored: number; rosterFixed: number; tableNotFound: string[]; unmatchedGuests: string[] }> => {
         const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
         const tablesByName = new Map(seatingTables.map((table) => [table.name, table]));
         const rosterById = new Map(guestRoster.map((entry) => [entry.id, entry]));
@@ -1333,6 +1348,7 @@ export function AdminDashboard() {
         const missingTableNames = new Set<string>();
         const unmatchedGuests: string[] = [];
         let restored = 0;
+        let rosterFixed = 0;
 
         for (const backupEntry of SEATING_RESTORE_20260820) {
             const table = tablesByName.get(backupEntry.tableName);
@@ -1362,12 +1378,30 @@ export function AdminDashboard() {
                 }
             }
 
+            const liveEntry = rosterById.get(targetId);
+            if (liveEntry && (liveEntry.knownResponse !== 'yes' || liveEntry.invitedCount !== backupEntry.seats)) {
+                // eslint-disable-next-line no-await-in-loop
+                await updateGuestRosterEntry(targetId, {
+                    side: liveEntry.side,
+                    category: liveEntry.category,
+                    firstName: liveEntry.firstName,
+                    lastName: liveEntry.lastName,
+                    invitedCount: backupEntry.seats,
+                    knownResponse: 'yes',
+                    linkedFromRsvp: false,
+                    preLinkInvitedCount: null,
+                    checkedIn: liveEntry.checkedIn,
+                    checkedInAt: liveEntry.checkedInAt,
+                });
+                rosterFixed += 1;
+            }
+
             // eslint-disable-next-line no-await-in-loop
             await setSeatingAssignment(targetId, table.id, backupEntry.seats);
             restored += 1;
         }
 
-        return { restored, tableNotFound: Array.from(missingTableNames), unmatchedGuests };
+        return { restored, rosterFixed, tableNotFound: Array.from(missingTableNames), unmatchedGuests };
     };
 
     const handleRemoveSeatingAssignment = async (rosterEntryId: string, tableId: string): Promise<void> => {
@@ -3342,7 +3376,10 @@ export function AdminDashboard() {
                             restoreSeatingResult: t.adminSeatingRestoreResult,
                             restoreSeatingMissingTables: t.adminSeatingRestoreMissingTables,
                             restoreSeatingUnmatchedGuests: t.adminSeatingRestoreUnmatchedGuests,
+                            restoreSeatingRosterFixed: t.adminSeatingRestoreRosterFixed,
                             restoreSeatingError: t.adminSeatingRestoreError,
+                            dismissAllAlertsButton: t.adminSeatingDismissAllAlertsButton,
+                            dismissAllAlertsConfirm: t.adminSeatingDismissAllAlertsConfirm,
                         }}
                     />
                 </motion.section>
