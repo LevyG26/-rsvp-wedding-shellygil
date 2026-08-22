@@ -260,8 +260,8 @@ service cloud.firestore {
     // directly in the dashboard. Contains guest PII, so it's admin-only
     // for both reads and writes.
     function isValidGuestRosterEntry(data) {
-      return data.keys().hasAll(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt', 'linkedFromRsvp', 'preLinkInvitedCount', 'checkedIn', 'checkedInAt']) &&
-             data.keys().hasOnly(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt', 'linkedFromRsvp', 'preLinkInvitedCount', 'checkedIn', 'checkedInAt']) &&
+      return data.keys().hasAll(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt', 'linkedFromRsvp', 'preLinkInvitedCount', 'arrivedCount', 'checkedIn', 'checkedInAt']) &&
+             data.keys().hasOnly(['side', 'category', 'firstName', 'lastName', 'invitedCount', 'knownResponse', 'updatedAt', 'linkedFromRsvp', 'preLinkInvitedCount', 'arrivedCount', 'checkedIn', 'checkedInAt']) &&
              data.side is string && data.side.size() <= 60 &&
              data.category is string && data.category.size() <= 60 &&
              data.firstName is string && data.firstName.size() <= 60 &&
@@ -277,24 +277,31 @@ service cloud.firestore {
              data.linkedFromRsvp is bool &&
              (data.preLinkInvitedCount == null ||
                (data.preLinkInvitedCount is int && data.preLinkInvitedCount >= 0 && data.preLinkInvitedCount <= 30)) &&
-             // Day-of check-in - carried forward as-is by this full-document
-             // validator (NOT pinned to request.time, since an unrelated
-             // admin edit like a name fix must be able to re-save this
-             // document without disturbing an already-set check-in time).
-             // The actual check-in action itself goes through
-             // isValidCheckInUpdate() below instead.
-             data.checkedIn is bool &&
+             // Day-of check-in - how many of invitedCount have arrived so
+             // far, carried forward as-is by this full-document validator
+             // (NOT pinned to request.time, since an unrelated admin edit
+             // like a name fix must be able to re-save this document
+             // without disturbing an already-set check-in time). checkedIn
+             // must always agree with arrivedCount/invitedCount - the actual
+             // check-in action itself goes through isValidCheckInUpdate()
+             // below instead.
+             data.arrivedCount is int && data.arrivedCount >= 0 && data.arrivedCount <= data.invitedCount &&
+             data.checkedIn == (data.arrivedCount == data.invitedCount) &&
              (data.checkedInAt == null || data.checkedInAt is timestamp);
     }
 
     // The narrow write event-day staff (and admins) use to mark a guest's
-    // party as arrived/not-arrived from the seating tab's guest lookup
-    // panel - deliberately separate from isValidGuestRosterEntry above so
-    // staff can be granted this one action without also being trusted with
-    // every other roster field (name, category, headcount, RSVP status...).
+    // party as arrived/not-arrived (fully or partially) from the seating
+    // tab's guest lookup panel - deliberately separate from
+    // isValidGuestRosterEntry above so staff can be granted this one action
+    // without also being trusted with every other roster field (name,
+    // category, headcount, RSVP status...).
     function isValidCheckInUpdate() {
-      return incoming().diff(resource.data).affectedKeys().hasOnly(['checkedIn', 'checkedInAt']) &&
-             incoming().checkedIn is bool &&
+      return incoming().diff(resource.data).affectedKeys().hasOnly(['arrivedCount', 'checkedIn', 'checkedInAt']) &&
+             incoming().arrivedCount is int &&
+             incoming().arrivedCount >= 0 &&
+             incoming().arrivedCount <= resource.data.invitedCount &&
+             incoming().checkedIn == (incoming().arrivedCount == resource.data.invitedCount) &&
              (incoming().checkedInAt == null || incoming().checkedInAt == request.time);
     }
 

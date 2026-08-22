@@ -53,7 +53,7 @@ import {
     deleteGuestRosterEntriesForSide,
     deleteGuestRosterEntry,
     loadGuestRoster,
-    setGuestCheckedIn,
+    setGuestArrivedCount,
     subscribeToGuestRoster,
     syncGuestRosterFromSheet,
     updateGuestRosterEntry,
@@ -1563,19 +1563,19 @@ export function AdminDashboard() {
             return;
         }
 
-        // Preserve the link flags AND check-in state from the existing doc:
-        // this call handles name/category/etc edits (never status/count,
-        // handled above), and GuestRosterSection never passes
-        // linkedFromRsvp/preLinkInvitedCount/checkedIn/checkedInAt itself
+        // Preserve the link flags AND check-in progress from the existing
+        // doc: this call handles name/category/etc edits (never
+        // status/count, handled above), and GuestRosterSection never passes
+        // linkedFromRsvp/preLinkInvitedCount/arrivedCount/checkedInAt itself
         // (see GuestRosterEntryInput) - without this, toEntryDocData's
         // defaults would silently reset a linked entry's linkedFromRsvp, or
-        // a guest's already-recorded check-in, back to false/null on every
-        // plain name or category edit.
+        // a guest's already-recorded arrival progress, back to false/0/null
+        // on every plain name or category edit.
         await updateGuestRosterEntry(id, {
             ...input,
             linkedFromRsvp: input.linkedFromRsvp ?? previousEntry?.linkedFromRsvp ?? false,
             preLinkInvitedCount: input.preLinkInvitedCount ?? previousEntry?.preLinkInvitedCount ?? null,
-            checkedIn: input.checkedIn ?? previousEntry?.checkedIn ?? false,
+            arrivedCount: input.arrivedCount ?? previousEntry?.arrivedCount ?? 0,
             checkedInAt: input.checkedInAt ?? previousEntry?.checkedInAt ?? null,
         });
         await reloadGuestRoster();
@@ -1603,8 +1603,8 @@ export function AdminDashboard() {
     // subscribeToGuestRoster above), so no manual reload is needed here -
     // every open dashboard (Gil's and staff's) picks up the change on its
     // own the moment Firestore confirms the write.
-    const handleSetGuestCheckedIn = async (id: string, checkedIn: boolean) => {
-        await setGuestCheckedIn(id, checkedIn);
+    const handleSetGuestArrivedCount = async (id: string, arrivedCount: number, invitedCount: number) => {
+        await setGuestArrivedCount(id, arrivedCount, invitedCount);
     };
 
     const handleToggleRecordSelection = (recordId: string) => {
@@ -3104,7 +3104,7 @@ export function AdminDashboard() {
                     <SeatingSection
                         confirmedEntries={confirmedRosterEntries}
                         allEntries={guestRoster}
-                        onSetCheckedIn={handleSetGuestCheckedIn}
+                        onSetArrivedCount={handleSetGuestArrivedCount}
                         tables={seatingTables}
                         venueObjects={venueObjects}
                         groups={seatingGroups}
@@ -3247,6 +3247,16 @@ export function AdminDashboard() {
                             guestLookupStatusPending: t.adminSeatingGuestLookupStatusPending,
                             guestLookupCheckInButton: t.adminSeatingGuestLookupCheckInButton,
                             guestLookupCheckedIn: t.adminSeatingGuestLookupCheckedIn,
+                            guestLookupMarkAllArrived: t.adminSeatingGuestLookupMarkAllArrived,
+                            guestLookupDecreaseArrived: t.adminSeatingGuestLookupDecreaseArrived,
+                            guestLookupIncreaseArrived: t.adminSeatingGuestLookupIncreaseArrived,
+                            arrivalsHeading: t.adminSeatingArrivalsHeading,
+                            arrivalsToggleShow: t.adminSeatingArrivalsToggleShow,
+                            arrivalsToggleHide: t.adminSeatingArrivalsToggleHide,
+                            arrivalsFullyArrived: t.adminSeatingArrivalsFullyArrived,
+                            arrivalsPartiallyArrived: t.adminSeatingArrivalsPartiallyArrived,
+                            arrivalsNotArrived: t.adminSeatingArrivalsNotArrived,
+                            arrivalsEmptyGroup: t.adminSeatingArrivalsEmptyGroup,
                             dismissAllAlertsButton: t.adminSeatingDismissAllAlertsButton,
                             dismissAllAlertsConfirm: t.adminSeatingDismissAllAlertsConfirm,
                             mapSearchPlaceholder: t.adminSeatingMapSearchPlaceholder,

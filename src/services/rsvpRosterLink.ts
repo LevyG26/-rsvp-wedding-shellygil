@@ -455,6 +455,13 @@ export async function linkGuestRosterWithRsvps(
       // linked - a later re-run (e.g. the guest changing their headcount)
       // must not overwrite it with a value that's already post-link.
       preLinkInvitedCount: entry.linkedFromRsvp ? entry.preLinkInvitedCount : entry.invitedCount,
+      // This goes through updateGuestRosterEntry's full-document write, so
+      // arrivedCount/checkedInAt must be carried forward explicitly -
+      // otherwise every automatic re-link (e.g. a guest tweaking their
+      // headcount) would silently un-check-in a guest who already
+      // physically arrived.
+      arrivedCount: entry.arrivedCount,
+      checkedInAt: entry.checkedInAt,
     };
 
     await updateGuestRosterEntry(entry.id, input);
@@ -480,6 +487,10 @@ export async function linkGuestRosterWithRsvps(
       knownResponse: null,
       linkedFromRsvp: false,
       preLinkInvitedCount: null,
+      // Same reason as the matched-write path above - never let a revert
+      // silently un-check-in someone who already arrived.
+      arrivedCount: entry.arrivedCount,
+      checkedInAt: entry.checkedInAt,
     };
 
     await updateGuestRosterEntry(entry.id, input);

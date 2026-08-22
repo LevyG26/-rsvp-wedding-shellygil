@@ -34,11 +34,19 @@ export interface GuestRosterEntry {
   // later revert (see above) restores the original planned count instead of
   // leaving behind whatever headcount the now-deleted RSVP had reported.
   preLinkInvitedCount: number | null;
-  // Day-of event check-in, set by event-day staff (or Gil) from the seating
-  // tab's guest lookup panel when this guest's party physically arrives -
-  // entirely separate from knownResponse (RSVP confirmation ahead of time).
-  // Written via the narrow setGuestCheckedIn() below, never through
+  // Day-of event check-in - how many of this party's invitedCount have
+  // physically arrived so far (0..invitedCount), set by event-day staff (or
+  // Gil) from the seating tab's guest lookup panel - entirely separate from
+  // knownResponse (RSVP confirmation ahead of time). A party of 4 where only
+  // 3 showed up so far is arrivedCount: 3. Written via the narrow
+  // setGuestArrivedCount() below, never through
   // updateGuestRosterEntry/toEntryDocData - see the comment there for why.
+  arrivedCount: number;
+  // Derived, never written directly - true once arrivedCount reaches
+  // invitedCount (the whole party is physically here). Kept as its own
+  // stored field (rather than computed on every read) purely so existing
+  // "is this guest checked in" badges/filters don't need to know about
+  // arrivedCount at all.
   checkedIn: boolean;
   checkedInAt: Timestamp | null;
 }
@@ -57,12 +65,20 @@ export interface GuestRosterEntryInput {
   linkedFromRsvp?: boolean;
   preLinkInvitedCount?: number | null;
   // Optional, same pattern as linkedFromRsvp above - omitted by every write
-  // site except handleUpdateGuestRosterEntry in AdminDashboard.tsx, which
-  // carries the existing entry's check-in state forward on every edit made
-  // through this full-document path, so a plain name/category fix never
-  // silently un-checks-in a guest who already arrived.
-  checkedIn?: boolean;
+  // site except handleUpdateGuestRosterEntry in AdminDashboard.tsx and the
+  // RSVP auto-linker, which carry the existing entry's arrival progress
+  // forward on every edit made through this full-document path, so a plain
+  // name/category fix (or an automatic re-link) never silently un-checks-in
+  // a guest who already arrived. checkedIn itself is NOT accepted here -
+  // toEntryDocData always derives it from arrivedCount/invitedCount, so a
+  // write path can never forget to carry it forward (as happened twice
+  // before with the old plain-boolean version of this field).
+  arrivedCount?: number;
   checkedInAt?: Timestamp | null;
+}
+
+function deriveCheckedIn(arrivedCount: number, invitedCount: number): boolean {
+  return invitedCount > 0 && arrivedCount >= invitedCount;
 }
 
 function normalizeEntry(id: string, data: Record<string, unknown>): GuestRosterEntry {
@@ -70,6 +86,15 @@ function normalizeEntry(id: string, data: Record<string, unknown>): GuestRosterE
   const knownResponseValue = data.knownResponse;
   const preLinkInvitedCountValue = data.preLinkInvitedCount;
   const checkedInAtValue = data.checkedInAt;
+  const arrivedCountValue = data.arrivedCount;
+
+  const invitedCount = typeof invitedCountValue === 'number' && Number.isFinite(invitedCountValue) ? invitedCountValue : 0;
+  // Documents written before partial-arrival tracking existed only ever had
+  // a plain boolean checkedIn - treat that as "the whole party arrived" so
+  // nobody's existing check-in silently disappears when this loads.
+  const arrivedCount = typeof arrivedCountValue === 'number' && Number.isFinite(arrivedCountValue)
+    ? Math.max(0, Math.min(arrivedCountValue, invitedCount))
+    : (data.checkedIn === true ? invitedCount : 0);
 
   return {
     id,
@@ -77,12 +102,13 @@ function normalizeEntry(id: string, data: Record<string, unknown>): GuestRosterE
     category: typeof data.category === 'string' ? data.category : '',
     firstName: typeof data.firstName === 'string' ? data.firstName : '',
     lastName: typeof data.lastName === 'string' ? data.lastName : '',
-    invitedCount: typeof invitedCountValue === 'number' && Number.isFinite(invitedCountValue) ? invitedCountValue : 0,
+    invitedCount,
     knownResponse: knownResponseValue === 'yes' || knownResponseValue === 'no' ? knownResponseValue : null,
     linkedFromRsvp: data.linkedFromRsvp === true,
     preLinkInvitedCount:
       typeof preLinkInvitedCountValue === 'number' && Number.isFinite(preLinkInvitedCountValue) ? preLinkInvitedCountValue : null,
-    checkedIn: data.checkedIn === true,
+    arrivedCount,
+    checkedIn: deriveCheckedIn(arrivedCount, invitedCount),
     checkedInAt: checkedInAtValue instanceof Timestamp ? checkedInAtValue : null,
   };
 }
@@ -125,6 +151,10 @@ export async function makeGuestRosterId(side: string, category: string, firstNam
 }
 
 function toEntryDocData(input: GuestRosterEntryInput) {
+  // Clamp defensively - invitedCount can shrink on the very write that also
+  // needs to carry an existing arrivedCount forward (e.g. a headcount
+  // correction after some of the party already checked in).
+  const arrivedCount = Math.max(0, Math.min(input.arrivedCount ?? 0, input.invitedCount));
   return {
     side: input.side.trim(),
     category: input.category.trim(),
@@ -134,7 +164,8 @@ function toEntryDocData(input: GuestRosterEntryInput) {
     knownResponse: input.knownResponse,
     linkedFromRsvp: input.linkedFromRsvp ?? false,
     preLinkInvitedCount: input.preLinkInvitedCount ?? null,
-    checkedIn: input.checkedIn ?? false,
+    arrivedCount,
+    checkedIn: deriveCheckedIn(arrivedCount, input.invitedCount),
     checkedInAt: input.checkedInAt ?? null,
     updatedAt: serverTimestamp(),
   };
@@ -156,7 +187,8 @@ export async function createGuestRosterEntry(input: GuestRosterEntryInput): Prom
     knownResponse: input.knownResponse,
     linkedFromRsvp: input.linkedFromRsvp ?? false,
     preLinkInvitedCount: input.preLinkInvitedCount ?? null,
-    checkedIn: input.checkedIn ?? false,
+    arrivedCount: Math.max(0, Math.min(input.arrivedCount ?? 0, input.invitedCount)),
+    checkedIn: deriveCheckedIn(Math.max(0, Math.min(input.arrivedCount ?? 0, input.invitedCount)), input.invitedCount),
     checkedInAt: input.checkedInAt ?? null,
   };
 }
@@ -167,17 +199,20 @@ export async function updateGuestRosterEntry(id: string, input: GuestRosterEntry
   await setDoc(doc(db, GUEST_ROSTER_COLLECTION, id), toEntryDocData(input));
 }
 
-// Day-of event check-in - marks a guest's party as physically arrived (or
-// undoes a misclick). Deliberately a narrow, two-field updateDoc rather than
+// Day-of event check-in - records how many of this party's invitedCount
+// have physically arrived so far (0..invitedCount; undoing back down to 0
+// undoes a misclick). Deliberately a narrow, targeted updateDoc rather than
 // going through updateGuestRosterEntry/toEntryDocData above: event-day staff
 // only have permission (see firestore.rules' isValidCheckInUpdate) to touch
-// these two fields and nothing else on this document, so this has to be its
-// own targeted write, not a full-document rewrite that would also require
-// staff to supply (and be trusted with) every other roster field.
-export async function setGuestCheckedIn(id: string, checkedIn: boolean): Promise<void> {
+// these fields and nothing else on this document, so this has to be its own
+// targeted write, not a full-document rewrite that would also require staff
+// to supply (and be trusted with) every other roster field.
+export async function setGuestArrivedCount(id: string, arrivedCount: number, invitedCount: number): Promise<void> {
+  const clamped = Math.max(0, Math.min(Math.round(arrivedCount), invitedCount));
   await updateDoc(doc(db, GUEST_ROSTER_COLLECTION, id), {
-    checkedIn,
-    checkedInAt: checkedIn ? serverTimestamp() : null,
+    arrivedCount: clamped,
+    checkedIn: deriveCheckedIn(clamped, invitedCount),
+    checkedInAt: clamped > 0 ? serverTimestamp() : null,
   });
 }
 

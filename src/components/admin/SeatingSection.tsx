@@ -146,6 +146,16 @@ export interface SeatingLabels {
   guestLookupStatusPending: string;
   guestLookupCheckInButton: string;
   guestLookupCheckedIn: string;
+  guestLookupMarkAllArrived: string;
+  guestLookupDecreaseArrived: string;
+  guestLookupIncreaseArrived: string;
+  arrivalsHeading: string;
+  arrivalsToggleShow: string;
+  arrivalsToggleHide: string;
+  arrivalsFullyArrived: string;
+  arrivalsPartiallyArrived: string;
+  arrivalsNotArrived: string;
+  arrivalsEmptyGroup: string;
   dismissAllAlertsButton: string;
   dismissAllAlertsConfirm: string;
   mapSearchPlaceholder: string;
@@ -188,7 +198,7 @@ interface SeatingSectionProps {
   // a surprise walk-in actually confirmed. Never used to populate the
   // seating pool itself - that stays confirmedEntries-only.
   allEntries: GuestRosterEntry[];
-  onSetCheckedIn: (id: string, checkedIn: boolean) => Promise<void>;
+  onSetArrivedCount: (id: string, arrivedCount: number, invitedCount: number) => Promise<void>;
   tables: SeatingTable[];
   venueObjects: VenueObject[];
   groups: SeatingGroup[];
@@ -263,7 +273,7 @@ const OBJECT_DEFAULT_SIZE: Record<VenueObjectType, { width: number; height: numb
 export function SeatingSection({
   confirmedEntries,
   allEntries,
-  onSetCheckedIn,
+  onSetArrivedCount,
   tables,
   venueObjects,
   groups,
@@ -294,6 +304,7 @@ export function SeatingSection({
   const [isDismissingAllAlerts, setIsDismissingAllAlerts] = useState(false);
   const [guestLookupQuery, setGuestLookupQuery] = useState('');
   const [checkInBusyId, setCheckInBusyId] = useState<string | null>(null);
+  const [isArrivalsExpanded, setIsArrivalsExpanded] = useState(false);
   const [search, setSearch] = useState('');
   const [rowState, setRowState] = useState<Record<string, { seats: string; tableId: string }>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -423,12 +434,13 @@ export function SeatingSection({
   const totalConfirmedPeople = useMemo(() => confirmedEntries.reduce((sum, entry) => sum + entry.invitedCount, 0), [confirmedEntries]);
   const totalSeatedPeople = useMemo(() => assignments.reduce((sum, assignment) => sum + assignment.seatsCount, 0), [assignments]);
   const totalUnseatedPeople = Math.max(0, totalConfirmedPeople - totalSeatedPeople);
-  // Live day-of check-in headcount - sums invitedCount across every
-  // roster entry marked checkedIn, regardless of RSVP status (a surprise
+  // Live day-of check-in headcount - sums each roster entry's arrivedCount
+  // (which can be less than invitedCount for a party that's only partly
+  // arrived), across every entry regardless of RSVP status (a surprise
   // walk-in staff let in still counts toward "how many people are here").
   // allEntries is the full live roster subscription, so this updates in
   // real time on Gil's screen the moment staff mark someone arrived.
-  const totalArrivedPeople = useMemo(() => allEntries.filter((entry) => entry.checkedIn).reduce((sum, entry) => sum + entry.invitedCount, 0), [allEntries]);
+  const totalArrivedPeople = useMemo(() => allEntries.reduce((sum, entry) => sum + entry.arrivedCount, 0), [allEntries]);
   const totalTableCapacity = useMemo(() => tables.reduce((sum, table) => sum + table.seatCount, 0), [tables]);
   const totalSeatsAvailable = Math.max(0, totalTableCapacity - totalSeatedPeople);
 
@@ -541,16 +553,41 @@ export function SeatingSection({
       .slice(0, 15);
   }, [allEntries, guestLookupQuery, locale]);
 
-  const handleToggleCheckedIn = async (entry: GuestRosterEntry) => {
+  const handleArrivedCountChange = async (entry: GuestRosterEntry, nextArrivedCount: number) => {
+    const clamped = Math.max(0, Math.min(nextArrivedCount, entry.invitedCount));
+    if (clamped === entry.arrivedCount) return;
     setCheckInBusyId(entry.id);
     try {
-      await onSetCheckedIn(entry.id, !entry.checkedIn);
+      await onSetArrivedCount(entry.id, clamped, entry.invitedCount);
     } catch (checkInError) {
       console.error('Failed to update guest check-in', checkInError);
     } finally {
       setCheckInBusyId(null);
     }
   };
+
+  // "Who's actually here" breakdown Gil asked for - every CONFIRMED guest
+  // (a walk-in who was never on the RSVP list at all doesn't belong in a
+  // "who's missing" list) bucketed by how much of their party has arrived,
+  // so staff can see at a glance who's fully here, who's only partly here
+  // (and by how much), and who hasn't shown up yet.
+  const arrivalsOverview = useMemo(() => {
+    const fullyArrived: GuestRosterEntry[] = [];
+    const partiallyArrived: GuestRosterEntry[] = [];
+    const notArrived: GuestRosterEntry[] = [];
+    for (const entry of confirmedEntries) {
+      if (entry.arrivedCount <= 0) notArrived.push(entry);
+      else if (entry.arrivedCount >= entry.invitedCount) fullyArrived.push(entry);
+      else partiallyArrived.push(entry);
+    }
+    const byName = (a: GuestRosterEntry, b: GuestRosterEntry) => entryName(a).localeCompare(entryName(b), locale);
+    return {
+      fullyArrived: fullyArrived.sort(byName),
+      partiallyArrived: partiallyArrived.sort(byName),
+      notArrived: notArrived.sort(byName),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmedEntries, locale]);
 
   const getRowState = (entry: GuestRosterEntry) => {
     const remaining = remainingForEntry(entry);
@@ -1283,8 +1320,10 @@ export function SeatingSection({
                     .filter((name): name is string => Boolean(name))
                     .join(', ');
                   const isCheckInBusy = checkInBusyId === entry.id;
+                  const isMultiParty = entry.invitedCount > 1;
+                  const isFullyArrived = entry.arrivedCount >= entry.invitedCount && entry.invitedCount > 0;
                   return (
-                    <div key={entry.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
+                    <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100">{entryName(entry)}</p>
                         <p className="truncate text-xs text-gray-500 dark:text-slate-400">
@@ -1294,22 +1333,47 @@ export function SeatingSection({
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.text}</span>
+                        {isMultiParty && (
+                          <div className="flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1 dark:border-slate-600 dark:bg-slate-800">
+                            <button
+                              type="button"
+                              onClick={() => handleArrivedCountChange(entry, entry.arrivedCount - 1)}
+                              disabled={isCheckInBusy || entry.arrivedCount <= 0}
+                              aria-label={labels.guestLookupDecreaseArrived}
+                              className="px-1.5 text-sm leading-none text-gray-500 hover:text-gray-800 disabled:opacity-30 dark:text-slate-400 dark:hover:text-slate-100"
+                            >
+                              −
+                            </button>
+                            <span className="min-w-[2.25rem] text-center text-xs font-semibold text-gray-700 dark:text-slate-200">
+                              {entry.arrivedCount}/{entry.invitedCount}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleArrivedCountChange(entry, entry.arrivedCount + 1)}
+                              disabled={isCheckInBusy || entry.arrivedCount >= entry.invitedCount}
+                              aria-label={labels.guestLookupIncreaseArrived}
+                              className="px-1.5 text-sm leading-none text-gray-500 hover:text-gray-800 disabled:opacity-30 dark:text-slate-400 dark:hover:text-slate-100"
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleToggleCheckedIn(entry)}
+                          onClick={() => handleArrivedCountChange(entry, isFullyArrived ? 0 : entry.invitedCount)}
                           disabled={isCheckInBusy}
                           className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
-                            entry.checkedIn
+                            isFullyArrived
                               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                               : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
                           }`}
                         >
                           {isCheckInBusy ? (
                             <Loader2 size={12} className="animate-spin" />
-                          ) : entry.checkedIn ? (
+                          ) : isFullyArrived ? (
                             <UserCheck size={12} />
                           ) : null}
-                          {entry.checkedIn ? labels.guestLookupCheckedIn : labels.guestLookupCheckInButton}
+                          {isFullyArrived ? labels.guestLookupCheckedIn : (isMultiParty ? labels.guestLookupMarkAllArrived : labels.guestLookupCheckInButton)}
                         </button>
                       </div>
                     </div>
@@ -1317,6 +1381,56 @@ export function SeatingSection({
                 })}
               </div>
             )
+          )}
+        </div>
+
+        {/* Arrivals tracking - "who's here, who's not, who's only partly
+            here" breakdown of every CONFIRMED guest, requested by Gil so
+            staff don't have to search one name at a time to see the overall
+            picture. Collapsed by default since it lists every confirmed
+            guest by name - only expands on request. */}
+        <div className="rounded-2xl border border-gray-100 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={() => setIsArrivalsExpanded((previous) => !previous)}
+            className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-start"
+          >
+            <span className="text-sm font-semibold text-gray-700 dark:text-slate-300">
+              {labels.arrivalsHeading} ({arrivalsOverview.fullyArrived.length + arrivalsOverview.partiallyArrived.length}/{confirmedEntries.length})
+            </span>
+            <span className="text-xs font-medium text-gray-500 dark:text-slate-400">
+              {isArrivalsExpanded ? labels.arrivalsToggleHide : labels.arrivalsToggleShow}
+            </span>
+          </button>
+          {isArrivalsExpanded && (
+            <div className="grid gap-3 border-t border-gray-100 p-4 dark:border-slate-700 sm:grid-cols-3">
+              {([
+                { key: 'notArrived', title: labels.arrivalsNotArrived, entries: arrivalsOverview.notArrived, dotClassName: 'bg-gray-400' },
+                { key: 'partiallyArrived', title: labels.arrivalsPartiallyArrived, entries: arrivalsOverview.partiallyArrived, dotClassName: 'bg-amber-500' },
+                { key: 'fullyArrived', title: labels.arrivalsFullyArrived, entries: arrivalsOverview.fullyArrived, dotClassName: 'bg-emerald-500' },
+              ] as const).map((group) => (
+                <div key={group.key}>
+                  <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                    <span className={`h-1.5 w-1.5 rounded-full ${group.dotClassName}`} aria-hidden="true" />
+                    {group.title} ({group.entries.length})
+                  </p>
+                  {group.entries.length === 0 ? (
+                    <p className="text-xs text-gray-400 dark:text-slate-500">{labels.arrivalsEmptyGroup}</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {group.entries.map((entry) => (
+                        <li key={entry.id} className="flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-slate-200">
+                          <span className="truncate">{entryName(entry)}</span>
+                          {entry.invitedCount > 1 && (
+                            <span className="shrink-0 text-gray-400 dark:text-slate-500" dir="ltr">{entry.arrivedCount}/{entry.invitedCount}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
