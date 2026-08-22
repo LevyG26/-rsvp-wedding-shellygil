@@ -1396,6 +1396,15 @@ export function AdminDashboard() {
     const isAutoLinkingRosterRef = useRef(false);
     useEffect(() => {
         if (!isAuthChecked || !isSignedIn) return;
+        // Critical: must wait for BOTH the rsvps and guestRoster listeners to
+        // deliver their first snapshot before this ever runs. Otherwise, on
+        // a page load/reconnect where the roster snapshot happens to arrive
+        // before the (still-empty, not-yet-loaded) rsvps snapshot, every
+        // linked-from-rsvp entry looks unmatched and the revert pass below
+        // wipes EVERY guest's confirmed status in one shot - which then
+        // cascades into syncSeatingAssignmentsWithRoster removing everyone
+        // from their seated tables. This actually happened in production.
+        if (isLoading) return;
         if (guestRoster.length === 0) return;
         if (isAutoLinkingRosterRef.current) return;
 
@@ -1415,7 +1424,7 @@ export function AdminDashboard() {
             .finally(() => {
                 isAutoLinkingRosterRef.current = false;
             });
-    }, [records, guestRoster, isAuthChecked, isSignedIn]);
+    }, [records, guestRoster, isAuthChecked, isSignedIn, isLoading]);
 
     // Auto-fills a response's own "group" tag (used for the group-select
     // dropdown, its own distribution chart, etc.) from the roster match
@@ -1429,6 +1438,7 @@ export function AdminDashboard() {
     const isAutoFillingGroupRef = useRef(false);
     useEffect(() => {
         if (!isAuthChecked || !isSignedIn) return;
+        if (isLoading) return;
         if (records.length === 0 || guestRoster.length === 0) return;
         if (isAutoFillingGroupRef.current) return;
 
@@ -1465,7 +1475,7 @@ export function AdminDashboard() {
             .finally(() => {
                 isAutoFillingGroupRef.current = false;
             });
-    }, [records, guestRoster, isAuthChecked, isSignedIn]);
+    }, [records, guestRoster, isAuthChecked, isSignedIn, isLoading]);
 
     // Keeps the seating chart honest whenever a confirmed guest's status or
     // headcount changes underneath it - whether that's the guest editing
