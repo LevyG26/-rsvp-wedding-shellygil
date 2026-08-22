@@ -6,6 +6,8 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
+  Timestamp,
+  updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -32,6 +34,13 @@ export interface GuestRosterEntry {
   // later revert (see above) restores the original planned count instead of
   // leaving behind whatever headcount the now-deleted RSVP had reported.
   preLinkInvitedCount: number | null;
+  // Day-of event check-in, set by event-day staff (or Gil) from the seating
+  // tab's guest lookup panel when this guest's party physically arrives -
+  // entirely separate from knownResponse (RSVP confirmation ahead of time).
+  // Written via the narrow setGuestCheckedIn() below, never through
+  // updateGuestRosterEntry/toEntryDocData - see the comment there for why.
+  checkedIn: boolean;
+  checkedInAt: Timestamp | null;
 }
 
 export interface GuestRosterEntryInput {
@@ -47,12 +56,20 @@ export interface GuestRosterEntryInput {
   // entry as NOT auto-linked, which is the correct, conservative default.
   linkedFromRsvp?: boolean;
   preLinkInvitedCount?: number | null;
+  // Optional, same pattern as linkedFromRsvp above - omitted by every write
+  // site except handleUpdateGuestRosterEntry in AdminDashboard.tsx, which
+  // carries the existing entry's check-in state forward on every edit made
+  // through this full-document path, so a plain name/category fix never
+  // silently un-checks-in a guest who already arrived.
+  checkedIn?: boolean;
+  checkedInAt?: Timestamp | null;
 }
 
 function normalizeEntry(id: string, data: Record<string, unknown>): GuestRosterEntry {
   const invitedCountValue = data.invitedCount;
   const knownResponseValue = data.knownResponse;
   const preLinkInvitedCountValue = data.preLinkInvitedCount;
+  const checkedInAtValue = data.checkedInAt;
 
   return {
     id,
@@ -65,6 +82,8 @@ function normalizeEntry(id: string, data: Record<string, unknown>): GuestRosterE
     linkedFromRsvp: data.linkedFromRsvp === true,
     preLinkInvitedCount:
       typeof preLinkInvitedCountValue === 'number' && Number.isFinite(preLinkInvitedCountValue) ? preLinkInvitedCountValue : null,
+    checkedIn: data.checkedIn === true,
+    checkedInAt: checkedInAtValue instanceof Timestamp ? checkedInAtValue : null,
   };
 }
 
@@ -115,6 +134,8 @@ function toEntryDocData(input: GuestRosterEntryInput) {
     knownResponse: input.knownResponse,
     linkedFromRsvp: input.linkedFromRsvp ?? false,
     preLinkInvitedCount: input.preLinkInvitedCount ?? null,
+    checkedIn: input.checkedIn ?? false,
+    checkedInAt: input.checkedInAt ?? null,
     updatedAt: serverTimestamp(),
   };
 }
@@ -125,13 +146,39 @@ function toEntryDocData(input: GuestRosterEntryInput) {
 export async function createGuestRosterEntry(input: GuestRosterEntryInput): Promise<GuestRosterEntry> {
   const id = await makeGuestRosterId(input.side, input.category, input.firstName, input.lastName);
   await setDoc(doc(db, GUEST_ROSTER_COLLECTION, id), toEntryDocData(input));
-  return { id, ...input };
+  return {
+    id,
+    side: input.side.trim(),
+    category: input.category.trim(),
+    firstName: input.firstName.trim(),
+    lastName: input.lastName.trim(),
+    invitedCount: input.invitedCount,
+    knownResponse: input.knownResponse,
+    linkedFromRsvp: input.linkedFromRsvp ?? false,
+    preLinkInvitedCount: input.preLinkInvitedCount ?? null,
+    checkedIn: input.checkedIn ?? false,
+    checkedInAt: input.checkedInAt ?? null,
+  };
 }
 
 // Updates an existing roster entry in place (status, invited count, etc).
 // Keeps the same document ID even if the name/side/category is edited.
 export async function updateGuestRosterEntry(id: string, input: GuestRosterEntryInput): Promise<void> {
   await setDoc(doc(db, GUEST_ROSTER_COLLECTION, id), toEntryDocData(input));
+}
+
+// Day-of event check-in - marks a guest's party as physically arrived (or
+// undoes a misclick). Deliberately a narrow, two-field updateDoc rather than
+// going through updateGuestRosterEntry/toEntryDocData above: event-day staff
+// only have permission (see firestore.rules' isValidCheckInUpdate) to touch
+// these two fields and nothing else on this document, so this has to be its
+// own targeted write, not a full-document rewrite that would also require
+// staff to supply (and be trusted with) every other roster field.
+export async function setGuestCheckedIn(id: string, checkedIn: boolean): Promise<void> {
+  await updateDoc(doc(db, GUEST_ROSTER_COLLECTION, id), {
+    checkedIn,
+    checkedInAt: checkedIn ? serverTimestamp() : null,
+  });
 }
 
 export async function deleteGuestRosterEntry(id: string): Promise<void> {
