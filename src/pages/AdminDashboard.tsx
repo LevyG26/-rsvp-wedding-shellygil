@@ -53,6 +53,7 @@ import {
     deleteGuestRosterEntriesForSide,
     deleteGuestRosterEntry,
     loadGuestRoster,
+    setGuestCheckedIn,
     subscribeToGuestRoster,
     syncGuestRosterFromSheet,
     updateGuestRosterEntry,
@@ -506,6 +507,10 @@ export function AdminDashboard() {
     const [isAuthChecked, setIsAuthChecked] = useState(false);
     const [isSignedIn, setIsSignedIn] = useState(false);
     const [currentUid, setCurrentUid] = useState<string | null>(null);
+    // Shown in the actions menu so Gil can tell at a glance which account
+    // he's currently signed in as - useful now that there's more than one
+    // login (his own admin account and the shared event-staff one).
+    const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
     // Event-day seating staff only ever get the Seating tab - see
     // src/admin/roles.ts for what this is and how to grant it. `displayedTab`
     // (used everywhere content is gated below) is forced to 'seating' for
@@ -599,6 +604,7 @@ export function AdminDashboard() {
         const unsubscribe = onAdminAuthStateChanged((user) => {
             setIsSignedIn(user !== null);
             setCurrentUid(user ? user.uid : null);
+            setCurrentUserEmail(user ? user.email : null);
             setIsAuthChecked(true);
 
             if (user === null) {
@@ -1560,16 +1566,20 @@ export function AdminDashboard() {
             return;
         }
 
-        // Preserve the link flags from the existing doc: this call handles
-        // name/category/etc edits (never status/count, handled above), and
-        // GuestRosterSection never passes linkedFromRsvp/preLinkInvitedCount
-        // itself (see GuestRosterEntryInput) - without this, toEntryDocData's
-        // defaults would silently reset a linked entry's linkedFromRsvp back
-        // to false on every plain name or category edit.
+        // Preserve the link flags AND check-in state from the existing doc:
+        // this call handles name/category/etc edits (never status/count,
+        // handled above), and GuestRosterSection never passes
+        // linkedFromRsvp/preLinkInvitedCount/checkedIn/checkedInAt itself
+        // (see GuestRosterEntryInput) - without this, toEntryDocData's
+        // defaults would silently reset a linked entry's linkedFromRsvp, or
+        // a guest's already-recorded check-in, back to false/null on every
+        // plain name or category edit.
         await updateGuestRosterEntry(id, {
             ...input,
             linkedFromRsvp: input.linkedFromRsvp ?? previousEntry?.linkedFromRsvp ?? false,
             preLinkInvitedCount: input.preLinkInvitedCount ?? previousEntry?.preLinkInvitedCount ?? null,
+            checkedIn: input.checkedIn ?? previousEntry?.checkedIn ?? false,
+            checkedInAt: input.checkedInAt ?? previousEntry?.checkedInAt ?? null,
         });
         await reloadGuestRoster();
 
@@ -1588,6 +1598,16 @@ export function AdminDashboard() {
     const handleDeleteGuestRosterEntry = async (id: string) => {
         await deleteGuestRosterEntry(id);
         await reloadGuestRoster();
+    };
+
+    // Day-of check-in from the seating tab's guest lookup panel (available
+    // to both admins and event-day staff, per firestore.rules'
+    // isValidCheckInUpdate). guestRoster is a live subscription (see
+    // subscribeToGuestRoster above), so no manual reload is needed here -
+    // every open dashboard (Gil's and staff's) picks up the change on its
+    // own the moment Firestore confirms the write.
+    const handleSetGuestCheckedIn = async (id: string, checkedIn: boolean) => {
+        await setGuestCheckedIn(id, checkedIn);
     };
 
     const handleToggleRecordSelection = (recordId: string) => {
@@ -2038,6 +2058,19 @@ export function AdminDashboard() {
                                 role="menu"
                                 className="absolute end-0 top-11 z-20 w-60 overflow-hidden rounded-2xl border border-gray-100 bg-white py-1.5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
                             >
+                                {currentUserEmail && (
+                                    <div className="border-b border-gray-100 px-4 py-2.5 dark:border-slate-700">
+                                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-slate-500">
+                                            {t.adminSignedInAs}
+                                        </p>
+                                        <p className="truncate text-sm font-medium text-gray-700 dark:text-slate-200">{currentUserEmail}</p>
+                                        {isEventStaff && (
+                                            <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                                                {t.adminEventStaffBadge}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                                 <button
                                     type="button"
                                     role="menuitem"
@@ -3074,6 +3107,7 @@ export function AdminDashboard() {
                     <SeatingSection
                         confirmedEntries={confirmedRosterEntries}
                         allEntries={guestRoster}
+                        onSetCheckedIn={handleSetGuestCheckedIn}
                         tables={seatingTables}
                         venueObjects={venueObjects}
                         groups={seatingGroups}
@@ -3103,6 +3137,7 @@ export function AdminDashboard() {
                             title: t.adminSeatingTitle,
                             subtitle: t.adminSeatingSubtitle,
                             loading: t.adminSeatingLoading,
+                            statArrived: t.adminSeatingStatArrived,
                             statConfirmed: t.adminSeatingStatConfirmed,
                             statSeated: t.adminSeatingStatSeated,
                             statUnseated: t.adminSeatingStatUnseated,
@@ -3215,6 +3250,8 @@ export function AdminDashboard() {
                             guestLookupStatusConfirmed: t.adminSeatingGuestLookupStatusConfirmed,
                             guestLookupStatusDeclined: t.adminSeatingGuestLookupStatusDeclined,
                             guestLookupStatusPending: t.adminSeatingGuestLookupStatusPending,
+                            guestLookupCheckInButton: t.adminSeatingGuestLookupCheckInButton,
+                            guestLookupCheckedIn: t.adminSeatingGuestLookupCheckedIn,
                         }}
                     />
                 </motion.section>

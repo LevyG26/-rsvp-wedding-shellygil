@@ -34,6 +34,7 @@ export interface SeatingLabels {
   title: string;
   subtitle: string;
   loading: string;
+  statArrived: string;
   statConfirmed: string;
   statSeated: string;
   statUnseated: string;
@@ -146,6 +147,8 @@ export interface SeatingLabels {
   guestLookupStatusConfirmed: string;
   guestLookupStatusDeclined: string;
   guestLookupStatusPending: string;
+  guestLookupCheckInButton: string;
+  guestLookupCheckedIn: string;
 }
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status' | 'table';
@@ -183,6 +186,7 @@ interface SeatingSectionProps {
   // a surprise walk-in actually confirmed. Never used to populate the
   // seating pool itself - that stays confirmedEntries-only.
   allEntries: GuestRosterEntry[];
+  onSetCheckedIn: (id: string, checkedIn: boolean) => Promise<void>;
   tables: SeatingTable[];
   venueObjects: VenueObject[];
   groups: SeatingGroup[];
@@ -251,6 +255,7 @@ const OBJECT_DEFAULT_SIZE: Record<VenueObjectType, { width: number; height: numb
 export function SeatingSection({
   confirmedEntries,
   allEntries,
+  onSetCheckedIn,
   tables,
   venueObjects,
   groups,
@@ -279,6 +284,7 @@ export function SeatingSection({
   onDismissAlert,
 }: SeatingSectionProps) {
   const [guestLookupQuery, setGuestLookupQuery] = useState('');
+  const [checkInBusyId, setCheckInBusyId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [rowState, setRowState] = useState<Record<string, { seats: string; tableId: string }>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -403,6 +409,12 @@ export function SeatingSection({
   const totalConfirmedPeople = useMemo(() => confirmedEntries.reduce((sum, entry) => sum + entry.invitedCount, 0), [confirmedEntries]);
   const totalSeatedPeople = useMemo(() => assignments.reduce((sum, assignment) => sum + assignment.seatsCount, 0), [assignments]);
   const totalUnseatedPeople = Math.max(0, totalConfirmedPeople - totalSeatedPeople);
+  // Live day-of check-in headcount - sums invitedCount across every
+  // roster entry marked checkedIn, regardless of RSVP status (a surprise
+  // walk-in staff let in still counts toward "how many people are here").
+  // allEntries is the full live roster subscription, so this updates in
+  // real time on Gil's screen the moment staff mark someone arrived.
+  const totalArrivedPeople = useMemo(() => allEntries.filter((entry) => entry.checkedIn).reduce((sum, entry) => sum + entry.invitedCount, 0), [allEntries]);
   const totalTableCapacity = useMemo(() => tables.reduce((sum, table) => sum + table.seatCount, 0), [tables]);
   const totalSeatsAvailable = Math.max(0, totalTableCapacity - totalSeatedPeople);
 
@@ -500,6 +512,17 @@ export function SeatingSection({
       .sort((a, b) => entryName(a).localeCompare(entryName(b), locale))
       .slice(0, 15);
   }, [allEntries, guestLookupQuery, locale]);
+
+  const handleToggleCheckedIn = async (entry: GuestRosterEntry) => {
+    setCheckInBusyId(entry.id);
+    try {
+      await onSetCheckedIn(entry.id, !entry.checkedIn);
+    } catch (checkInError) {
+      console.error('Failed to update guest check-in', checkInError);
+    } finally {
+      setCheckInBusyId(null);
+    }
+  };
 
   const getRowState = (entry: GuestRosterEntry) => {
     const remaining = remainingForEntry(entry);
@@ -1204,20 +1227,47 @@ export function SeatingSection({
             guestLookupResults.length === 0 ? (
               <p className="mt-2 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">{labels.guestLookupEmpty}</p>
             ) : (
-              <div className="mt-2 max-h-72 divide-y divide-gray-100 overflow-y-auto rounded-2xl border border-gray-100 dark:divide-slate-700 dark:border-slate-700">
+              <div className="mt-2 max-h-96 divide-y divide-gray-100 overflow-y-auto rounded-2xl border border-gray-100 dark:divide-slate-700 dark:border-slate-700">
                 {guestLookupResults.map((entry) => {
                   const badge = entry.knownResponse === 'yes'
                     ? { text: labels.guestLookupStatusConfirmed, className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' }
                     : entry.knownResponse === 'no'
                       ? { text: labels.guestLookupStatusDeclined, className: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' }
                       : { text: labels.guestLookupStatusPending, className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' };
+                  const entryTableSummary = (assignmentsByEntry.get(entry.id) ?? [])
+                    .map((assignment) => tablesById.get(assignment.tableId)?.name)
+                    .filter((name): name is string => Boolean(name))
+                    .join(', ');
+                  const isCheckInBusy = checkInBusyId === entry.id;
                   return (
                     <div key={entry.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100">{entryName(entry)}</p>
-                        <p className="truncate text-xs text-gray-500 dark:text-slate-400">{entry.side} · {entry.category}</p>
+                        <p className="truncate text-xs text-gray-500 dark:text-slate-400">
+                          {entry.side} · {entry.category}
+                          {entryTableSummary && <> · {entryTableSummary}</>}
+                        </p>
                       </div>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.text}</span>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.text}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleCheckedIn(entry)}
+                          disabled={isCheckInBusy}
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
+                            entry.checkedIn
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {isCheckInBusy ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : entry.checkedIn ? (
+                            <UserCheck size={12} />
+                          ) : null}
+                          {entry.checkedIn ? labels.guestLookupCheckedIn : labels.guestLookupCheckInButton}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1227,7 +1277,12 @@ export function SeatingSection({
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-violet-700 dark:border-violet-900/40 dark:bg-violet-950/40 dark:text-violet-300">
+            <UserCheck size={20} className="opacity-80" aria-hidden="true" />
+            <p className="mt-2 text-xs font-medium uppercase tracking-wide opacity-70">{labels.statArrived}</p>
+            <p className="mt-1 text-3xl font-semibold">{totalArrivedPeople} <span className="text-base font-normal opacity-70">/ {totalConfirmedPeople}</span></p>
+          </div>
           <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-300">
             <Users size={20} className="opacity-80" aria-hidden="true" />
             <p className="mt-2 text-xs font-medium uppercase tracking-wide opacity-70">{labels.statConfirmed}</p>

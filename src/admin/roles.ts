@@ -18,7 +18,7 @@
 // copies that user's UID from the Users table, and adds it to BOTH this
 // array and firestore.rules' isEventStaff().
 export const EVENT_STAFF_UIDS: string[] = [
-  // 'PASTE-THE-STAFF-USER-UID-HERE',
+  'XoVitjJbfpeSgdFEeTO9x5mpprx2',
 ];
 
 export function isEventStaffUid(uid: string | null): boolean {
