@@ -16,7 +16,6 @@ import {
   Plus,
   RotateCw,
   Search,
-  Sparkles,
   Trash2,
   UserCheck,
   Users,
@@ -98,9 +97,6 @@ export interface SeatingLabels {
   exportSeatsColumn: string;
   exportRemainingColumn: string;
   exportOccupiedLabel: string;
-  generateFromSketchButton: string;
-  generateFromSketchConfirm: string;
-  generateFromSketchError: string;
   viewToggleMap: string;
   viewToggleList: string;
   listSearchPlaceholder: string;
@@ -142,6 +138,7 @@ export interface SeatingLabels {
   lockLayoutButton: string;
   unlockLayoutButton: string;
   guestLookupHeading: string;
+  guestLookupHint: string;
   guestLookupPlaceholder: string;
   guestLookupEmpty: string;
   guestLookupStatusConfirmed: string;
@@ -149,17 +146,11 @@ export interface SeatingLabels {
   guestLookupStatusPending: string;
   guestLookupCheckInButton: string;
   guestLookupCheckedIn: string;
-  restoreSeatingHeading: string;
-  restoreSeatingDescription: string;
-  restoreSeatingButton: string;
-  restoreSeatingConfirm: string;
-  restoreSeatingResult: string;
-  restoreSeatingRosterFixed: string;
-  restoreSeatingMissingTables: string;
-  restoreSeatingUnmatchedGuests: string;
-  restoreSeatingError: string;
   dismissAllAlertsButton: string;
   dismissAllAlertsConfirm: string;
+  mapSearchPlaceholder: string;
+  mapSearchEmpty: string;
+  mapSearchUnseated: string;
 }
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status' | 'table';
@@ -222,12 +213,14 @@ interface SeatingSectionProps {
   onSetAssignment: (rosterEntryId: string, tableId: string, seatsCount: number) => Promise<void>;
   onRemoveAssignment: (rosterEntryId: string, tableId: string) => Promise<void>;
   onAssignGroupToTable: (group: SeatingGroup, tableId: string) => Promise<void>;
-  onGenerateVenueTables: () => Promise<void>;
   onDismissAlert: (id: string) => Promise<void>;
-  // One-time recovery action for the 2026-08-22 incident - remove along with
-  // its button below and AdminDashboard's handler once Gil confirms the
-  // chart looks right again.
-  onRestoreSeatingFromBackup: () => Promise<{ restored: number; rosterFixed: number; tableNotFound: string[]; unmatchedGuests: string[] }>;
+  // False for event-day staff - hides/disables every structural floor-plan
+  // control (create/move/resize/delete a table, add/move/resize/delete a
+  // venue object, lock/unlock the layout). Staff keep full read access to
+  // the floor plan, guest lookup, check-in, and seating a walk-in guest at
+  // an existing table - just can't touch the layout itself. Always true for
+  // Gil (the admin).
+  canEditLayout: boolean;
 }
 
 function entryName(entry: GuestRosterEntry): string {
@@ -295,12 +288,9 @@ export function SeatingSection({
   onSetAssignment,
   onRemoveAssignment,
   onAssignGroupToTable,
-  onGenerateVenueTables,
   onDismissAlert,
-  onRestoreSeatingFromBackup,
+  canEditLayout,
 }: SeatingSectionProps) {
-  const [isRestoringSeating, setIsRestoringSeating] = useState(false);
-  const [restoreResultMessage, setRestoreResultMessage] = useState('');
   const [isDismissingAllAlerts, setIsDismissingAllAlerts] = useState(false);
   const [guestLookupQuery, setGuestLookupQuery] = useState('');
   const [checkInBusyId, setCheckInBusyId] = useState<string | null>(null);
@@ -316,6 +306,13 @@ export function SeatingSection({
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [editTableForm, setEditTableForm] = useState(emptyTableForm);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  // Search box on the map view itself - separate from the "Unseated pool"
+  // search and the "Tables > List" view's search (`listSearch`), since those
+  // only filter their own text lists and never touch the canvas. Typing here
+  // and clicking a result selects that guest's table exactly like clicking
+  // it directly on the canvas would - same highlight ring, same detail panel
+  // - so Gil/staff can find a guest by name and visually see where they sit.
+  const [mapSearch, setMapSearch] = useState('');
   const [tableDeleteSelection, setTableDeleteSelection] = useState<Set<string>>(new Set());
   const [isBulkDeletingTables, setIsBulkDeletingTables] = useState(false);
   const [bulkDeleteTablesError, setBulkDeleteTablesError] = useState('');
@@ -381,8 +378,6 @@ export function SeatingSection({
     }
   };
 
-  const [isGeneratingVenueTables, setIsGeneratingVenueTables] = useState(false);
-  const [generateVenueTablesError, setGenerateVenueTablesError] = useState('');
 
   const [tablesView, setTablesView] = useState<'map' | 'list'>('map');
   const [listSearch, setListSearch] = useState('');
@@ -504,6 +499,20 @@ export function SeatingSection({
       }
     });
   }, [guestListRows, listSearch, listTableFilter, listStatusFilter, listSort, locale]);
+
+  const mapSearchResults = useMemo(() => {
+    const query = mapSearch.trim().toLowerCase();
+    if (!query) return [];
+    return guestListRows
+      .filter((row) => row.name.toLowerCase().includes(query) || row.entry.category.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [guestListRows, mapSearch]);
+
+  const handleMapSearchResultClick = (row: (typeof guestListRows)[number]) => {
+    const tableId = row.assignedTableIds[0] ?? null;
+    setSelectedTableId(tableId);
+    if (tableId) setSelectedObjectId(null);
+  };
 
   const unseatedEntries = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -953,20 +962,6 @@ export function SeatingSection({
     }
   };
 
-  const handleGenerateVenueTables = async () => {
-    if (typeof window !== 'undefined' && !window.confirm(labels.generateFromSketchConfirm)) return;
-    setIsGeneratingVenueTables(true);
-    setGenerateVenueTablesError('');
-    try {
-      await onGenerateVenueTables();
-    } catch (error) {
-      console.error('Failed to generate venue tables', error);
-      setGenerateVenueTablesError(labels.generateFromSketchError);
-    } finally {
-      setIsGeneratingVenueTables(false);
-    }
-  };
-
   const toggleTableDeleteSelection = (id: string) => {
     setTableDeleteSelection((previous) => {
       const next = new Set(previous);
@@ -1118,31 +1113,6 @@ export function SeatingSection({
     }
   };
 
-  const handleRestoreSeatingFromBackup = async () => {
-    if (typeof window !== 'undefined' && !window.confirm(labels.restoreSeatingConfirm)) return;
-    setIsRestoringSeating(true);
-    setRestoreResultMessage('');
-    try {
-      const { restored, rosterFixed, tableNotFound, unmatchedGuests } = await onRestoreSeatingFromBackup();
-      const parts = [labels.restoreSeatingResult.replace('{count}', String(restored))];
-      if (rosterFixed > 0) {
-        parts.push(labels.restoreSeatingRosterFixed.replace('{count}', String(rosterFixed)));
-      }
-      if (tableNotFound.length > 0) {
-        parts.push(`${labels.restoreSeatingMissingTables}: ${tableNotFound.join(', ')}`);
-      }
-      if (unmatchedGuests.length > 0) {
-        parts.push(`${labels.restoreSeatingUnmatchedGuests} (${unmatchedGuests.length}): ${unmatchedGuests.join(', ')}`);
-      }
-      setRestoreResultMessage(parts.join(' | '));
-    } catch (error) {
-      console.error('Failed to restore seating from backup', error);
-      setRestoreResultMessage(labels.restoreSeatingError);
-    } finally {
-      setIsRestoringSeating(false);
-    }
-  };
-
   const handleDismissAllAlerts = async () => {
     if (typeof window !== 'undefined' && !window.confirm(labels.dismissAllAlertsConfirm)) return;
     setIsDismissingAllAlerts(true);
@@ -1224,23 +1194,6 @@ export function SeatingSection({
       </div>
 
       <div className="space-y-6 p-5">
-        {/* One-time recovery banner for the 2026-08-22 incident - remove once
-            Gil confirms the chart looks right again. */}
-        <div className="space-y-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-900/40 dark:bg-rose-950/30">
-          <p className="text-sm font-semibold text-rose-800 dark:text-rose-300">{labels.restoreSeatingHeading}</p>
-          <p className="text-xs text-rose-700 dark:text-rose-400">{labels.restoreSeatingDescription}</p>
-          <button
-            type="button"
-            onClick={handleRestoreSeatingFromBackup}
-            disabled={isRestoringSeating}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
-          >
-            {isRestoringSeating ? <Loader2 size={14} className="animate-spin" /> : null}
-            {labels.restoreSeatingButton}
-          </button>
-          {restoreResultMessage && <p className="text-xs font-medium text-rose-800 dark:text-rose-300">{restoreResultMessage}</p>}
-        </div>
-
         {/* Seating alerts - auto-generated whenever a seated guest's confirmed
             status/headcount changed enough that some of their seats had to
             be freed automatically (see syncSeatingAssignmentsWithRoster).
@@ -1302,7 +1255,8 @@ export function SeatingSection({
             Especially useful for event-day seating staff, who never see the
             Roster tab at all. */}
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.guestLookupHeading}</h3>
+          <h3 className="mb-0.5 text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.guestLookupHeading}</h3>
+          <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">{labels.guestLookupHint}</p>
           <div className="relative">
             <Search size={14} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 rtl:right-3 ltr:left-3" />
             <input
@@ -1617,16 +1571,8 @@ export function SeatingSection({
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.tablesHeading} ({tables.length})</h3>
+            {canEditLayout && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleGenerateVenueTables}
-                disabled={isGeneratingVenueTables}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-              >
-                {isGeneratingVenueTables ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                {labels.generateFromSketchButton}
-              </button>
               <button
                 type="button"
                 onClick={() => setIsTableFormOpen((open) => !open)}
@@ -1650,10 +1596,10 @@ export function SeatingSection({
                 </button>
               )}
             </div>
+            )}
           </div>
-          {generateVenueTablesError && <p className="mb-2 text-sm text-rose-600 dark:text-rose-400">{generateVenueTablesError}</p>}
 
-          {tableDeleteSelection.size > 0 && (
+          {canEditLayout && tableDeleteSelection.size > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 dark:border-rose-900/50 dark:bg-rose-950/30">
               <button
                 type="button"
@@ -1744,6 +1690,7 @@ export function SeatingSection({
               <>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">{labels.objectsHeading} ({venueObjects.length})</h4>
+                {canEditLayout && (
                 <button
                   type="button"
                   onClick={() => setIsObjectFormOpen((open) => !open)}
@@ -1752,9 +1699,10 @@ export function SeatingSection({
                   <Plus size={14} />
                   {labels.addObjectButton}
                 </button>
+                )}
               </div>
 
-              {objectDeleteSelection.size > 0 && (
+              {canEditLayout && objectDeleteSelection.size > 0 && (
                 <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 dark:border-rose-900/50 dark:bg-rose-950/30">
                   <button
                     type="button"
@@ -1811,6 +1759,50 @@ export function SeatingSection({
               )}
 
               <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">{labels.canvasHint}</p>
+
+              {/* Search-and-highlight-on-the-map: same idea as the search
+                  box in Tables > List, but instead of filtering a text list,
+                  clicking a result selects that guest's table on the canvas
+                  below - the exact same highlight ring and detail panel as
+                  clicking the table directly, so it doubles as a visual
+                  "where do they sit" answer. */}
+              <div className="relative mb-3">
+                <div className="relative">
+                  <Search size={14} className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 ${isRtl ? 'right-3' : 'left-3'}`} />
+                  <input
+                    type="text"
+                    value={mapSearch}
+                    onChange={(event) => setMapSearch(event.target.value)}
+                    placeholder={labels.mapSearchPlaceholder}
+                    className={`w-full rounded-xl border border-gray-200 bg-white py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700 ${isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'}`}
+                  />
+                </div>
+                {mapSearch.trim() && (
+                  <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800">
+                    {mapSearchResults.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-gray-500 dark:text-slate-400">{labels.mapSearchEmpty}</p>
+                    ) : (
+                      mapSearchResults.map((row) => (
+                        <button
+                          key={row.entry.id}
+                          type="button"
+                          onClick={() => {
+                            handleMapSearchResultClick(row);
+                            setMapSearch('');
+                          }}
+                          className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-start text-sm hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >
+                          <span className="font-medium text-gray-900 dark:text-slate-100">{row.name}</span>
+                          <span className="text-xs text-gray-500 dark:text-slate-400">
+                            {row.tableSummary || labels.mapSearchUnseated}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Two-column layout on wide screens: canvas on the left,
                   selected-item details pinned in a sticky column on the
                   right so it's always visible - never requires scrolling
@@ -1856,6 +1848,7 @@ export function SeatingSection({
                 onToggleLocked={handleToggleLayoutLock}
                 lockLabel={labels.lockLayoutButton}
                 unlockLabel={labels.unlockLayoutButton}
+                readOnly={!canEditLayout}
                 isFullScreen={isFullScreen}
                 onToggleFullScreen={handleToggleFullScreen}
                 enterFullScreenLabel={labels.enterFullScreenLabel}
@@ -1910,6 +1903,7 @@ export function SeatingSection({
                     ) : (
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <p className="truncate text-sm font-semibold text-gray-900 dark:text-slate-100">{object.label}</p>
+                        {canEditLayout && (
                         <div className="flex shrink-0 items-center gap-1">
                           <button
                             type="button"
@@ -1927,6 +1921,7 @@ export function SeatingSection({
                             {busyKey === objectKey ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                           </button>
                         </div>
+                        )}
                       </div>
                     )}
                     {errorByKey[objectKey] && <p className="text-xs text-rose-600 dark:text-rose-400">{errorByKey[objectKey]}</p>}
@@ -2004,7 +1999,7 @@ export function SeatingSection({
                             {used}/{table.seatCount}
                             {isFull ? ` · ${labels.tableFullBadge}` : ''}
                           </span>
-                          {(table.shape === 'teardrop' || table.shape === 'curved') && (
+                          {canEditLayout && (table.shape === 'teardrop' || table.shape === 'curved') && (
                             <button
                               type="button"
                               onClick={() => handleRotateTable(table)}
@@ -2016,6 +2011,7 @@ export function SeatingSection({
                               <RotateCw size={13} />
                             </button>
                           )}
+                          {canEditLayout && (
                           <button
                             type="button"
                             onClick={() => startEditingTable(table)}
@@ -2023,6 +2019,8 @@ export function SeatingSection({
                           >
                             <Pencil size={13} />
                           </button>
+                          )}
+                          {canEditLayout && (
                           <button
                             type="button"
                             onClick={() => handleDeleteTable(table)}
@@ -2031,6 +2029,7 @@ export function SeatingSection({
                           >
                             {busyKey === tableKey ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                           </button>
+                          )}
                         </div>
                       </div>
                     )}

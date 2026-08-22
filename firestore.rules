@@ -36,6 +36,17 @@ service cloud.firestore {
       return isAdmin() || isEventStaff();
     }
 
+    // Structural floor-plan edits (creating/moving/resizing/deleting tables
+    // or venue objects, and locking/unlocking the layout) are admin-only -
+    // event-day staff can still READ everything via canManageSeating() above
+    // (they need to render the floor plan and see who's seated where), and
+    // can still write to seatingAssignments/seatingGroups/seatingAlerts (so
+    // they can seat a walk-in or dismiss an alert), just not touch the
+    // tables/objects themselves.
+    function canEditSeatingLayout() {
+      return isAdmin();
+    }
+
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -374,9 +385,9 @@ service cloud.firestore {
 
     match /seatingTables/{tableId} {
       allow read: if canManageSeating();
-      allow create: if canManageSeating() && isValidId(tableId) && isValidSeatingTable(incoming());
-      allow update: if canManageSeating() && isValidSeatingTable(incoming());
-      allow delete: if canManageSeating();
+      allow create: if canEditSeatingLayout() && isValidId(tableId) && isValidSeatingTable(incoming());
+      allow update: if canEditSeatingLayout() && isValidSeatingTable(incoming());
+      allow delete: if canEditSeatingLayout();
     }
 
     // Ad-hoc named clusters of confirmed guestRoster entry IDs, purely for
@@ -460,7 +471,7 @@ service cloud.firestore {
 
     match /seatingSettings/{settingsId} {
       allow read: if canManageSeating();
-      allow create, update: if canManageSeating() && isValidId(settingsId) && isValidSeatingSettings(incoming());
+      allow create, update: if canEditSeatingLayout() && isValidId(settingsId) && isValidSeatingSettings(incoming());
       allow delete: if false;
     }
 
@@ -487,9 +498,9 @@ service cloud.firestore {
 
     match /venueObjects/{objectId} {
       allow read: if canManageSeating();
-      allow create: if canManageSeating() && isValidId(objectId) && isValidVenueObject(incoming());
-      allow update: if canManageSeating() && isValidVenueObject(incoming());
-      allow delete: if canManageSeating();
+      allow create: if canEditSeatingLayout() && isValidId(objectId) && isValidVenueObject(incoming());
+      allow update: if canEditSeatingLayout() && isValidVenueObject(incoming());
+      allow delete: if canEditSeatingLayout();
     }
 
     // One doc per device that opted in to mobile push notifications for new/

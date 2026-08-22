@@ -31,7 +31,6 @@ import { useAdminTheme } from '../hooks/useAdminTheme';
 import { Language, translations } from '../i18n';
 import { logoutAdmin, onAdminAuthStateChanged } from '../admin/auth';
 import { isEventStaffUid } from '../admin/roles';
-import { SEATING_RESTORE_20260820 } from '../admin/seatingRestore20260820';
 import { exportRsvpWorkbook } from '../admin/exportRsvpWorkbook';
 import { exportGiftsWorkbook } from '../admin/exportGiftsWorkbook';
 import { GuestCountInput } from '../components/admin/GuestCountInput';
@@ -67,7 +66,6 @@ import {
     assignGroupToTable,
     createSeatingGroup,
     createSeatingTable,
-    createSeatingTablesBulk,
     deleteSeatingGroup,
     deleteSeatingTable,
     dismissSeatingAlert,
@@ -89,7 +87,6 @@ import {
     type SeatingTable,
     type SeatingTableLayout,
 } from '../services/seating';
-import { RONIT_FARM_FINAL_TABLES, RONIT_FARM_FINAL_OBJECTS } from '../admin/venueSeatingLayout';
 import {
     createVenueObject,
     deleteVenueObject,
@@ -1299,111 +1296,6 @@ export function AdminDashboard() {
         await setSeatingAssignment(rosterEntryId, tableId, seatsCount);
     };
 
-    // One-time recovery action for the 2026-08-22 incident (see the auto-link
-    // effect fix above) that wiped everyone's seating assignments. Replays
-    // the last-known-good chart from Gil's own 2026-08-20 Excel export
-    // (src/admin/seatingRestore20260820.ts). Each entry's id was precomputed
-    // with the same makeGuestRosterId hash used live, which is normally
-    // enough to write straight back to the right roster entry without
-    // looking anything up by name - but that hash is derived from the exact
-    // field values at the moment the roster entry was first CREATED, not
-    // from its current (possibly since-corrected/retrimmed) values, so a
-    // small number of entries can legitimately have a hash that no longer
-    // matches any live document. To catch those, every entry whose
-    // precomputed id isn't found in the currently loaded roster falls back
-    // to matching by first+last name against the live guestRoster instead
-    // (unambiguous matches only - anything matching zero or more than one
-    // live entry is reported back by name rather than guessed at).
-    //
-    // Critically, this ALSO repairs each guest's knownResponse/invitedCount
-    // before touching their seating assignment, not just the assignment
-    // itself. The incident didn't just clear seats - for a subset of guests
-    // it reverted their roster entry to "not yet responded" and their
-    // automatic RSVP re-link keeps failing (ambiguous or no name match), so
-    // they never healed on their own. Restoring only the assignment for
-    // those guests was immediately undone again by
-    // syncSeatingAssignmentsWithRoster, which strips any assignment whose
-    // owner isn't confirmed - hence seats reappearing "restored" and then
-    // vanishing again with a fresh removal alert each time. Setting
-    // knownResponse back to 'yes' (with linkedFromRsvp left off, so the
-    // fragile auto-linker leaves these alone from now on) makes the
-    // restored seat stick.
-    //
-    // Runs with Gil's own already signed-in session, exactly like any other
-    // seating/roster edit he'd make by hand - just batched. Safe to re-run.
-    // Remove this handler, its button in SeatingSection, and the data file
-    // once Gil confirms the chart looks right again.
-    const handleRestoreSeatingFromBackup = async (): Promise<{ restored: number; rosterFixed: number; tableNotFound: string[]; unmatchedGuests: string[] }> => {
-        const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
-        const tablesByName = new Map(seatingTables.map((table) => [table.name, table]));
-        const rosterById = new Map(guestRoster.map((entry) => [entry.id, entry]));
-        const rosterByName = new Map<string, GuestRosterEntry[]>();
-        guestRoster.forEach((entry) => {
-            const key = `${normalize(entry.firstName)}|${normalize(entry.lastName)}`;
-            const list = rosterByName.get(key) ?? [];
-            list.push(entry);
-            rosterByName.set(key, list);
-        });
-
-        const missingTableNames = new Set<string>();
-        const unmatchedGuests: string[] = [];
-        let restored = 0;
-        let rosterFixed = 0;
-
-        for (const backupEntry of SEATING_RESTORE_20260820) {
-            const table = tablesByName.get(backupEntry.tableName);
-            if (!table) {
-                missingTableNames.add(backupEntry.tableName);
-                continue;
-            }
-
-            let targetId: string | null = rosterById.has(backupEntry.id) ? backupEntry.id : null;
-            if (!targetId) {
-                // Fall back to matching by name only - the precomputed hash
-                // no longer points at a real document (see comment above).
-                // Compares against the live roster's own firstName+lastName
-                // split back into "first last", so it's robust to exactly
-                // where that split falls for multi-word names.
-                const candidateKeys = Array.from(rosterByName.keys()).filter((key) => {
-                    const [normalizedFirst, normalizedLast] = key.split('|');
-                    const combined = `${normalizedFirst} ${normalizedLast}`.trim();
-                    return combined === normalize(backupEntry.label);
-                });
-                const matches = candidateKeys.flatMap((key) => rosterByName.get(key) ?? []);
-                if (matches.length === 1) {
-                    targetId = matches[0].id;
-                } else {
-                    unmatchedGuests.push(backupEntry.label);
-                    continue;
-                }
-            }
-
-            const liveEntry = rosterById.get(targetId);
-            if (liveEntry && (liveEntry.knownResponse !== 'yes' || liveEntry.invitedCount !== backupEntry.seats)) {
-                // eslint-disable-next-line no-await-in-loop
-                await updateGuestRosterEntry(targetId, {
-                    side: liveEntry.side,
-                    category: liveEntry.category,
-                    firstName: liveEntry.firstName,
-                    lastName: liveEntry.lastName,
-                    invitedCount: backupEntry.seats,
-                    knownResponse: 'yes',
-                    linkedFromRsvp: false,
-                    preLinkInvitedCount: null,
-                    checkedIn: liveEntry.checkedIn,
-                    checkedInAt: liveEntry.checkedInAt,
-                });
-                rosterFixed += 1;
-            }
-
-            // eslint-disable-next-line no-await-in-loop
-            await setSeatingAssignment(targetId, table.id, backupEntry.seats);
-            restored += 1;
-        }
-
-        return { restored, rosterFixed, tableNotFound: Array.from(missingTableNames), unmatchedGuests };
-    };
-
     const handleRemoveSeatingAssignment = async (rosterEntryId: string, tableId: string): Promise<void> => {
         await removeSeatingAssignment(rosterEntryId, tableId);
     };
@@ -1425,17 +1317,6 @@ export function AdminDashboard() {
             .reduce((sum, assignment) => sum + assignment.seatsCount, 0);
 
         await assignGroupToTable(group, tableId, remainingByEntryId, table.seatCount - used);
-    };
-
-    // One-click seed of the 21 dinner tables plus the bar/production
-    // booth/restrooms from the venue's final produced seating sketch (see
-    // src/admin/venueSeatingLayout.ts) - purely additive, never touches
-    // whatever tables or objects already exist.
-    const handleGenerateVenueTables = async (): Promise<void> => {
-        await createSeatingTablesBulk(RONIT_FARM_FINAL_TABLES);
-        await Promise.all(
-            RONIT_FARM_FINAL_OBJECTS.map((object) => createVenueObject(object.type, object.label, object.layout)),
-        );
     };
 
     const handleCreateVenueObject = async (type: VenueObjectType, label: string, layout: SeatingTableLayout): Promise<void> => {
@@ -3245,11 +3126,10 @@ export function AdminDashboard() {
                         onUpdateGroup={handleUpdateSeatingGroup}
                         onDeleteGroup={handleDeleteSeatingGroup}
                         onSetAssignment={handleSetSeatingAssignment}
-                        onRestoreSeatingFromBackup={handleRestoreSeatingFromBackup}
                         onRemoveAssignment={handleRemoveSeatingAssignment}
                         onAssignGroupToTable={handleAssignSeatingGroupToTable}
-                        onGenerateVenueTables={handleGenerateVenueTables}
                         onDismissAlert={handleDismissSeatingAlert}
+                        canEditLayout={!isEventStaff}
                         labels={{
                             title: t.adminSeatingTitle,
                             subtitle: t.adminSeatingSubtitle,
@@ -3318,9 +3198,6 @@ export function AdminDashboard() {
                             exportSeatsColumn: t.adminSeatingExportSeatsColumn,
                             exportRemainingColumn: t.adminSeatingExportRemainingColumn,
                             exportOccupiedLabel: t.adminSeatingExportOccupiedLabel,
-                            generateFromSketchButton: t.adminSeatingGenerateFromSketchButton,
-                            generateFromSketchConfirm: t.adminSeatingGenerateFromSketchConfirm,
-                            generateFromSketchError: t.adminSeatingGenerateFromSketchError,
                             viewToggleMap: t.adminSeatingViewToggleMap,
                             viewToggleList: t.adminSeatingViewToggleList,
                             listSearchPlaceholder: t.adminSeatingListSearchPlaceholder,
@@ -3362,6 +3239,7 @@ export function AdminDashboard() {
                             lockLayoutButton: t.adminSeatingLockLayoutButton,
                             unlockLayoutButton: t.adminSeatingUnlockLayoutButton,
                             guestLookupHeading: t.adminSeatingGuestLookupHeading,
+                            guestLookupHint: t.adminSeatingGuestLookupHint,
                             guestLookupPlaceholder: t.adminSeatingGuestLookupPlaceholder,
                             guestLookupEmpty: t.adminSeatingGuestLookupEmpty,
                             guestLookupStatusConfirmed: t.adminSeatingGuestLookupStatusConfirmed,
@@ -3369,17 +3247,11 @@ export function AdminDashboard() {
                             guestLookupStatusPending: t.adminSeatingGuestLookupStatusPending,
                             guestLookupCheckInButton: t.adminSeatingGuestLookupCheckInButton,
                             guestLookupCheckedIn: t.adminSeatingGuestLookupCheckedIn,
-                            restoreSeatingHeading: t.adminSeatingRestoreHeading,
-                            restoreSeatingDescription: t.adminSeatingRestoreDescription,
-                            restoreSeatingButton: t.adminSeatingRestoreButton,
-                            restoreSeatingConfirm: t.adminSeatingRestoreConfirm,
-                            restoreSeatingResult: t.adminSeatingRestoreResult,
-                            restoreSeatingMissingTables: t.adminSeatingRestoreMissingTables,
-                            restoreSeatingUnmatchedGuests: t.adminSeatingRestoreUnmatchedGuests,
-                            restoreSeatingRosterFixed: t.adminSeatingRestoreRosterFixed,
-                            restoreSeatingError: t.adminSeatingRestoreError,
                             dismissAllAlertsButton: t.adminSeatingDismissAllAlertsButton,
                             dismissAllAlertsConfirm: t.adminSeatingDismissAllAlertsConfirm,
+                            mapSearchPlaceholder: t.adminSeatingMapSearchPlaceholder,
+                            mapSearchEmpty: t.adminSeatingMapSearchEmpty,
+                            mapSearchUnseated: t.adminSeatingMapSearchUnseated,
                         }}
                     />
                 </motion.section>

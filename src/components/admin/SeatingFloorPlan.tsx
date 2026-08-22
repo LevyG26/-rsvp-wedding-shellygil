@@ -249,6 +249,14 @@ interface SeatingFloorPlanProps {
   onToggleLocked: () => void;
   lockLabel: string;
   unlockLabel: string;
+  // Event-day staff read-only mode - stronger than `locked` above: blocks
+  // move AND resize (locked alone still allows resizing), hides the resize
+  // handles and bulk-delete checkboxes entirely, and hides the lock toggle
+  // itself (staff have no layout controls to lock/unlock in the first
+  // place). Selecting a table/object to see who's seated there keeps
+  // working. Gil-the-admin is never subject to this, regardless of the
+  // shared `locked` setting's value.
+  readOnly: boolean;
   // Real browser Fullscreen API state, owned by the parent (SeatingSection)
   // since the element that actually goes fullscreen wraps this canvas AND
   // the sticky table-detail side panel together - not just the canvas alone
@@ -318,6 +326,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     onToggleLocked,
     lockLabel,
     unlockLabel,
+    readOnly,
     isFullScreen,
     onToggleFullScreen,
     enterFullScreenLabel,
@@ -473,6 +482,11 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
   const handlePointerMove = (event: React.PointerEvent) => {
     const current = dragStateRef.current;
     if (!current || event.pointerId !== current.pointerId) return;
+    // Read-only (event-day staff) freezes both move and resize outright.
+    // `current.moved` deliberately never gets set to true here either, so
+    // handlePointerUp below just treats the release as a plain tap and
+    // selects the item instead.
+    if (readOnly) return;
     // Locked freezes repositioning only (mode 'move') - resize keeps
     // working. `current.moved` deliberately never gets set to true here, so
     // handlePointerUp below just treats the release as a plain tap and
@@ -584,7 +598,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
           const object = venueObjects.find((o) => o.id === selectedObjectId);
           if (object) clipboardRef.current = { kind: 'object', item: object };
         }
-      } else if (key === 'v' && clipboardRef.current) {
+      } else if (key === 'v' && clipboardRef.current && !readOnly) {
         event.preventDefault();
         const { kind, item } = clipboardRef.current;
         const layout = {
@@ -601,11 +615,12 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedTableId, selectedObjectId, tables, venueObjects, onDuplicateTable, onDuplicateObject]);
+  }, [selectedTableId, selectedObjectId, tables, venueObjects, onDuplicateTable, onDuplicateObject, readOnly]);
 
   return (
     <div>
       <div className="mb-2 flex items-center justify-end gap-1">
+        {!readOnly && (
         <button
           type="button"
           onClick={onToggleLocked}
@@ -619,6 +634,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
         >
           {locked ? <Lock size={14} /> : <Unlock size={14} />}
         </button>
+        )}
         <button type="button" onClick={zoomOut} title={zoomOutLabel} className="rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
           <Minus size={14} />
         </button>
@@ -792,7 +808,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
-                  className={`absolute flex select-none flex-col items-center justify-center p-1 text-center ${isDragging ? 'cursor-grabbing' : locked ? 'cursor-pointer' : 'cursor-grab'} ${
+                  className={`absolute flex select-none flex-col items-center justify-center p-1 text-center ${isDragging ? 'cursor-grabbing' : locked || readOnly ? 'cursor-pointer' : 'cursor-grab'} ${
                     isFreeform
                       ? ''
                       : `border-2 rounded-xl shadow-sm dark:shadow-none ${isSelected ? 'border-gray-900 bg-white ring-2 ring-gray-900/20 dark:border-slate-100 dark:bg-slate-700 dark:ring-slate-100/30' : isFull ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-900' : 'border-blue-200 bg-blue-50/90 dark:border-blue-500 dark:bg-blue-900'}`
@@ -807,7 +823,7 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                       strokeClassName={strokeClassName}
                     />
                   )}
-                  {!isCapturing && (
+                  {!isCapturing && !readOnly && (
                     <input
                       type="checkbox"
                       checked={deleteSelection.has(table.id)}
@@ -828,14 +844,16 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                     {used}/{table.seatCount}
                     {isFull ? ` · ${fullLabel}` : ''}
                   </span>
-                  <div
-                    onPointerDown={(event) => startDrag(event, 'table', table, 'resize')}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                    onPointerCancel={handlePointerUp}
-                    className="absolute bottom-0 right-0 h-6 w-6 cursor-nwse-resize rounded-tl-md bg-gray-400/70 hover:bg-gray-500 dark:bg-slate-500/70 dark:hover:bg-slate-400"
-                    style={{ touchAction: 'none' }}
-                  />
+                  {!readOnly && (
+                    <div
+                      onPointerDown={(event) => startDrag(event, 'table', table, 'resize')}
+                      onPointerMove={handlePointerMove}
+                      onPointerUp={handlePointerUp}
+                      onPointerCancel={handlePointerUp}
+                      className="absolute bottom-0 right-0 h-6 w-6 cursor-nwse-resize rounded-tl-md bg-gray-400/70 hover:bg-gray-500 dark:bg-slate-500/70 dark:hover:bg-slate-400"
+                      style={{ touchAction: 'none' }}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -853,10 +871,10 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
-                  className={`absolute flex select-none flex-col items-center justify-center gap-0.5 border-2 border-dashed p-1 text-center ${isDragging ? 'cursor-grabbing' : locked ? 'cursor-pointer' : 'cursor-grab'} ${object.shape === 'round' ? 'rounded-full' : 'rounded-lg'} ${deleteObjectSelection.has(object.id) ? 'outline outline-2 outline-offset-2 outline-rose-500' : ''} ${isSelected ? 'ring-2 ring-gray-900/30 dark:ring-slate-100/30' : ''} ${OBJECT_COLOR_CLASSES[object.type]}`}
+                  className={`absolute flex select-none flex-col items-center justify-center gap-0.5 border-2 border-dashed p-1 text-center ${isDragging ? 'cursor-grabbing' : locked || readOnly ? 'cursor-pointer' : 'cursor-grab'} ${object.shape === 'round' ? 'rounded-full' : 'rounded-lg'} ${deleteObjectSelection.has(object.id) ? 'outline outline-2 outline-offset-2 outline-rose-500' : ''} ${isSelected ? 'ring-2 ring-gray-900/30 dark:ring-slate-100/30' : ''} ${OBJECT_COLOR_CLASSES[object.type]}`}
                   style={{ left: layout.x, top: layout.y, width: layout.width, height: layout.height, touchAction: 'none' }}
                 >
-                  {!isCapturing && (
+                  {!isCapturing && !readOnly && (
                     <input
                       type="checkbox"
                       checked={deleteObjectSelection.has(object.id)}
@@ -872,14 +890,16 @@ export const SeatingFloorPlan = forwardRef<SeatingFloorPlanHandle, SeatingFloorP
                   <span className={`max-w-full px-1 text-[11px] font-semibold ${isCapturing ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'}`}>
                     {object.label}
                   </span>
-                  <div
-                    onPointerDown={(event) => startDrag(event, 'object', object, 'resize')}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                    onPointerCancel={handlePointerUp}
-                    className="absolute bottom-0 right-0 h-6 w-6 cursor-nwse-resize rounded-tl-md bg-gray-400/70 hover:bg-gray-500 dark:bg-slate-500/70 dark:hover:bg-slate-400"
-                    style={{ touchAction: 'none' }}
-                  />
+                  {!readOnly && (
+                    <div
+                      onPointerDown={(event) => startDrag(event, 'object', object, 'resize')}
+                      onPointerMove={handlePointerMove}
+                      onPointerUp={handlePointerUp}
+                      onPointerCancel={handlePointerUp}
+                      className="absolute bottom-0 right-0 h-6 w-6 cursor-nwse-resize rounded-tl-md bg-gray-400/70 hover:bg-gray-500 dark:bg-slate-500/70 dark:hover:bg-slate-400"
+                      style={{ touchAction: 'none' }}
+                    />
+                  )}
                 </div>
               );
             })}
