@@ -1302,29 +1302,72 @@ export function AdminDashboard() {
     // One-time recovery action for the 2026-08-22 incident (see the auto-link
     // effect fix above) that wiped everyone's seating assignments. Replays
     // the last-known-good chart from Gil's own 2026-08-20 Excel export
-    // (src/admin/seatingRestore20260820.ts) - each entry's id was
-    // precomputed with the same makeGuestRosterId hash used live, so this
-    // writes straight back to the correct existing roster entries without
-    // needing to look anything up by name. Runs with Gil's own already
-    // signed-in session, exactly like any other seating edit he'd make by
-    // hand - just batched. Safe to re-run. Remove this handler, its button
-    // in SeatingSection, and the data file once Gil confirms the chart looks
-    // right again.
-    const handleRestoreSeatingFromBackup = async (): Promise<{ restored: number; tableNotFound: string[] }> => {
+    // (src/admin/seatingRestore20260820.ts). Each entry's id was precomputed
+    // with the same makeGuestRosterId hash used live, which is normally
+    // enough to write straight back to the right roster entry without
+    // looking anything up by name - but that hash is derived from the exact
+    // field values at the moment the roster entry was first CREATED, not
+    // from its current (possibly since-corrected/retrimmed) values, so a
+    // small number of entries can legitimately have a hash that no longer
+    // matches any live document. To catch those, every entry whose
+    // precomputed id isn't found in the currently loaded roster falls back
+    // to matching by first+last name against the live guestRoster instead
+    // (unambiguous matches only - anything matching zero or more than one
+    // live entry is reported back by name rather than guessed at). Runs with
+    // Gil's own already signed-in session, exactly like any other seating
+    // edit he'd make by hand - just batched. Safe to re-run. Remove this
+    // handler, its button in SeatingSection, and the data file once Gil
+    // confirms the chart looks right again.
+    const handleRestoreSeatingFromBackup = async (): Promise<{ restored: number; tableNotFound: string[]; unmatchedGuests: string[] }> => {
+        const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
         const tablesByName = new Map(seatingTables.map((table) => [table.name, table]));
+        const rosterById = new Map(guestRoster.map((entry) => [entry.id, entry]));
+        const rosterByName = new Map<string, GuestRosterEntry[]>();
+        guestRoster.forEach((entry) => {
+            const key = `${normalize(entry.firstName)}|${normalize(entry.lastName)}`;
+            const list = rosterByName.get(key) ?? [];
+            list.push(entry);
+            rosterByName.set(key, list);
+        });
+
         const missingTableNames = new Set<string>();
+        const unmatchedGuests: string[] = [];
         let restored = 0;
-        for (const entry of SEATING_RESTORE_20260820) {
-            const table = tablesByName.get(entry.tableName);
+
+        for (const backupEntry of SEATING_RESTORE_20260820) {
+            const table = tablesByName.get(backupEntry.tableName);
             if (!table) {
-                missingTableNames.add(entry.tableName);
+                missingTableNames.add(backupEntry.tableName);
                 continue;
             }
+
+            let targetId: string | null = rosterById.has(backupEntry.id) ? backupEntry.id : null;
+            if (!targetId) {
+                // Fall back to matching by name only - the precomputed hash
+                // no longer points at a real document (see comment above).
+                // Compares against the live roster's own firstName+lastName
+                // split back into "first last", so it's robust to exactly
+                // where that split falls for multi-word names.
+                const candidateKeys = Array.from(rosterByName.keys()).filter((key) => {
+                    const [normalizedFirst, normalizedLast] = key.split('|');
+                    const combined = `${normalizedFirst} ${normalizedLast}`.trim();
+                    return combined === normalize(backupEntry.label);
+                });
+                const matches = candidateKeys.flatMap((key) => rosterByName.get(key) ?? []);
+                if (matches.length === 1) {
+                    targetId = matches[0].id;
+                } else {
+                    unmatchedGuests.push(backupEntry.label);
+                    continue;
+                }
+            }
+
             // eslint-disable-next-line no-await-in-loop
-            await setSeatingAssignment(entry.id, table.id, entry.seats);
+            await setSeatingAssignment(targetId, table.id, backupEntry.seats);
             restored += 1;
         }
-        return { restored, tableNotFound: Array.from(missingTableNames) };
+
+        return { restored, tableNotFound: Array.from(missingTableNames), unmatchedGuests };
     };
 
     const handleRemoveSeatingAssignment = async (rosterEntryId: string, tableId: string): Promise<void> => {
@@ -3298,6 +3341,7 @@ export function AdminDashboard() {
                             restoreSeatingConfirm: t.adminSeatingRestoreConfirm,
                             restoreSeatingResult: t.adminSeatingRestoreResult,
                             restoreSeatingMissingTables: t.adminSeatingRestoreMissingTables,
+                            restoreSeatingUnmatchedGuests: t.adminSeatingRestoreUnmatchedGuests,
                             restoreSeatingError: t.adminSeatingRestoreError,
                         }}
                     />

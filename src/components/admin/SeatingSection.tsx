@@ -155,6 +155,7 @@ export interface SeatingLabels {
   restoreSeatingConfirm: string;
   restoreSeatingResult: string;
   restoreSeatingMissingTables: string;
+  restoreSeatingUnmatchedGuests: string;
   restoreSeatingError: string;
 }
 
@@ -223,7 +224,7 @@ interface SeatingSectionProps {
   // One-time recovery action for the 2026-08-22 incident - remove along with
   // its button below and AdminDashboard's handler once Gil confirms the
   // chart looks right again.
-  onRestoreSeatingFromBackup: () => Promise<{ restored: number; tableNotFound: string[] }>;
+  onRestoreSeatingFromBackup: () => Promise<{ restored: number; tableNotFound: string[]; unmatchedGuests: string[] }>;
 }
 
 function entryName(entry: GuestRosterEntry): string {
@@ -1118,11 +1119,15 @@ export function SeatingSection({
     setIsRestoringSeating(true);
     setRestoreResultMessage('');
     try {
-      const { restored, tableNotFound } = await onRestoreSeatingFromBackup();
-      const message = tableNotFound.length > 0
-        ? `${labels.restoreSeatingResult.replace('{count}', String(restored))} (${labels.restoreSeatingMissingTables}: ${tableNotFound.join(', ')})`
-        : labels.restoreSeatingResult.replace('{count}', String(restored));
-      setRestoreResultMessage(message);
+      const { restored, tableNotFound, unmatchedGuests } = await onRestoreSeatingFromBackup();
+      const parts = [labels.restoreSeatingResult.replace('{count}', String(restored))];
+      if (tableNotFound.length > 0) {
+        parts.push(`${labels.restoreSeatingMissingTables}: ${tableNotFound.join(', ')}`);
+      }
+      if (unmatchedGuests.length > 0) {
+        parts.push(`${labels.restoreSeatingUnmatchedGuests} (${unmatchedGuests.length}): ${unmatchedGuests.join(', ')}`);
+      }
+      setRestoreResultMessage(parts.join(' | '));
     } catch (error) {
       console.error('Failed to restore seating from backup', error);
       setRestoreResultMessage(labels.restoreSeatingError);
