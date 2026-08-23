@@ -1128,8 +1128,9 @@ export function SeatingSection({
     try {
       // Sequential, not Promise.all - keeps this identical in spirit to
       // clicking each alert's own dismiss button one at a time, just
-      // without needing 100+ individual clicks.
-      for (const alert of alerts) {
+      // without needing 100+ individual clicks. Only the currently-visible
+      // (not-already-dismissed) ones - nothing to do for the rest.
+      for (const alert of visibleAlerts) {
         // eslint-disable-next-line no-await-in-loop
         await onDismissAlert(alert.id);
       }
@@ -1206,13 +1207,15 @@ export function SeatingSection({
         {/* Seating alerts - auto-generated whenever a seated guest's confirmed
             status/headcount changed enough that some of their seats had to
             be freed automatically (see syncSeatingAssignmentsWithRoster).
-            Dismissed by deleting, one at a time, once Gil has seen it. */}
-        {alerts.length > 0 && (
+            Dismissing marks it `dismissed` (see seating.ts) rather than
+            deleting it outright, and stays dismissed as long as the same
+            situation holds - only re-appears if something actually changes. */}
+        {visibleAlerts.length > 0 && (
           <div className="space-y-1.5 rounded-2xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300">
                 <AlertTriangle size={15} aria-hidden="true" />
-                {labels.alertsHeading} ({alerts.length})
+                {labels.alertsHeading} ({visibleAlerts.length})
               </h3>
               <button
                 type="button"
@@ -1225,7 +1228,7 @@ export function SeatingSection({
               </button>
             </div>
             <div className="space-y-1">
-              {alerts.map((alert) => {
+              {visibleAlerts.map((alert) => {
                 const alertKey = `alert-${alert.id}`;
                 const message = alert.reason === 'needsMoreSeats'
                   ? labels.alertMessageNeedsMoreSeats

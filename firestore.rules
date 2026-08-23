@@ -426,23 +426,34 @@ service cloud.firestore {
     // roster entry or table involved is gone. Uses a deterministic doc id
     // (entryId + table or "needsMore") rather than a random one specifically
     // so two admin sessions racing to notice the same event collapse into
-    // one update instead of two duplicate alerts - that's also why update is
-    // allowed here (Gil otherwise dismisses one by deleting it).
+    // one update instead of two duplicate alerts, and doubles as the key
+    // dismissing/re-raising an alert updates in place (see `dismissed`
+    // below and isValidSeatingAlertDismissUpdate further down).
     function isValidSeatingAlert(data) {
-      return data.keys().hasAll(['guestName', 'category', 'tableName', 'seatsCount', 'reason', 'createdAt']) &&
-             data.keys().hasOnly(['guestName', 'category', 'tableName', 'seatsCount', 'reason', 'createdAt']) &&
+      return data.keys().hasAll(['guestName', 'category', 'tableName', 'seatsCount', 'reason', 'createdAt', 'dismissed']) &&
+             data.keys().hasOnly(['guestName', 'category', 'tableName', 'seatsCount', 'reason', 'createdAt', 'dismissed']) &&
              data.guestName is string && data.guestName.size() > 0 && data.guestName.size() <= 120 &&
              data.category is string && data.category.size() <= 120 &&
              data.tableName is string && data.tableName.size() > 0 && data.tableName.size() <= 60 &&
              data.seatsCount is int && data.seatsCount >= 1 && data.seatsCount <= 40 &&
              data.reason in ['notConfirmed', 'reducedCount', 'needsMoreSeats'] &&
+             data.dismissed is bool &&
              data.createdAt == request.time;
+    }
+
+    // Gil dismissing an alert (see dismissSeatingAlert in services/seating.ts)
+    // only ever flips this one field - narrower than isValidSeatingAlert
+    // above, which requires createdAt == request.time (a full resend of
+    // every field, which is what actually raising/re-raising an alert does).
+    function isValidSeatingAlertDismissUpdate() {
+      return incoming().diff(resource.data).affectedKeys().hasOnly(['dismissed']) &&
+             incoming().dismissed is bool;
     }
 
     match /seatingAlerts/{alertId} {
       allow read: if canManageSeating();
       allow create: if canManageSeating() && isValidId(alertId) && isValidSeatingAlert(incoming());
-      allow update: if canManageSeating() && isValidSeatingAlert(incoming());
+      allow update: if canManageSeating() && (isValidSeatingAlert(incoming()) || isValidSeatingAlertDismissUpdate());
       allow delete: if canManageSeating();
     }
 
