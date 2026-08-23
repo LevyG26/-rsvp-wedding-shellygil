@@ -156,6 +156,9 @@ export interface SeatingLabels {
   arrivalsPartiallyArrived: string;
   arrivalsNotArrived: string;
   arrivalsEmptyGroup: string;
+  arrivalsFilterAll: string;
+  arrivalsColumnStatus: string;
+  arrivalsColumnActions: string;
   dismissAllAlertsButton: string;
   dismissAllAlertsConfirm: string;
   mapSearchPlaceholder: string;
@@ -165,6 +168,8 @@ export interface SeatingLabels {
 
 type GuestListSortKey = 'name' | 'side' | 'category' | 'invitedCount' | 'status' | 'table';
 type GuestListStatusFilter = 'all' | 'seated' | 'partial' | 'unseated';
+type ArrivalsStatus = 'notArrived' | 'partial' | 'fullyArrived';
+type ArrivalsStatusFilter = 'all' | ArrivalsStatus;
 
 interface GuestListSortableHeaderProps {
   label: string;
@@ -306,6 +311,11 @@ export function SeatingSection({
   const [checkInBusyId, setCheckInBusyId] = useState<string | null>(null);
   const [isArrivalsExpanded, setIsArrivalsExpanded] = useState(false);
   const [arrivalsFilter, setArrivalsFilter] = useState('');
+  const [arrivalsStatusFilter, setArrivalsStatusFilter] = useState<ArrivalsStatusFilter>('all');
+  const [arrivalsSort, setArrivalsSort] = useState<{ key: GuestListSortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
+  const handleArrivalsSort = (key: GuestListSortKey) => {
+    setArrivalsSort((previous) => (previous.key === key ? { key, direction: previous.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' }));
+  };
   const [search, setSearch] = useState('');
   const [rowState, setRowState] = useState<Record<string, { seats: string; tableId: string }>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -569,26 +579,34 @@ export function SeatingSection({
 
   // "Who's actually here" breakdown Gil asked for - every CONFIRMED guest
   // (a walk-in who was never on the RSVP list at all doesn't belong in a
-  // "who's missing" list) bucketed by how much of their party has arrived,
-  // so staff can see at a glance who's fully here, who's only partly here
-  // (and by how much), and who hasn't shown up yet.
-  const arrivalsOverview = useMemo(() => {
-    const fullyArrived: GuestRosterEntry[] = [];
-    const partiallyArrived: GuestRosterEntry[] = [];
-    const notArrived: GuestRosterEntry[] = [];
-    for (const entry of confirmedEntries) {
-      if (entry.arrivedCount <= 0) notArrived.push(entry);
-      else if (entry.arrivedCount >= entry.invitedCount) fullyArrived.push(entry);
-      else partiallyArrived.push(entry);
-    }
-    const byName = (a: GuestRosterEntry, b: GuestRosterEntry) => entryName(a).localeCompare(entryName(b), locale);
-    return {
-      fullyArrived: fullyArrived.sort(byName),
-      partiallyArrived: partiallyArrived.sort(byName),
-      notArrived: notArrived.sort(byName),
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmedEntries, locale]);
+  // "who's missing" list), as flat, sortable/filterable/searchable rows -
+  // deliberately mirroring the Tables-List table below (same sticky-header,
+  // scrollable, search+filter pattern) rather than the cramped 3-column
+  // name-dump this replaced, per Gil's feedback that it needs to read like
+  // a real table and stay usable with 300+ guests.
+  const arrivalsRows = useMemo(() => {
+    const query = arrivalsFilter.trim().toLowerCase();
+    const rows = confirmedEntries
+      .map((entry) => {
+        const status: ArrivalsStatus = entry.arrivedCount <= 0 ? 'notArrived' : entry.arrivedCount >= entry.invitedCount ? 'fullyArrived' : 'partial';
+        const tableSummary = (assignmentsByEntry.get(entry.id) ?? [])
+          .map((assignment) => tablesById.get(assignment.tableId)?.name)
+          .filter((name): name is string => Boolean(name))
+          .join(', ');
+        return { entry, status, tableSummary };
+      })
+      .filter((row) => arrivalsStatusFilter === 'all' || row.status === arrivalsStatusFilter)
+      .filter((row) => !query || entryName(row.entry).toLowerCase().includes(query) || row.entry.category.toLowerCase().includes(query));
+
+    const statusOrder: Record<ArrivalsStatus, number> = { notArrived: 0, partial: 1, fullyArrived: 2 };
+    rows.sort((a, b) => {
+      const comparison = arrivalsSort.key === 'status'
+        ? statusOrder[a.status] - statusOrder[b.status] || entryName(a.entry).localeCompare(entryName(b.entry), locale)
+        : entryName(a.entry).localeCompare(entryName(b.entry), locale);
+      return arrivalsSort.direction === 'asc' ? comparison : -comparison;
+    });
+    return rows;
+  }, [confirmedEntries, assignmentsByEntry, tablesById, arrivalsFilter, arrivalsStatusFilter, arrivalsSort, locale]);
 
   const getRowState = (entry: GuestRosterEntry) => {
     const remaining = remainingForEntry(entry);
@@ -1324,28 +1342,34 @@ export function SeatingSection({
                   const isMultiParty = entry.invitedCount > 1;
                   const isFullyArrived = entry.arrivedCount >= entry.invitedCount && entry.invitedCount > 0;
                   return (
-                    <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                    <div key={entry.id} className="flex flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100">{entryName(entry)}</p>
-                        <p className="truncate text-xs text-gray-500 dark:text-slate-400">
-                          {entry.side} · {entry.category}
-                          {entryTableSummary && <> · {entryTableSummary}</>}
-                        </p>
+                        <p className="truncate text-base font-semibold text-gray-900 dark:text-slate-100">{entryName(entry)}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.text}</span>
+                          <span className="text-sm text-gray-600 dark:text-slate-300">{entry.category}</span>
+                          {entryTableSummary ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-sm font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                              <MapIcon size={13} aria-hidden="true" /> {entryTableSummary}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-400 dark:text-slate-500">{labels.mapSearchUnseated}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.text}</span>
+                      <div className="flex shrink-0 items-center gap-2">
                         {isMultiParty && (
-                          <div className="flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1 dark:border-slate-600 dark:bg-slate-800">
+                          <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white px-1.5 py-1 dark:border-slate-600 dark:bg-slate-800">
                             <button
                               type="button"
                               onClick={() => handleArrivedCountChange(entry, entry.arrivedCount - 1)}
                               disabled={isCheckInBusy || entry.arrivedCount <= 0}
                               aria-label={labels.guestLookupDecreaseArrived}
-                              className="px-1.5 text-sm leading-none text-gray-500 hover:text-gray-800 disabled:opacity-30 dark:text-slate-400 dark:hover:text-slate-100"
+                              className="px-2 py-0.5 text-base leading-none text-gray-500 hover:text-gray-800 disabled:opacity-30 dark:text-slate-400 dark:hover:text-slate-100"
                             >
                               −
                             </button>
-                            <span className="min-w-[2.25rem] text-center text-xs font-semibold text-gray-700 dark:text-slate-200">
+                            <span className="min-w-[2.75rem] text-center text-sm font-semibold text-gray-700 dark:text-slate-200">
                               {entry.arrivedCount}/{entry.invitedCount}
                             </span>
                             <button
@@ -1353,7 +1377,7 @@ export function SeatingSection({
                               onClick={() => handleArrivedCountChange(entry, entry.arrivedCount + 1)}
                               disabled={isCheckInBusy || entry.arrivedCount >= entry.invitedCount}
                               aria-label={labels.guestLookupIncreaseArrived}
-                              className="px-1.5 text-sm leading-none text-gray-500 hover:text-gray-800 disabled:opacity-30 dark:text-slate-400 dark:hover:text-slate-100"
+                              className="px-2 py-0.5 text-base leading-none text-gray-500 hover:text-gray-800 disabled:opacity-30 dark:text-slate-400 dark:hover:text-slate-100"
                             >
                               +
                             </button>
@@ -1363,16 +1387,16 @@ export function SeatingSection({
                           type="button"
                           onClick={() => handleArrivedCountChange(entry, isFullyArrived ? 0 : entry.invitedCount)}
                           disabled={isCheckInBusy}
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
+                          className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60 sm:flex-none ${
                             isFullyArrived
                               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                               : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
                           }`}
                         >
                           {isCheckInBusy ? (
-                            <Loader2 size={12} className="animate-spin" />
+                            <Loader2 size={14} className="animate-spin" />
                           ) : isFullyArrived ? (
-                            <UserCheck size={12} />
+                            <UserCheck size={14} />
                           ) : null}
                           {isFullyArrived ? labels.guestLookupCheckedIn : (isMultiParty ? labels.guestLookupMarkAllArrived : labels.guestLookupCheckInButton)}
                         </button>
@@ -1385,70 +1409,145 @@ export function SeatingSection({
           )}
         </div>
 
-        {/* Arrivals tracking - "who's here, who's not, who's only partly
-            here" breakdown of every CONFIRMED guest, requested by Gil so
-            staff don't have to search one name at a time to see the overall
-            picture. Collapsed by default since it lists every confirmed
-            guest by name - only expands on request. */}
+        {/* Arrivals tracking - who's here, who's not, who's only partly
+            here, across every CONFIRMED guest. Rebuilt as a proper sortable/
+            filterable table (mirroring the Tables-List table below) after
+            Gil found the original 3-column name-dump cramped and hard to
+            read with 300+ guests. Collapsed by default - only expands on
+            request. */}
         <div className="rounded-2xl border border-gray-100 dark:border-slate-700">
           <button
             type="button"
             onClick={() => setIsArrivalsExpanded((previous) => !previous)}
-            className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-start"
+            className="flex w-full items-center justify-between gap-2 px-4 py-3 text-start"
           >
-            <span className="text-sm font-semibold text-gray-700 dark:text-slate-300">
+            <span className="text-base font-semibold text-gray-700 dark:text-slate-300">
               {labels.arrivalsHeading} ({totalArrivedPeople}/{totalConfirmedPeople})
             </span>
-            <span className="text-xs font-medium text-gray-500 dark:text-slate-400">
+            <span className="text-sm font-medium text-gray-500 dark:text-slate-400">
               {isArrivalsExpanded ? labels.arrivalsToggleHide : labels.arrivalsToggleShow}
             </span>
           </button>
           {isArrivalsExpanded && (
             <div className="border-t border-gray-100 p-4 dark:border-slate-700">
-              <div className="relative mb-3">
-                <Search size={13} className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 ${isRtl ? 'right-3' : 'left-3'}`} />
-                <input
-                  type="text"
-                  value={arrivalsFilter}
-                  onChange={(event) => setArrivalsFilter(event.target.value)}
-                  placeholder={labels.guestLookupPlaceholder}
-                  className={`w-full rounded-xl border border-gray-200 bg-gray-50 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700 ${isRtl ? 'pr-8 pl-3' : 'pl-8 pr-3'}`}
-                />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {([
-                  { key: 'notArrived', title: labels.arrivalsNotArrived, entries: arrivalsOverview.notArrived, dotClassName: 'bg-gray-400' },
-                  { key: 'partiallyArrived', title: labels.arrivalsPartiallyArrived, entries: arrivalsOverview.partiallyArrived, dotClassName: 'bg-amber-500' },
-                  { key: 'fullyArrived', title: labels.arrivalsFullyArrived, entries: arrivalsOverview.fullyArrived, dotClassName: 'bg-emerald-500' },
-                ] as const).map((group) => {
-                  const query = arrivalsFilter.trim().toLowerCase();
-                  const visibleEntries = query
-                    ? group.entries.filter((entry) => entryName(entry).toLowerCase().includes(query))
-                    : group.entries;
-                  return (
-                <div key={group.key}>
-                  <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
-                    <span className={`h-1.5 w-1.5 rounded-full ${group.dotClassName}`} aria-hidden="true" />
-                    {group.title} ({group.entries.length})
-                  </p>
-                  {visibleEntries.length === 0 ? (
-                    <p className="text-xs text-gray-400 dark:text-slate-500">{labels.arrivalsEmptyGroup}</p>
-                  ) : (
-                    <ul className="max-h-48 space-y-1 overflow-y-auto pe-1">
-                      {visibleEntries.map((entry) => (
-                        <li key={entry.id} className="flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-slate-200">
-                          <span className="truncate">{entryName(entry)}</span>
-                          {entry.invitedCount > 1 && (
-                            <span className="shrink-0 text-gray-400 dark:text-slate-500" dir="ltr">{entry.arrivedCount}/{entry.invitedCount}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <Search size={14} className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 ${isRtl ? 'right-3' : 'left-3'}`} />
+                  <input
+                    type="text"
+                    value={arrivalsFilter}
+                    onChange={(event) => setArrivalsFilter(event.target.value)}
+                    placeholder={labels.guestLookupPlaceholder}
+                    className={`w-full rounded-xl border border-gray-200 bg-white py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700 ${isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'}`}
+                  />
                 </div>
-                  );
-                })}
+                <select
+                  value={arrivalsStatusFilter}
+                  onChange={(event) => setArrivalsStatusFilter(event.target.value as ArrivalsStatusFilter)}
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
+                >
+                  <option value="all">{labels.arrivalsFilterAll}</option>
+                  <option value="notArrived">{labels.arrivalsNotArrived}</option>
+                  <option value="partial">{labels.arrivalsPartiallyArrived}</option>
+                  <option value="fullyArrived">{labels.arrivalsFullyArrived}</option>
+                </select>
               </div>
+
+              {arrivalsRows.length === 0 ? (
+                <p className="rounded-2xl border border-gray-100 bg-gray-50/60 px-4 py-3 text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">{labels.arrivalsEmptyGroup}</p>
+              ) : (
+                <div className="max-h-[480px] overflow-auto rounded-2xl border border-gray-100 dark:border-slate-700">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-gray-50 text-xs text-gray-500 dark:bg-slate-800/90 dark:text-slate-400">
+                      <tr>
+                        <GuestListSortableHeader label={labels.listColumnName} sortKey="name" activeSort={arrivalsSort} onSort={handleArrivalsSort} />
+                        <th className="px-3 py-2 text-start font-semibold">{labels.listColumnCategory}</th>
+                        <th className="px-3 py-2 text-start font-semibold">{labels.listColumnTables}</th>
+                        <GuestListSortableHeader label={labels.arrivalsColumnStatus} sortKey="status" activeSort={arrivalsSort} onSort={handleArrivalsSort} />
+                        <th className="px-3 py-2 text-start font-semibold">{labels.arrivalsColumnActions}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 bg-white dark:divide-slate-700 dark:bg-slate-900">
+                      {arrivalsRows.map(({ entry, status, tableSummary }) => {
+                        const isCheckInBusy = checkInBusyId === entry.id;
+                        const isMultiParty = entry.invitedCount > 1;
+                        const statusBadge = status === 'fullyArrived'
+                          ? { text: labels.arrivalsFullyArrived, className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' }
+                          : status === 'partial'
+                            ? { text: labels.arrivalsPartiallyArrived, className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' }
+                            : { text: labels.arrivalsNotArrived, className: 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-300' };
+                        return (
+                          <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-slate-800">
+                            <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-slate-100">{entryName(entry)}</td>
+                            <td className="px-3 py-2.5 text-gray-600 dark:text-slate-400">{entry.category}</td>
+                            <td className="px-3 py-2.5 text-gray-600 dark:text-slate-400">
+                              {tableSummary ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                  <MapIcon size={11} aria-hidden="true" /> {tableSummary}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 dark:text-slate-500">{labels.mapSearchUnseated}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge.className}`}>
+                                {statusBadge.text}
+                                {isMultiParty && <span dir="ltr">({entry.arrivedCount}/{entry.invitedCount})</span>}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-1.5">
+                                {isMultiParty && (
+                                  <div className="flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1 dark:border-slate-600 dark:bg-slate-800">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleArrivedCountChange(entry, entry.arrivedCount - 1)}
+                                      disabled={isCheckInBusy || entry.arrivedCount <= 0}
+                                      aria-label={labels.guestLookupDecreaseArrived}
+                                      className="px-1.5 text-sm leading-none text-gray-500 hover:text-gray-800 disabled:opacity-30 dark:text-slate-400 dark:hover:text-slate-100"
+                                    >
+                                      −
+                                    </button>
+                                    <span className="min-w-[2.25rem] text-center text-xs font-semibold text-gray-700 dark:text-slate-200">
+                                      {entry.arrivedCount}/{entry.invitedCount}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleArrivedCountChange(entry, entry.arrivedCount + 1)}
+                                      disabled={isCheckInBusy || entry.arrivedCount >= entry.invitedCount}
+                                      aria-label={labels.guestLookupIncreaseArrived}
+                                      className="px-1.5 text-sm leading-none text-gray-500 hover:text-gray-800 disabled:opacity-30 dark:text-slate-400 dark:hover:text-slate-100"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleArrivedCountChange(entry, status === 'fullyArrived' ? 0 : entry.invitedCount)}
+                                  disabled={isCheckInBusy}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
+                                    status === 'fullyArrived'
+                                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                      : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                                  }`}
+                                >
+                                  {isCheckInBusy ? (
+                                    <Loader2 size={12} className="animate-spin" />
+                                  ) : status === 'fullyArrived' ? (
+                                    <UserCheck size={12} />
+                                  ) : null}
+                                  {status === 'fullyArrived' ? labels.guestLookupCheckedIn : (isMultiParty ? labels.guestLookupMarkAllArrived : labels.guestLookupCheckInButton)}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
