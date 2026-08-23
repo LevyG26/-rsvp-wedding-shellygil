@@ -390,10 +390,26 @@ service cloud.firestore {
              data.updatedAt == request.time;
     }
 
+    // Narrow update allowing anyone who can manage seating (admin or event
+    // staff) to keep a table's running seatsUsed counter accurate, without
+    // granting them the full layout-edit permission isValidSeatingTable
+    // requires. See SeatingTable.seatsUsed and setSeatingAssignment/
+    // removeSeatingAssignment in services/seating.ts - this field is what
+    // lets a seat-count change be checked for capacity from inside a single
+    // transaction (only individual documents, not a query, can be read
+    // inside this SDK's transactions), which is what stops two staff phones
+    // from both seating different walk-ins into the same table's last
+    // seat(s) at once.
+    function isValidSeatingTableSeatsUsedUpdate() {
+      return incoming().diff(resource.data).affectedKeys().hasOnly(['seatsUsed']) &&
+             incoming().seatsUsed is int && incoming().seatsUsed >= 0 && incoming().seatsUsed <= 40;
+    }
+
     match /seatingTables/{tableId} {
       allow read: if canManageSeating();
       allow create: if canEditSeatingLayout() && isValidId(tableId) && isValidSeatingTable(incoming());
-      allow update: if canEditSeatingLayout() && isValidSeatingTable(incoming());
+      allow update: if (canEditSeatingLayout() && isValidSeatingTable(incoming())) ||
+                       (canManageSeating() && isValidSeatingTableSeatsUsedUpdate());
       allow delete: if canEditSeatingLayout();
     }
 

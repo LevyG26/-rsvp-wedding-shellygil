@@ -22,7 +22,9 @@ import {
   X,
 } from 'lucide-react';
 import type { GuestRosterEntry } from '../../services/guestRoster';
+import { SeatingCapacityError } from '../../services/seating';
 import type { SeatingAlert, SeatingAssignment, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
+import { SaveTimeoutError, withTimeout } from '../../utils/withTimeout';
 import type { VenueObject, VenueObjectType } from '../../services/venueObjects';
 import { exportSeatingChart, type SeatingExportGuest, type SeatingExportListRow, type SeatingExportTable, type SeatingExportUnseatedGuest } from '../../admin/exportSeatingChart';
 import { transliterateHebrew } from '../../admin/hebrewTransliteration';
@@ -65,6 +67,18 @@ export interface SeatingLabels {
   tableDetailsHint: string;
   deleteTableConfirm: string;
   updateError: string;
+  // Shown instead of updateError when the seat-count write was rejected
+  // because another staff session filled the table's remaining seat(s) in
+  // the same instant (see SeatingCapacityError in services/seating.ts) -
+  // deliberately distinct from a generic failure so whoever's seating a
+  // walk-in understands the table just filled up, not that something broke.
+  tableFullError: string;
+  // Shown instead of updateError when the save never got a response from
+  // Firestore within a few seconds (typically a dropped/weak connection at
+  // the venue) - the write is still queued locally and will go through once
+  // the connection returns, so this deliberately does not say the edit
+  // failed.
+  saveTimeoutError: string;
   createError: string;
   deleteError: string;
   saving: string;
@@ -651,7 +665,7 @@ export function SeatingSection({
     setBusyKey(key);
     setErrorByKey((prev) => ({ ...prev, [key]: '' }));
     try {
-      await onSetAssignment(entry.id, table.id, existingAtTable + seatsToAdd);
+      await withTimeout(onSetAssignment(entry.id, table.id, existingAtTable + seatsToAdd));
       setRowState((prev) => {
         const next = { ...prev };
         delete next[entry.id];
@@ -659,7 +673,12 @@ export function SeatingSection({
       });
     } catch (error) {
       console.error('Failed to assign guest to table', error);
-      setErrorByKey((prev) => ({ ...prev, [key]: labels.updateError }));
+      const message = error instanceof SeatingCapacityError
+        ? labels.tableFullError
+        : error instanceof SaveTimeoutError
+          ? labels.saveTimeoutError
+          : labels.updateError;
+      setErrorByKey((prev) => ({ ...prev, [key]: message }));
     } finally {
       setBusyKey(null);
     }
@@ -682,10 +701,15 @@ export function SeatingSection({
     setBusyKey(key);
     setErrorByKey((prev) => ({ ...prev, [key]: '' }));
     try {
-      await onSetAssignment(assignment.rosterEntryId, assignment.tableId, nextSeats);
+      await withTimeout(onSetAssignment(assignment.rosterEntryId, assignment.tableId, nextSeats));
     } catch (error) {
       console.error('Failed to update seating assignment', error);
-      setErrorByKey((prev) => ({ ...prev, [key]: labels.updateError }));
+      const message = error instanceof SeatingCapacityError
+        ? labels.tableFullError
+        : error instanceof SaveTimeoutError
+          ? labels.saveTimeoutError
+          : labels.updateError;
+      setErrorByKey((prev) => ({ ...prev, [key]: message }));
     } finally {
       setBusyKey(null);
     }
@@ -696,10 +720,10 @@ export function SeatingSection({
     setBusyKey(key);
     setErrorByKey((prev) => ({ ...prev, [key]: '' }));
     try {
-      await onRemoveAssignment(assignment.rosterEntryId, assignment.tableId);
+      await withTimeout(onRemoveAssignment(assignment.rosterEntryId, assignment.tableId));
     } catch (error) {
       console.error('Failed to remove seating assignment', error);
-      setErrorByKey((prev) => ({ ...prev, [key]: labels.deleteError }));
+      setErrorByKey((prev) => ({ ...prev, [key]: error instanceof SaveTimeoutError ? labels.saveTimeoutError : labels.deleteError }));
     } finally {
       setBusyKey(null);
     }

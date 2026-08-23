@@ -3,6 +3,7 @@ import { Check, ChevronDown, Clock, Copy, Link2, Loader2, MessageCircle, Plus, R
 import type { GuestRosterEntry, GuestRosterEntryInput, KnownResponse } from '../../services/guestRoster';
 import type { RosterLinkResult } from '../../services/rsvpRosterLink';
 import { EVENT_START_ISO } from '../../eventDetails';
+import { SaveTimeoutError, withTimeout } from '../../utils/withTimeout';
 
 export interface GuestRosterLabels {
   title: string;
@@ -63,6 +64,12 @@ export interface GuestRosterLabels {
   updateError: string;
   createError: string;
   requiredName: string;
+  // Shown instead of updateError specifically when the save never got a
+  // response from Firestore within a few seconds (typically a dropped/weak
+  // connection) - the write is still queued locally and will go through the
+  // moment the connection returns, so this deliberately does NOT say the
+  // edit failed, only that it's taking longer than expected.
+  saveTimeoutError: string;
   // Shown (as a tooltip on desktop, and as small text under the field on
   // mobile, where hover tooltips don't work) for any entry whose status came
   // from an actual RSVP submission - explains that changing it here also
@@ -460,17 +467,17 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
     setSavingId(entry.id);
     setRowErrors((prev) => ({ ...prev, [entry.id]: '' }));
     try {
-      await onUpdate(entry.id, {
+      await withTimeout(onUpdate(entry.id, {
         side: entry.side,
         category: entry.category,
         firstName: entry.firstName,
         lastName: entry.lastName,
         invitedCount: entry.invitedCount,
         knownResponse,
-      });
+      }));
     } catch (updateError) {
       console.error('Failed to update guest roster status', updateError);
-      setRowErrors((prev) => ({ ...prev, [entry.id]: labels.updateError }));
+      setRowErrors((prev) => ({ ...prev, [entry.id]: updateError instanceof SaveTimeoutError ? labels.saveTimeoutError : labels.updateError }));
     } finally {
       setSavingId(null);
     }
@@ -486,17 +493,17 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
     setSavingId(entry.id);
     setRowErrors((prev) => ({ ...prev, [entry.id]: '' }));
     try {
-      await onUpdate(entry.id, {
+      await withTimeout(onUpdate(entry.id, {
         side: entry.side,
         category: entry.category,
         firstName: entry.firstName,
         lastName: entry.lastName,
         invitedCount,
         knownResponse: entry.knownResponse,
-      });
+      }));
     } catch (updateError) {
       console.error('Failed to update guest roster count', updateError);
-      setRowErrors((prev) => ({ ...prev, [entry.id]: labels.updateError }));
+      setRowErrors((prev) => ({ ...prev, [entry.id]: updateError instanceof SaveTimeoutError ? labels.saveTimeoutError : labels.updateError }));
     } finally {
       setSavingId(null);
     }
@@ -518,17 +525,17 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
     setSavingId(entry.id);
     setRowErrors((prev) => ({ ...prev, [entry.id]: '' }));
     try {
-      await onUpdate(entry.id, {
+      await withTimeout(onUpdate(entry.id, {
         side: entry.side,
         category: trimmed,
         firstName: entry.firstName,
         lastName: entry.lastName,
         invitedCount: entry.invitedCount,
         knownResponse: entry.knownResponse,
-      });
+      }));
     } catch (updateError) {
       console.error('Failed to update guest roster category', updateError);
-      setRowErrors((prev) => ({ ...prev, [entry.id]: labels.updateError }));
+      setRowErrors((prev) => ({ ...prev, [entry.id]: updateError instanceof SaveTimeoutError ? labels.saveTimeoutError : labels.updateError }));
     } finally {
       setSavingId(null);
     }
@@ -550,17 +557,17 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
     setSavingId(entry.id);
     setRowErrors((prev) => ({ ...prev, [entry.id]: '' }));
     try {
-      await onUpdate(entry.id, {
+      await withTimeout(onUpdate(entry.id, {
         side: entry.side,
         category: entry.category,
         firstName: trimmedFirst,
         lastName: trimmedLast,
         invitedCount: entry.invitedCount,
         knownResponse: entry.knownResponse,
-      });
+      }));
     } catch (updateError) {
       console.error('Failed to update guest roster name', updateError);
-      setRowErrors((prev) => ({ ...prev, [entry.id]: labels.updateError }));
+      setRowErrors((prev) => ({ ...prev, [entry.id]: updateError instanceof SaveTimeoutError ? labels.saveTimeoutError : labels.updateError }));
     } finally {
       setSavingId(null);
     }
@@ -574,10 +581,10 @@ export function GuestRosterSection({ entries, isLoading, labels, locale, onSync,
     setSavingId(entry.id);
     setRowErrors((prev) => ({ ...prev, [entry.id]: '' }));
     try {
-      await onDelete(entry.id);
+      await withTimeout(onDelete(entry.id));
     } catch (deleteError) {
       console.error('Failed to delete guest roster entry', deleteError);
-      setRowErrors((prev) => ({ ...prev, [entry.id]: labels.deleteError }));
+      setRowErrors((prev) => ({ ...prev, [entry.id]: deleteError instanceof SaveTimeoutError ? labels.saveTimeoutError : labels.deleteError }));
       setSavingId(null);
     }
   };

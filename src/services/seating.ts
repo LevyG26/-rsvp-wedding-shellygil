@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { GuestRosterEntry } from './guestRoster';
 
@@ -44,6 +44,19 @@ export interface SeatingTable extends SeatingTableLayout {
   // Gil orient a teardrop or curved booth to match which way it actually
   // faces in the hall, independent of x/y/width/height.
   rotation: number;
+  // Running total of seats currently assigned at this table, maintained
+  // transactionally by setSeatingAssignment/removeSeatingAssignment - lets
+  // a seat-count change enforce the table's capacity from inside a single
+  // Firestore transaction using only transaction.get(docRef) reads (this
+  // SDK's transactions can only read individual documents, not a query
+  // summing every assignment at the table), which is what actually closes
+  // the race where two staff phones seat different walk-ins into the same
+  // table's last seat(s) at once. `undefined` means this table predates the
+  // field (or has never had a seating change since it was added) - the
+  // first assignment write touching such a table computes the true total
+  // from the live assignments collection and seeds the counter from there,
+  // so it only ever needs that fallback once per table.
+  seatsUsed?: number;
 }
 
 // One row = "N seats belonging to this roster entry sit at this table". A
@@ -94,6 +107,11 @@ function normalizeTable(id: string, data: Record<string, unknown>): SeatingTable
     height: numberOr(data.height, DEFAULT_TABLE_LAYOUT.height),
     shape: normalizeShape(data.shape),
     rotation: numberOr(data.rotation, 0),
+    // Deliberately NOT numberOr(.... 0) - see the seatsUsed doc comment on
+    // SeatingTable: undefined (missing field) and 0 (confirmed empty table)
+    // must stay distinguishable so setSeatingAssignment knows whether to
+    // trust this value or recompute it from scratch.
+    seatsUsed: typeof data.seatsUsed === 'number' && Number.isFinite(data.seatsUsed) ? data.seatsUsed : undefined,
   };
 }
 
@@ -291,25 +309,122 @@ export async function deleteSeatingTable(id: string, assignments: SeatingAssignm
   await batch.commit();
 }
 
+// Thrown by setSeatingAssignment when honoring the request would seat more
+// people at a table than it has room for. Kept as a distinct class (rather
+// than a plain Error) so callers - SeatingSection.tsx's handleAddToTable/
+// handleAssignmentSeatsChange - can tell "someone else just filled this
+// table" apart from a generic save failure and show a message that actually
+// explains what happened.
+export class SeatingCapacityError extends Error {
+  seatsAvailable: number;
+  constructor(seatsAvailable: number) {
+    super('seating-capacity-exceeded');
+    this.name = 'SeatingCapacityError';
+    this.seatsAvailable = seatsAvailable;
+  }
+}
+
+// One-off, non-transactional fallback used only the first time a given
+// table is touched after the seatsUsed counter was introduced (see
+// SeatingTable.seatsUsed) - sums every current assignment at the table from
+// the live collection so the counter can be seeded with the true total.
+// Deliberately not part of the transaction itself (this SDK's transactions
+// can only transaction.get() individual documents, not run a query) - the
+// tiny window this leaves (two staff both cold-starting the SAME
+// never-before-touched table at the exact same instant) only exists until
+// the first successful write to that table, after which every future write
+// keeps the counter accurate via the transaction below.
+async function computeSeatsUsedFromLiveAssignments(tableId: string, excludeAssignmentId: string): Promise<number> {
+  const snapshot = await getDocs(query(collection(db, SEATING_ASSIGNMENTS_COLLECTION), where('tableId', '==', tableId)));
+  return snapshot.docs
+    .filter((docSnapshot) => docSnapshot.id !== excludeAssignmentId)
+    .reduce((sum, docSnapshot) => sum + numberOr((docSnapshot.data() as Record<string, unknown>).seatsCount, 0), 0);
+}
+
 // Upserts how many of a roster entry's confirmed seats sit at a given table.
 // Setting seatsCount to 0 (or less) removes the assignment entirely instead
 // of writing a useless zero row.
+//
+// Runs as a transaction specifically because two staff phones can otherwise
+// both seat different walk-in guests into the same table's last remaining
+// seat(s) at the exact same instant: each one's UI only checks capacity
+// against its own locally-cached `assignments` state, so without a
+// server-side re-check at write time both writes can succeed and the table
+// ends up over capacity. The transaction re-reads the table doc (which
+// carries a running seatsUsed total, see SeatingTable.seatsUsed) and this
+// specific assignment doc at commit time, and rejects the write (throwing
+// SeatingCapacityError) if it would no longer fit - Firestore automatically
+// retries the transaction if a conflicting write lands in between the read
+// and the commit, so this is race-safe even with many simultaneous staff
+// sessions, without needing to query every other assignment on every write.
 export async function setSeatingAssignment(rosterEntryId: string, tableId: string, seatsCount: number): Promise<void> {
-  const id = assignmentId(rosterEntryId, tableId);
+  const assignmentRef = doc(db, SEATING_ASSIGNMENTS_COLLECTION, assignmentId(rosterEntryId, tableId));
   if (seatsCount <= 0) {
-    await deleteDoc(doc(db, SEATING_ASSIGNMENTS_COLLECTION, id));
+    await removeSeatingAssignment(rosterEntryId, tableId);
     return;
   }
-  await setDoc(doc(db, SEATING_ASSIGNMENTS_COLLECTION, id), {
-    rosterEntryId,
-    tableId,
-    seatsCount,
-    updatedAt: serverTimestamp(),
+
+  const tableRef = doc(db, SEATING_TABLES_COLLECTION, tableId);
+
+  await runTransaction(db, async (transaction) => {
+    const tableSnapshot = await transaction.get(tableRef);
+    if (!tableSnapshot.exists()) {
+      throw new Error('Table no longer exists');
+    }
+    const tableData = tableSnapshot.data() as Record<string, unknown>;
+    const seatCount = numberOr(tableData.seatCount, 0);
+
+    const existingAssignmentSnapshot = await transaction.get(assignmentRef);
+    const previousSeatsAtThisAssignment = existingAssignmentSnapshot.exists()
+      ? numberOr((existingAssignmentSnapshot.data() as Record<string, unknown>).seatsCount, 0)
+      : 0;
+
+    const seatsUsedTotalBeforeThisChange = typeof tableData.seatsUsed === 'number' && Number.isFinite(tableData.seatsUsed)
+      ? tableData.seatsUsed
+      // Cold start for this table - see computeSeatsUsedFromLiveAssignments.
+      : await computeSeatsUsedFromLiveAssignments(tableId, assignmentRef.id);
+
+    const seatsUsedByOthers = Math.max(0, seatsUsedTotalBeforeThisChange - previousSeatsAtThisAssignment);
+    if (seatsUsedByOthers + seatsCount > seatCount) {
+      throw new SeatingCapacityError(Math.max(0, seatCount - seatsUsedByOthers));
+    }
+
+    transaction.set(assignmentRef, {
+      rosterEntryId,
+      tableId,
+      seatsCount,
+      updatedAt: serverTimestamp(),
+    });
+    transaction.update(tableRef, { seatsUsed: seatsUsedByOthers + seatsCount });
   });
 }
 
 export async function removeSeatingAssignment(rosterEntryId: string, tableId: string): Promise<void> {
-  await deleteDoc(doc(db, SEATING_ASSIGNMENTS_COLLECTION, assignmentId(rosterEntryId, tableId)));
+  const assignmentRef = doc(db, SEATING_ASSIGNMENTS_COLLECTION, assignmentId(rosterEntryId, tableId));
+  const tableRef = doc(db, SEATING_TABLES_COLLECTION, tableId);
+
+  await runTransaction(db, async (transaction) => {
+    const [tableSnapshot, assignmentSnapshot] = [await transaction.get(tableRef), await transaction.get(assignmentRef)];
+    if (!assignmentSnapshot.exists()) {
+      return;
+    }
+    const removedSeats = numberOr((assignmentSnapshot.data() as Record<string, unknown>).seatsCount, 0);
+    transaction.delete(assignmentRef);
+
+    if (tableSnapshot.exists()) {
+      const tableData = tableSnapshot.data() as Record<string, unknown>;
+      // Only adjust the counter if it's already been initialized - if it's
+      // still missing (this table hasn't been cold-started yet), leave it
+      // alone rather than seed it with a partial number; the next
+      // setSeatingAssignment on this table will compute the true total from
+      // scratch anyway (see computeSeatsUsedFromLiveAssignments), and by
+      // then this deletion has already committed so it'll be counted
+      // correctly.
+      if (typeof tableData.seatsUsed === 'number' && Number.isFinite(tableData.seatsUsed)) {
+        transaction.update(tableRef, { seatsUsed: Math.max(0, tableData.seatsUsed - removedSeats) });
+      }
+    }
+  });
 }
 
 // Deterministic per-(entry, cause) id rather than a random one - critical
