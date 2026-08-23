@@ -1383,6 +1383,22 @@ export function AdminDashboard() {
     const isAutoLinkingRosterRef = useRef(false);
     useEffect(() => {
         if (!isAuthChecked || !isSignedIn) return;
+        // Event staff never have Firestore read permission on rsvps (see
+        // firestore.rules - only isAdmin() can read that collection), so
+        // their `records` here is always permanently empty, and the rsvps
+        // listener's error handler still marks itself "loaded" (see the
+        // rsvpsLoaded/markLoadedIfReady effect above - it has to, otherwise
+        // isLoading would never clear for a staff session at all). Without
+        // this guard, a staff session would see isLoading go false with
+        // records=[] and conclude every linked-from-rsvp entry lost its
+        // match, wiping every guest's confirmed status (and cascading into
+        // syncSeatingAssignmentsWithRoster stripping every seat) the moment
+        // staff opens the dashboard - then doing it again on every
+        // guestRoster change an admin session makes elsewhere, an endless
+        // tug-of-war between the two sessions. This actually happened in
+        // production. Only a real admin session, which can actually see
+        // rsvps, may run this.
+        if (isEventStaff) return;
         // Critical: must wait for BOTH the rsvps and guestRoster listeners to
         // deliver their first snapshot before this ever runs. Otherwise, on
         // a page load/reconnect where the roster snapshot happens to arrive
@@ -1411,7 +1427,7 @@ export function AdminDashboard() {
             .finally(() => {
                 isAutoLinkingRosterRef.current = false;
             });
-    }, [records, guestRoster, isAuthChecked, isSignedIn, isLoading]);
+    }, [records, guestRoster, isAuthChecked, isSignedIn, isLoading, isEventStaff]);
 
     // Auto-fills a response's own "group" tag (used for the group-select
     // dropdown, its own distribution chart, etc.) from the roster match
