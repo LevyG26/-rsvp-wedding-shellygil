@@ -1554,6 +1554,33 @@ export function AdminDashboard() {
                     console.error('Failed to cascade roster name edit to baseList', cascadeError);
                 }
             }
+
+            // A linked entry's name is what the automatic RSVP-roster linker
+            // (linkGuestRosterWithRsvps, re-run on every guestRoster/records
+            // change) uses to keep matching this row to its real submission -
+            // renaming the roster row here without also renaming the RSVP it
+            // was matched against means the very next auto-link pass no
+            // longer finds a match, and reverts this guest straight back to
+            // "not yet responded" (linkedFromRsvp: false, knownResponse:
+            // null), un-seating them along the way. That's what actually
+            // caused the "the edit won't take / stuck saving" report - the
+            // save itself succeeded, but a name change was immediately
+            // undone by the linker a moment later. Only acts when exactly
+            // one current RSVP unambiguously matches the OLD name, same
+            // safety guard as the baseList cascade above.
+            if (previousEntry?.linkedFromRsvp) {
+                const rsvpMatches = records.filter((record) => fullNamesMatch(previousFullName, record.fullName));
+                if (rsvpMatches.length === 1 && rsvpMatches[0].fullName !== nextFullName) {
+                    try {
+                        await updateDoc(doc(db, 'rsvps', rsvpMatches[0].id), { fullName: nextFullName });
+                        setRecords((prevRecords) => prevRecords.map((record) => (
+                            record.id === rsvpMatches[0].id ? { ...record, fullName: nextFullName } : record
+                        )));
+                    } catch (cascadeError) {
+                        console.error('Failed to cascade roster name edit to the linked RSVP', cascadeError);
+                    }
+                }
+            }
         }
     };
 
@@ -1998,7 +2025,25 @@ export function AdminDashboard() {
                     // that follows it.
                     className="relative z-30 mb-6 rounded-3xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/95"
                 >
-                    <div className="absolute end-4 top-4" ref={actionsMenuRef}>
+                    <div className="absolute end-4 top-4 flex items-center gap-2">
+                        {/* Always-visible language toggle - not tucked inside the
+                            actions menu - since the whole point is event-day staff
+                            (who may not read Hebrew at all) can find it without
+                            first discovering there's a menu to open. Navigates to
+                            the same route under the other :lang segment; this
+                            doesn't remount AdminDashboard (same route element,
+                            only the param changes), so activeTab/scroll position/
+                            everything else in local state survives the switch. */}
+                        <button
+                            type="button"
+                            onClick={() => navigate(`/${currentLang === 'en' ? 'he' : 'en'}/admin/dashboard`)}
+                            aria-label={currentLang === 'en' ? t.adminSwitchToHebrew : t.adminSwitchToEnglish}
+                            title={currentLang === 'en' ? t.adminSwitchToHebrew : t.adminSwitchToEnglish}
+                            className="flex h-9 items-center justify-center rounded-xl bg-gray-100 px-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                            {currentLang === 'en' ? 'עברית' : 'EN'}
+                        </button>
+                        <div ref={actionsMenuRef}>
                         <button
                             type="button"
                             onClick={() => setIsActionsMenuOpen((open) => !open)}
@@ -2083,12 +2128,13 @@ export function AdminDashboard() {
                                 </button>
                             </div>
                         )}
+                        </div>
                     </div>
 
-                    {/* pe-* reserves room for the single actions-menu button
-                        in the corner so the title block never runs underneath
-                        it on mobile. */}
-                    <div className="flex items-center gap-3 pe-14 sm:pe-16">
+                    {/* pe-* reserves room for the corner button pair (language
+                        toggle + actions menu) so the title block never runs
+                        underneath them on mobile. */}
+                    <div className="flex items-center gap-3 pe-24 sm:pe-28">
                         <div className="h-20 w-20 shrink-0 sm:h-28 sm:w-28 lg:h-32 lg:w-32" aria-hidden="true">
                             {/* The source art is a transparent-background monogram, taller than
                                 it is wide (420x594) - object-cover in a mismatched box used to

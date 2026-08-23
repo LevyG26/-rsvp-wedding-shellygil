@@ -131,6 +131,18 @@ export interface SeatingAlert {
   tableName: string;
   seatsCount: number;
   reason: SeatingAlertReason;
+  // Gil dismissing an alert used to just delete the doc outright - but
+  // syncSeatingAssignmentsWithRoster runs again on the very next
+  // roster/assignments/alerts change (which dismissing one IS, since it's
+  // an alerts change), and if the exact same mismatch it was raised for is
+  // still true, it just wrote the identical alert straight back with a new
+  // id-deterministic setDoc - Gil dismissing it had no lasting effect. Now
+  // dismissal sets this flag instead of deleting, and the sync function
+  // below skips re-raising an alert whose dismissed snapshot still matches
+  // the current situation exactly - only a genuinely NEW development (the
+  // guest's headcount/table/reason actually changed since the dismiss)
+  // clears the flag and shows it again.
+  dismissed: boolean;
 }
 
 function normalizeAlert(id: string, data: Record<string, unknown>): SeatingAlert {
@@ -142,6 +154,7 @@ function normalizeAlert(id: string, data: Record<string, unknown>): SeatingAlert
     tableName: typeof data.tableName === 'string' ? data.tableName : '',
     seatsCount: typeof seatsCountValue === 'number' && Number.isFinite(seatsCountValue) ? seatsCountValue : 0,
     reason: data.reason === 'reducedCount' ? 'reducedCount' : data.reason === 'needsMoreSeats' ? 'needsMoreSeats' : 'notConfirmed',
+    dismissed: data.dismissed === true,
   };
 }
 
@@ -178,8 +191,11 @@ export function subscribeToSeatingAlerts(onChange: (alerts: SeatingAlert[]) => v
   );
 }
 
+// Marks the alert dismissed rather than deleting it outright - see the
+// `dismissed` field comment on SeatingAlert above for why a hard delete
+// didn't actually stick.
 export async function dismissSeatingAlert(id: string): Promise<void> {
-  await deleteDoc(doc(db, SEATING_ALERTS_COLLECTION, id));
+  await updateDoc(doc(db, SEATING_ALERTS_COLLECTION, id), { dismissed: true });
 }
 
 // Whether free-drag repositioning on the floor-plan canvas is frozen -
@@ -322,8 +338,27 @@ async function upsertSeatingAlert(id: string, input: {
 }): Promise<void> {
   await setDoc(doc(db, SEATING_ALERTS_COLLECTION, id), {
     ...input,
+    dismissed: false,
     createdAt: serverTimestamp(),
   });
+}
+
+// True when `existing` is a dismissed alert whose snapshot already
+// describes exactly the situation `next` would raise - i.e. nothing has
+// actually changed since Gil dismissed it, so re-raising it would just
+// silently undo the dismissal (see the SeatingAlert.dismissed comment).
+function alertAlreadyDismissedForSameSituation(
+  existing: SeatingAlert | undefined,
+  next: { guestName: string; category: string; tableName: string; seatsCount: number; reason: SeatingAlertReason },
+): boolean {
+  return (
+    existing?.dismissed === true &&
+    existing.guestName === next.guestName &&
+    existing.category === next.category &&
+    existing.tableName === next.tableName &&
+    existing.seatsCount === next.seatsCount &&
+    existing.reason === next.reason
+  );
 }
 
 // Keeps seating assignments honest against each roster entry's CURRENT
@@ -362,6 +397,7 @@ export async function syncSeatingAssignmentsWithRoster(
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
   const tablesById = new Map(tables.map((table) => [table.id, table]));
   const alertIds = new Set(alerts.map((alert) => alert.id));
+  const alertsById = new Map(alerts.map((alert) => [alert.id, alert]));
 
   const assignmentsByEntry = new Map<string, SeatingAssignment[]>();
   assignments.forEach((assignment) => {
@@ -392,14 +428,18 @@ export async function syncSeatingAssignmentsWithRoster(
         try {
           // eslint-disable-next-line no-await-in-loop
           await setSeatingAssignment(rosterEntryId, assignment.tableId, nextSeats);
-          // eslint-disable-next-line no-await-in-loop
-          await upsertSeatingAlert(removalAlertId(rosterEntryId, assignment.tableId), {
+          const alertId = removalAlertId(rosterEntryId, assignment.tableId);
+          const nextAlertData = {
             guestName: guestName || '-',
             category,
             tableName: table?.name ?? '-',
             seatsCount: removeFromThis,
             reason,
-          });
+          };
+          if (!alertAlreadyDismissedForSameSituation(alertsById.get(alertId), nextAlertData)) {
+            // eslint-disable-next-line no-await-in-loop
+            await upsertSeatingAlert(alertId, nextAlertData);
+          }
         } catch (error) {
           console.error('Failed to sync an over-assigned seating entry', error);
         }
@@ -418,13 +458,16 @@ export async function syncSeatingAssignmentsWithRoster(
         .join(', ');
 
       try {
-        await upsertSeatingAlert(needsMoreId, {
+        const nextAlertData = {
           guestName: guestName || '-',
           category: confirmedEntry.category,
           tableName: tableName || '-',
           seatsCount: allowedSeats - totalAssigned,
-          reason: 'needsMoreSeats',
-        });
+          reason: 'needsMoreSeats' as const,
+        };
+        if (!alertAlreadyDismissedForSameSituation(alertsById.get(needsMoreId), nextAlertData)) {
+          await upsertSeatingAlert(needsMoreId, nextAlertData);
+        }
       } catch (error) {
         console.error('Failed to raise a needs-more-seats seating alert', error);
       }

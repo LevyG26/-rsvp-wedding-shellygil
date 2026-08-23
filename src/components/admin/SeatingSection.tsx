@@ -222,8 +222,31 @@ interface SeatingSectionProps {
   canEditLayout: boolean;
 }
 
-function entryName(entry: GuestRosterEntry): string {
-  return `${entry.firstName} ${entry.lastName}`.trim() || '-';
+// Shared by every on-screen guest-name render/search/sort in this file (NOT
+// the Excel export, which has its own identical-in-spirit but separately
+// maintained localizeGuestName inside handleExportList - kept independent
+// on purpose so a bug here can never break the already-shipped export).
+// `useEnglish` mirrors the export's toggle but is driven by the dashboard's
+// language switcher (SeatingSection's `locale` prop) instead of a
+// dropdown: when the admin/staff view is in English, guest names shown or
+// searched anywhere in the seating tab - the guest list, guest lookup,
+// arrivals tracking, floor plan - use the same manually-corrected English
+// spelling as the export (see englishNameOverrides.ts for Shelly's side,
+// hebrewTransliteration.ts for Gil's side), never the raw Hebrew/typed
+// text. Hebrew mode always shows exactly what was originally typed.
+function localizedGuestNameParts(firstNameRaw: string, lastNameRaw: string, useEnglish: boolean): { firstName: string; lastName: string } {
+  if (!useEnglish) return { firstName: firstNameRaw, lastName: lastNameRaw };
+  const override = findEnglishNameOverride(firstNameRaw, lastNameRaw);
+  if (override) return override;
+  return {
+    firstName: toTitleCase(transliterateHebrew(firstNameRaw)),
+    lastName: toTitleCase(transliterateHebrew(lastNameRaw)),
+  };
+}
+
+function entryName(entry: GuestRosterEntry, useEnglish: boolean): string {
+  const { firstName, lastName } = localizedGuestNameParts(entry.firstName, entry.lastName, useEnglish);
+  return `${firstName} ${lastName}`.trim() || '-';
 }
 
 const emptyTableForm = { name: '', seatCount: '8', shape: 'round' as SeatingTableShape };
@@ -380,6 +403,21 @@ export function SeatingSection({
   // bare language code - matching it against just "he" would always be
   // false and silently force every export to render left-to-right.
   const isRtl = locale.startsWith('he');
+  // Drives every on-screen guest-name display/search/sort in this file (see
+  // entryName/localizedGuestNameParts above) - Gil wants staff who switch
+  // the dashboard's language to English (via the toggle in AdminDashboard's
+  // header) to see and search every guest by the same corrected English
+  // spelling the export uses, with Hebrew mode always showing the original
+  // typed names. Independent of the export's own `exportLanguage` dropdown
+  // state, which stays whatever the admin last picked in that dialog.
+  const isEnglishDisplay = locale.startsWith('en');
+  // Dismissing an alert now sets a `dismissed` flag rather than deleting the
+  // doc outright (see seating.ts's SeatingAlert/dismissSeatingAlert
+  // comments), so the panel below must filter those out itself - `alerts`
+  // still contains dismissed ones too, since syncSeatingAssignmentsWithRoster
+  // needs the full list (dismissed included) to know whether a mismatch it's
+  // about to flag was already dismissed for this exact same situation.
+  const visibleAlerts = useMemo(() => alerts.filter((alert) => !alert.dismissed), [alerts]);
 
   const entriesById = useMemo(() => new Map(confirmedEntries.map((entry) => [entry.id, entry])), [confirmedEntries]);
 
@@ -451,13 +489,15 @@ export function SeatingSection({
       const tableSummary = entryAssignments
         .map((assignment) => {
           const table = tablesById.get(assignment.tableId);
-          return table ? `${table.name} (${assignment.seatsCount})` : null;
+          if (!table) return null;
+          const tableName = isEnglishDisplay ? transliterateHebrew(table.name) : table.name;
+          return `${tableName} (${assignment.seatsCount})`;
         })
         .filter((value): value is string => value !== null)
         .join(', ');
-      return { entry, name: entryName(entry), status, tableSummary, assignedTableIds: entryAssignments.map((a) => a.tableId) };
+      return { entry, name: entryName(entry, isEnglishDisplay), status, tableSummary, assignedTableIds: entryAssignments.map((a) => a.tableId) };
     });
-  }, [confirmedEntries, assignmentsByEntry, tablesById]);
+  }, [confirmedEntries, assignmentsByEntry, tablesById, isEnglishDisplay]);
 
   const filteredSortedGuestListRows = useMemo(() => {
     const query = listSearch.trim().toLowerCase();
@@ -512,11 +552,11 @@ export function SeatingSection({
       .filter((entry) => remainingForEntry(entry) > 0)
       .filter((entry) => {
         if (!query) return true;
-        return entryName(entry).toLowerCase().includes(query) || entry.category.toLowerCase().includes(query);
+        return entryName(entry, isEnglishDisplay).toLowerCase().includes(query) || entry.category.toLowerCase().includes(query);
       })
-      .sort((a, b) => entryName(a).localeCompare(entryName(b), locale));
+      .sort((a, b) => entryName(a, isEnglishDisplay).localeCompare(entryName(b, isEnglishDisplay), locale));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmedEntries, search, locale, seatsAssignedByEntry]);
+  }, [confirmedEntries, search, locale, seatsAssignedByEntry, isEnglishDisplay]);
 
   // "Is this surprise walk-in actually on the list?" lookup - deliberately
   // searches EVERY roster entry regardless of status (unlike the unseated
@@ -528,10 +568,10 @@ export function SeatingSection({
     const query = guestLookupQuery.trim().toLowerCase();
     if (!query) return [];
     return allEntries
-      .filter((entry) => entryName(entry).toLowerCase().includes(query) || entry.category.toLowerCase().includes(query))
-      .sort((a, b) => entryName(a).localeCompare(entryName(b), locale))
+      .filter((entry) => entryName(entry, isEnglishDisplay).toLowerCase().includes(query) || entry.category.toLowerCase().includes(query))
+      .sort((a, b) => entryName(a, isEnglishDisplay).localeCompare(entryName(b, isEnglishDisplay), locale))
       .slice(0, 15);
-  }, [allEntries, guestLookupQuery, locale]);
+  }, [allEntries, guestLookupQuery, locale, isEnglishDisplay]);
 
   const handleArrivedCountChange = async (entry: GuestRosterEntry, nextArrivedCount: number) => {
     const clamped = Math.max(0, Math.min(nextArrivedCount, entry.invitedCount));
@@ -561,21 +601,22 @@ export function SeatingSection({
         const tableSummary = (assignmentsByEntry.get(entry.id) ?? [])
           .map((assignment) => tablesById.get(assignment.tableId)?.name)
           .filter((name): name is string => Boolean(name))
+          .map((name) => (isEnglishDisplay ? transliterateHebrew(name) : name))
           .join(', ');
         return { entry, status, tableSummary };
       })
       .filter((row) => arrivalsStatusFilter === 'all' || row.status === arrivalsStatusFilter)
-      .filter((row) => !query || entryName(row.entry).toLowerCase().includes(query) || row.entry.category.toLowerCase().includes(query));
+      .filter((row) => !query || entryName(row.entry, isEnglishDisplay).toLowerCase().includes(query) || row.entry.category.toLowerCase().includes(query));
 
     const statusOrder: Record<ArrivalsStatus, number> = { notArrived: 0, partial: 1, fullyArrived: 2 };
     rows.sort((a, b) => {
       const comparison = arrivalsSort.key === 'status'
-        ? statusOrder[a.status] - statusOrder[b.status] || entryName(a.entry).localeCompare(entryName(b.entry), locale)
-        : entryName(a.entry).localeCompare(entryName(b.entry), locale);
+        ? statusOrder[a.status] - statusOrder[b.status] || entryName(a.entry, isEnglishDisplay).localeCompare(entryName(b.entry, isEnglishDisplay), locale)
+        : entryName(a.entry, isEnglishDisplay).localeCompare(entryName(b.entry, isEnglishDisplay), locale);
       return arrivalsSort.direction === 'asc' ? comparison : -comparison;
     });
     return rows;
-  }, [confirmedEntries, assignmentsByEntry, tablesById, arrivalsFilter, arrivalsStatusFilter, arrivalsSort, locale]);
+  }, [confirmedEntries, assignmentsByEntry, tablesById, arrivalsFilter, arrivalsStatusFilter, arrivalsSort, locale, isEnglishDisplay]);
 
   const getRowState = (entry: GuestRosterEntry) => {
     const remaining = remainingForEntry(entry);
@@ -1256,7 +1297,7 @@ export function SeatingSection({
                   return (
                     <div key={entry.id} className="flex flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <p className="truncate text-base font-semibold text-gray-900 dark:text-slate-100">{entryName(entry)}</p>
+                        <p className="truncate text-base font-semibold text-gray-900 dark:text-slate-100">{entryName(entry, isEnglishDisplay)}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
                           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.text}</span>
                           <span className="text-sm text-gray-600 dark:text-slate-300">{entry.category}</span>
@@ -1388,7 +1429,7 @@ export function SeatingSection({
                       return (
                         <div key={entry.id} className="rounded-2xl border border-gray-100 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
                           <div className="flex items-start justify-between gap-2">
-                            <p className="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-slate-100">{entryName(entry)}</p>
+                            <p className="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-slate-100">{entryName(entry, isEnglishDisplay)}</p>
                             <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge.className}`}>
                               {statusBadge.text}
                               {isMultiParty && <span dir="ltr">({entry.arrivedCount}/{entry.invitedCount})</span>}
@@ -1476,7 +1517,7 @@ export function SeatingSection({
                               : { text: labels.arrivalsNotArrived, className: 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-300' };
                           return (
                             <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-slate-800">
-                              <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-slate-100">{entryName(entry)}</td>
+                              <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-slate-100">{entryName(entry, isEnglishDisplay)}</td>
                               <td className="px-3 py-2.5 text-gray-600 dark:text-slate-400">{entry.category}</td>
                               <td className="px-3 py-2.5 text-gray-600 dark:text-slate-400">
                                 {tableSummary ? (
@@ -1605,7 +1646,7 @@ export function SeatingSection({
                 return (
                   <div key={entry.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100">{entryName(entry)}</p>
+                      <p className="truncate text-sm font-medium text-gray-900 dark:text-slate-100">{entryName(entry, isEnglishDisplay)}</p>
                       <p className="truncate text-xs text-gray-500 dark:text-slate-400">
                         {entry.side} · {entry.category} · {labels.remainingOf.replace('{remaining}', String(remaining)).replace('{total}', String(entry.invitedCount))}
                       </p>
@@ -2026,8 +2067,8 @@ export function SeatingSection({
                 const isFull = used >= table.seatCount;
                 const fillPct = table.seatCount > 0 ? Math.min(100, (used / table.seatCount) * 100) : 0;
                 const tableAssignments = (assignmentsByTable.get(table.id) ?? []).slice().sort((a, b) => {
-                  const nameA = entryName(entriesById.get(a.rosterEntryId) ?? ({ firstName: '', lastName: '' } as GuestRosterEntry));
-                  const nameB = entryName(entriesById.get(b.rosterEntryId) ?? ({ firstName: '', lastName: '' } as GuestRosterEntry));
+                  const nameA = entryName(entriesById.get(a.rosterEntryId) ?? ({ firstName: '', lastName: '' } as GuestRosterEntry), isEnglishDisplay);
+                  const nameB = entryName(entriesById.get(b.rosterEntryId) ?? ({ firstName: '', lastName: '' } as GuestRosterEntry), isEnglishDisplay);
                   return nameA.localeCompare(nameB, locale);
                 });
                 const isEditing = editingTableId === table.id;
@@ -2136,7 +2177,7 @@ export function SeatingSection({
                           return (
                             <div key={assignment.id} className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2 py-1.5 dark:bg-slate-800">
                               <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm text-gray-800 dark:text-slate-200">{entry ? entryName(entry) : '-'}</p>
+                                <p className="truncate text-sm text-gray-800 dark:text-slate-200">{entry ? entryName(entry, isEnglishDisplay) : '-'}</p>
                                 {entry && <p className="truncate text-xs text-gray-400 dark:text-slate-500">{entry.side} · {entry.category}</p>}
                               </div>
                               <input
