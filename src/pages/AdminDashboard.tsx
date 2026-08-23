@@ -514,6 +514,17 @@ export function AdminDashboard() {
     const [seatingTables, setSeatingTables] = useState<SeatingTable[]>([]);
     const [seatingAssignments, setSeatingAssignments] = useState<SeatingAssignment[]>([]);
     const [seatingAlerts, setSeatingAlerts] = useState<SeatingAlert[]>([]);
+    // Separate from isLoadingSeating on purpose (see the comment where
+    // subscribeToSeatingAlerts is wired up below) - alerts still shouldn't
+    // block the seating tab from rendering. But the auto-sync effect further
+    // down DOES need to know alerts have loaded for real at least once
+    // before its first run, otherwise it starts from the empty [] the
+    // seatingAlerts state is initialized with, sees every dismissed alert as
+    // "not found -> not dismissed", and immediately writes it straight back
+    // with dismissed:false - which is exactly why a dismissed alert used to
+    // reappear on every fresh page load/refresh even though dismissing it
+    // worked correctly in the moment.
+    const [hasLoadedSeatingAlertsOnce, setHasLoadedSeatingAlertsOnce] = useState(false);
     const [seatingLayoutLocked, setSeatingLayoutLocked] = useState(false);
     const [venueObjects, setVenueObjects] = useState<VenueObject[]>([]);
     const [isLoadingSeating, setIsLoadingSeating] = useState(true);
@@ -723,7 +734,10 @@ export function AdminDashboard() {
         // Doesn't gate isLoadingSeating - alerts are purely supplementary
         // (a "here's what came out" log), never something the rest of the
         // seating tab needs to wait on before it can render.
-        const unsubscribeSeatingAlerts = subscribeToSeatingAlerts((loaded) => setSeatingAlerts(loaded));
+        const unsubscribeSeatingAlerts = subscribeToSeatingAlerts((loaded) => {
+            setSeatingAlerts(loaded);
+            setHasLoadedSeatingAlertsOnce(true);
+        });
         // Same - the lock defaults to false (unlocked) until this resolves,
         // so the canvas is never wrongly stuck locked for a moment on load.
         const unsubscribeSeatingLayoutLock = subscribeToSeatingLayoutLock((locked) => setSeatingLayoutLocked(locked));
@@ -1440,11 +1454,21 @@ export function AdminDashboard() {
     // actually over its entry's current allowance, so a second pass after its
     // own writes finds nothing left to do. Waits for isLoadingSeating to
     // clear first so it never acts on a still-empty (not yet loaded)
-    // assignments/tables list.
+    // assignments/tables list - and ALSO waits for hasLoadedSeatingAlertsOnce,
+    // even though alerts themselves don't gate isLoadingSeating: this
+    // function decides whether to re-raise an alert by looking it up in the
+    // `alerts` array it's given, and on a fresh page load that array starts
+    // out as [] for a moment before the real snapshot arrives. Without this
+    // guard, that first pass would look up every alert, find nothing (empty
+    // array), conclude "not dismissed" for entries that actually WERE
+    // dismissed, and immediately write them straight back with
+    // dismissed:false - which is exactly why a dismissed alert kept
+    // reappearing on every refresh regardless of the dismissed-flag fix.
     const isSyncingSeatingRef = useRef(false);
     useEffect(() => {
         if (!isAuthChecked || !isSignedIn) return;
         if (isLoadingSeating) return;
+        if (!hasLoadedSeatingAlertsOnce) return;
         if (isSyncingSeatingRef.current) return;
 
         isSyncingSeatingRef.current = true;
@@ -1455,7 +1479,7 @@ export function AdminDashboard() {
             .finally(() => {
                 isSyncingSeatingRef.current = false;
             });
-    }, [guestRoster, seatingAssignments, seatingTables, seatingAlerts, isLoadingSeating, isAuthChecked, isSignedIn]);
+    }, [guestRoster, seatingAssignments, seatingTables, seatingAlerts, isLoadingSeating, hasLoadedSeatingAlertsOnce, isAuthChecked, isSignedIn]);
 
     const handleDismissSeatingAlert = async (id: string): Promise<void> => {
         await dismissSeatingAlert(id);
