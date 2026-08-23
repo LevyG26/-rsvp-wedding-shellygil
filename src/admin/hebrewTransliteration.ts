@@ -158,6 +158,91 @@ const KNOWN_WORDS: Record<string, string> = {
   "ז'וזיאן": 'Josiane', 'קורין': 'Corinne', 'ליליאן': 'Liliane',
   'רוז': 'Rose', "ז'ואל": 'Joël', 'פרנק': 'Frank', 'ברנאר': 'Bernard',
   'ויויאן': 'Vivian', "ז'קי": 'Jacky', "ז'ילי": 'Gilly',
+  // Names pulled directly from Gil & Shelly's actual guest list (both
+  // sides) - added after Gil flagged real examples ("ניב אבוטבול" ->
+  // "Nib Abvtbvl", "שחף בקו" -> "Shchf Bkv") coming out as unreadable
+  // letter-by-letter guesses. Rather than a generic "smarter" algorithm -
+  // which can't work without nikud (see file header) - this is the same
+  // exact-match approach as above, just extended to cover every first
+  // name/surname actually in use in this wedding's roster, checked by hand
+  // against the real spelling Gil/Shelly use (cross-referenced against
+  // Shelly's own English-spelled guest list where the same person/family
+  // appears on both sides, e.g. "סמו" -> "Semo", not a generic "Samo"
+  // guess). A handful of entries here are a Hebrew "and" (ו) fused
+  // directly onto the next name with no space, which is normal Hebrew
+  // grammar but reads as one opaque unmatched word to a script - e.g.
+  // "ודיתי" ("and Diti") from "רונן ודיתי" ("Ronen and Diti"), added as
+  // their own literal entries rather than a generic vav-stripping rule, so
+  // a real name that happens to start with the letter vav (e.g. "ולרי" /
+  // Valerie, "וולמן" / Wolman) is never misread as "and <fragment>".
+  'אבו': 'Abu', 'אבוחצירה': 'Abuhatzeira', 'אבוטבול': 'Abutbol', 'אבידר': 'Avidar',
+  'אברקוביץ': 'Avrakovitz', 'אדיר': 'Adir', 'אהרוני': 'Aharoni', 'אוהד': 'Ohad',
+  'אוליבסון': 'Olivson', 'אוסנת': 'Osnat', 'אורטל': 'Ortal', 'אוריאל': 'Uriel',
+  'איבגי': 'Ivgi', 'איבון': 'Yvonne', 'איה': 'Aya', 'אייל': 'Eyal',
+  'איילת': 'Ayelet', 'אילן': 'Ilan', 'אילנית': 'Ilanit', 'איציק': 'Itzik',
+  'איריס': 'Iris', 'אלדד': 'Eldad', 'אלינה': 'Alina', 'אלמוג': 'Almog',
+  'אפרת': 'Efrat', 'אשר': 'Asher', 'בודנשטיין': 'Bodenstein', 'בוחניק': 'Bouhnik',
+  'בטיטו': 'Betito', 'ביבס': 'Bibas', 'בכרך': 'Bacharach', 'בקו': 'Bako',
+  'ברוריה': 'Bruria', 'ברזילי': 'Barzilai', 'ברזל': 'Barzel', 'ברקאי': 'Barkai',
+  'ברקת': 'Barkat', 'בת': 'Bat', 'גאיה': 'Gaya', 'גילת': 'Gilat',
+  'גלית': 'Galit', 'גנץ': 'Gantz', 'גרבורג': 'Grabourg', 'גרפונקל': 'Garfunkel',
+  'דוניצה': 'Donitza', 'דוקרקר': 'Dokraker', 'דוריה': 'Doria', 'דיאנה': 'Diana',
+  'דיביסי': 'Divisi', 'דליה': 'Dalia', 'דמגי': 'Digmi', 'דני': 'Dani',
+  'דנית': 'Danit', 'דפנה': 'Dafna', 'דק': 'Dak', 'דרחי': 'Drahi',
+  'דרמון': 'Darmon', 'דרמר': 'Dramer', 'הוכברגר': 'Hochberger', 'הולנדר': 'Hollander',
+  'היימן': 'Heiman', 'היין': 'Hein', 'הניג': 'Honig', 'הנרי': 'Henri',
+  'הפועל': 'Hapoel', 'הרליך': 'Erlirch', 'ואבי': 'and Avi', 'ואחי': 'and Achi',
+  'ואילן': 'and Ilan', 'ואלברט': 'and Albert', 'ואריאל': 'and Ariel', 'ובר': 'and Bar',
+  'וגורג': 'and George', 'וגיא': 'and Guy', 'וגידו': 'and Guido', 'וגיל': 'and Gil',
+  'ודיתי': 'and Diti', 'ודניאל': 'and Daniel', 'ודפנה': 'and Dafna', 'וויקי': 'Vicky',
+  'וולמן': 'Wolman', 'וזיוה': 'and Ziva', 'ויובל': 'and Yuval', 'ויוסי': 'and Yossi',
+  'ויותם': 'and Yotam', 'ויחי': 'and Yechi', 'ויינריבר': 'Weinreiber', 'וייסמן': 'Weissman',
+  'ויסמן': 'Weissman', 'ויעקב': 'and Yaakov', 'ויצמן': 'Weizman', 'וירין': 'and Yarin',
+  'וליזי': 'and Lizzy', 'ולינוי': 'and Linoy', 'ולירן': 'and Liran', 'ולרי': 'Valerie',
+  'ומאי': 'and May', 'ומור': 'and Mor', 'ומירב': 'and Meirav', 'ומירית': 'and Mirit',
+  'ומני': 'and Moni', 'ונועה': 'and Noa', 'וניסים': 'and Nissim', 'וניצה': 'and Nitza',
+  'וניר': 'and Nir', 'וסיגל': 'and Sigal', 'וסיון': 'and Sivan', 'ועירית': 'and Irit',
+  'ופלג': 'and Peleg', 'וצביקה': 'and Tzvika', 'ורונית': 'and Ronit', 'ורמי': 'and Rami',
+  'ושולי': 'and Shuli', 'ושחף': 'and Shachaf', 'ושיר': 'and Shir', 'ושמעון': 'and Shimon',
+  'ושרה': 'and Sarah', 'ושרית': 'and Sarit', 'וששי': 'and Sasi', 'זיני': 'Zini',
+  'זכריה': 'Zacharia', 'זלצר': 'Zeltzer', 'זמוסציאנו': 'Zamostiano', 'זמיר': 'Zamir',
+  'חודרה': 'Hodara', 'חלימי': 'Halimi', 'חלק': 'Helek', 'חרזי': 'Harazi',
+  'טובלי': 'Tuvali', 'טויטו': 'Twito', 'טולדו': 'Toledo', 'טיוטו': 'Twito',
+  'טיזבי': 'Tizbi', 'טשורני': 'Tchorni', 'יהודיחה': 'Yehudia', 'יהלום': 'Yahalom',
+  'יואב': 'Yoav', 'יוגב': 'Yogev', 'יוסי': 'Yossi', 'ימית': 'Yamit',
+  'יסעור': 'Yisor', 'יפעת': 'Yifat', 'יקיר': 'Yakir', 'ירדני': 'Yardeni',
+  'ירין': 'Yarin', 'ישראל': 'Israel', 'ישראלה': 'Yisraela', 'כביה': 'Kabya',
+  'כנרת': 'Kinneret', 'כספי': 'Caspi', 'כרמלי': 'Karmeli', 'לבנברג': 'Levenberg',
+  'לוזון': 'Luzon', 'לויתן': 'Leviatan', 'ליאל': 'Liel', 'ליאן': 'Lian',
+  'ליבר': 'Liber', 'ליזט': 'Lizette', 'לימור': 'Limor', 'לינוי': 'Linoy',
+  'לירון': 'Liron', 'לנציאנו': 'Lanciano', 'מאור': 'Maor', 'מאושר': 'Meushar',
+  'מאי': 'May', 'מאיר': 'Meir', 'מאירי': 'Meiri', 'מהרבאני': 'Maharbani',
+  'מודי': 'Modi', 'מוספי': 'Moussafi', 'מורדי': 'Mordy', 'מזור': 'Mazor',
+  'מי': 'Mei', 'מיה': 'Maya', 'מיטל': 'Meital', 'מילט': 'Milet',
+  'מילי': 'Mili', 'מימון': 'Maimon', 'מיקה': 'Mika', 'מיקי': 'Miki',
+  'מן': 'Man', 'מנו': 'Mano', 'מקסימוב': 'Maximov', 'מרי': 'Mery',
+  'מרסלו': 'Marcelo', 'מתניה': 'Matanya', 'נגר': 'Nagar', 'נדל': 'Nadel',
+  'נוי': 'Noy', 'נוימן': 'Neuman', 'נורית': 'Nurit', 'ניב': 'Niv',
+  'נידם': 'Nidam', 'ניצן': 'Nitzan', 'סבין': 'Sabine', 'סונינו': 'Sonino',
+  'סימה': 'Sima', 'סלוצקי': 'Slutsky', 'סמו': 'Semo', 'ספיר': 'Sapir',
+  'ספרשטיין': 'Sperstein', 'סתו': 'Stav', 'עודד': 'Oded', 'עומרי': 'Omri',
+  'עופרי': 'Ofri', 'עזר': 'Ezer', 'עידית': 'Idit', 'עינבל': 'Inbal',
+  'עמוס': 'Amos', 'עמרה': 'Amara', 'ענבר': 'Inbar', 'ערמי': 'Armi',
+  'ערן': 'Eran', 'פואד': 'Fouad', 'פולינה': 'Polina', 'פז': 'Paz',
+  'פזית': 'Pazit', 'פנסטר': 'Fenster', 'פרי': 'Peri', 'פרצ\'נוק': 'Parchenuk',
+  'צ\'אפי?': 'Chapi', 'צור': 'Tzur', 'ציפי': 'Tzipi', 'ציקורי': 'Tzikuri',
+  'קאמיל': 'Camille', 'קוניק': 'Konik', 'קורדה': 'Korda', 'קורצקי': 'Kuritzky',
+  'קמרמן': 'Kammerman', 'קנטור': 'Kantor', 'קפל': 'Kapel', 'קצב': 'Katzav',
+  'קרטר': 'Carter', 'קריפס': 'Krips', 'קרמר': 'Kramer', 'רביד': 'Ravid',
+  'רגינה': 'Regina', 'רהב': 'Rahav', 'רוזנבלט': 'Rosenblat', 'רוזנברג': 'Rosenberg',
+  'רונן': 'Ronen', 'רינה': 'Rina', 'רמז': 'Ramaz', 'רמי': 'Rami',
+  'רן': 'Ran', 'רנדלשטיין': 'Rendelstein', 'רנדנשטן': 'Rendelstein', 'רנין': 'Ranin',
+  'רעות': 'Reut', 'שגיב': 'Sagiv', 'שדי': 'Shadai', 'שוחמי': 'Shohami',
+  'שוע': 'Shua', 'שחף': 'Shachaf', 'שטרית': 'Shitrit', 'שיר': 'Shir',
+  'שירן': 'Shiran', 'של': 'of', 'שלומי': 'Shlomi', 'שלין': 'Shelin',
+  'שלינגר': 'Schlesinger', 'שמואלי': 'Shmueli', 'שמיר': 'Shamir', 'שמש': 'Shemesh',
+  'שניר': 'Shnir', 'שעפה': 'Shaafa', 'שרית': 'Sarit', 'ששון': 'Sasson',
+  'תאסירי': 'Tasiri', 'תייר': 'Tayar',
 };
 
 // Plain consonant map, used only when a whole word isn't in KNOWN_WORDS
