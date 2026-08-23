@@ -305,6 +305,7 @@ export function SeatingSection({
   const [guestLookupQuery, setGuestLookupQuery] = useState('');
   const [checkInBusyId, setCheckInBusyId] = useState<string | null>(null);
   const [isArrivalsExpanded, setIsArrivalsExpanded] = useState(false);
+  const [arrivalsFilter, setArrivalsFilter] = useState('');
   const [search, setSearch] = useState('');
   const [rowState, setRowState] = useState<Record<string, { seats: string; tableId: string }>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -1396,29 +1397,45 @@ export function SeatingSection({
             className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-start"
           >
             <span className="text-sm font-semibold text-gray-700 dark:text-slate-300">
-              {labels.arrivalsHeading} ({arrivalsOverview.fullyArrived.length + arrivalsOverview.partiallyArrived.length}/{confirmedEntries.length})
+              {labels.arrivalsHeading} ({totalArrivedPeople}/{totalConfirmedPeople})
             </span>
             <span className="text-xs font-medium text-gray-500 dark:text-slate-400">
               {isArrivalsExpanded ? labels.arrivalsToggleHide : labels.arrivalsToggleShow}
             </span>
           </button>
           {isArrivalsExpanded && (
-            <div className="grid gap-3 border-t border-gray-100 p-4 dark:border-slate-700 sm:grid-cols-3">
-              {([
-                { key: 'notArrived', title: labels.arrivalsNotArrived, entries: arrivalsOverview.notArrived, dotClassName: 'bg-gray-400' },
-                { key: 'partiallyArrived', title: labels.arrivalsPartiallyArrived, entries: arrivalsOverview.partiallyArrived, dotClassName: 'bg-amber-500' },
-                { key: 'fullyArrived', title: labels.arrivalsFullyArrived, entries: arrivalsOverview.fullyArrived, dotClassName: 'bg-emerald-500' },
-              ] as const).map((group) => (
+            <div className="border-t border-gray-100 p-4 dark:border-slate-700">
+              <div className="relative mb-3">
+                <Search size={13} className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 ${isRtl ? 'right-3' : 'left-3'}`} />
+                <input
+                  type="text"
+                  value={arrivalsFilter}
+                  onChange={(event) => setArrivalsFilter(event.target.value)}
+                  placeholder={labels.guestLookupPlaceholder}
+                  className={`w-full rounded-xl border border-gray-200 bg-gray-50 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700 ${isRtl ? 'pr-8 pl-3' : 'pl-8 pr-3'}`}
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {([
+                  { key: 'notArrived', title: labels.arrivalsNotArrived, entries: arrivalsOverview.notArrived, dotClassName: 'bg-gray-400' },
+                  { key: 'partiallyArrived', title: labels.arrivalsPartiallyArrived, entries: arrivalsOverview.partiallyArrived, dotClassName: 'bg-amber-500' },
+                  { key: 'fullyArrived', title: labels.arrivalsFullyArrived, entries: arrivalsOverview.fullyArrived, dotClassName: 'bg-emerald-500' },
+                ] as const).map((group) => {
+                  const query = arrivalsFilter.trim().toLowerCase();
+                  const visibleEntries = query
+                    ? group.entries.filter((entry) => entryName(entry).toLowerCase().includes(query))
+                    : group.entries;
+                  return (
                 <div key={group.key}>
                   <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
                     <span className={`h-1.5 w-1.5 rounded-full ${group.dotClassName}`} aria-hidden="true" />
                     {group.title} ({group.entries.length})
                   </p>
-                  {group.entries.length === 0 ? (
+                  {visibleEntries.length === 0 ? (
                     <p className="text-xs text-gray-400 dark:text-slate-500">{labels.arrivalsEmptyGroup}</p>
                   ) : (
-                    <ul className="space-y-1">
-                      {group.entries.map((entry) => (
+                    <ul className="max-h-48 space-y-1 overflow-y-auto pe-1">
+                      {visibleEntries.map((entry) => (
                         <li key={entry.id} className="flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-slate-200">
                           <span className="truncate">{entryName(entry)}</span>
                           {entry.invitedCount > 1 && (
@@ -1429,7 +1446,9 @@ export function SeatingSection({
                     </ul>
                   )}
                 </div>
-              ))}
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
