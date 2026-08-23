@@ -1137,10 +1137,10 @@ export function SeatingSection({
     const key = `alert-${alert.id}`;
     setBusyKey(key);
     try {
-      await onDismissAlert(alert.id);
+      await withTimeout(onDismissAlert(alert.id));
     } catch (error) {
       console.error('Failed to dismiss seating alert', error);
-      setErrorByKey((prev) => ({ ...prev, [key]: labels.deleteError }));
+      setErrorByKey((prev) => ({ ...prev, [key]: error instanceof SaveTimeoutError ? labels.saveTimeoutError : labels.deleteError }));
     } finally {
       setBusyKey(null);
     }
@@ -1153,10 +1153,18 @@ export function SeatingSection({
       // Sequential, not Promise.all - keeps this identical in spirit to
       // clicking each alert's own dismiss button one at a time, just
       // without needing 100+ individual clicks. Only the currently-visible
-      // (not-already-dismissed) ones - nothing to do for the rest.
+      // (not-already-dismissed) ones - nothing to do for the rest. Each one
+      // is timeout-guarded so a single stuck write (e.g. a permission
+      // error that never surfaces, or a dropped connection) can't leave
+      // this spinning forever instead of at least getting through the rest
+      // of the list.
       for (const alert of visibleAlerts) {
-        // eslint-disable-next-line no-await-in-loop
-        await onDismissAlert(alert.id);
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await withTimeout(onDismissAlert(alert.id));
+        } catch (error) {
+          console.error('Failed to dismiss one seating alert during dismiss-all', alert.id, error);
+        }
       }
     } catch (error) {
       console.error('Failed to dismiss all seating alerts', error);
