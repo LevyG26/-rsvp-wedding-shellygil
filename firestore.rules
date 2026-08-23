@@ -40,7 +40,7 @@ service cloud.firestore {
     // or venue objects, and locking/unlocking the layout) are admin-only -
     // event-day staff can still READ everything via canManageSeating() above
     // (they need to render the floor plan and see who's seated where), and
-    // can still write to seatingAssignments/seatingGroups/seatingAlerts (so
+    // can still write to seatingAssignments/seatingAlerts (so
     // they can seat a walk-in or dismiss an alert), just not touch the
     // tables/objects themselves.
     function canEditSeatingLayout() {
@@ -395,24 +395,6 @@ service cloud.firestore {
       allow create: if canEditSeatingLayout() && isValidId(tableId) && isValidSeatingTable(incoming());
       allow update: if canEditSeatingLayout() && isValidSeatingTable(incoming());
       allow delete: if canEditSeatingLayout();
-    }
-
-    // Ad-hoc named clusters of confirmed guestRoster entry IDs, purely for
-    // seating multiple otherwise-unrelated parties together in one action -
-    // separate from the roster's own side/category fields.
-    function isValidSeatingGroup(data) {
-      return data.keys().hasAll(['name', 'memberEntryIds', 'updatedAt']) &&
-             data.keys().hasOnly(['name', 'memberEntryIds', 'updatedAt']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 60 &&
-             data.memberEntryIds is list && data.memberEntryIds.size() <= 50 &&
-             data.updatedAt == request.time;
-    }
-
-    match /seatingGroups/{groupId} {
-      allow read: if canManageSeating();
-      allow create: if canManageSeating() && isValidId(groupId) && isValidSeatingGroup(incoming());
-      allow update: if canManageSeating() && isValidSeatingGroup(incoming());
-      allow delete: if canManageSeating();
     }
 
     // How many of a given roster entry's confirmed seats sit at a given

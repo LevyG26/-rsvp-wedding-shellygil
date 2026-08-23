@@ -63,10 +63,7 @@ import {
 import { findRosterMatches, fullNamesMatch, linkGuestRosterWithRsvps, resolveRosterMatches, type RosterLinkResult } from '../services/rsvpRosterLink';
 import { SeatingSection } from '../components/admin/SeatingSection';
 import {
-    assignGroupToTable,
-    createSeatingGroup,
     createSeatingTable,
-    deleteSeatingGroup,
     deleteSeatingTable,
     dismissSeatingAlert,
     removeSeatingAssignment,
@@ -74,16 +71,13 @@ import {
     setSeatingLayoutLock,
     subscribeToSeatingAlerts,
     subscribeToSeatingAssignments,
-    subscribeToSeatingGroups,
     subscribeToSeatingLayoutLock,
     subscribeToSeatingTables,
     syncSeatingAssignmentsWithRoster,
-    updateSeatingGroup,
     updateSeatingTable,
     updateSeatingTableLayout,
     type SeatingAlert,
     type SeatingAssignment,
-    type SeatingGroup,
     type SeatingTable,
     type SeatingTableLayout,
 } from '../services/seating';
@@ -518,7 +512,6 @@ export function AdminDashboard() {
     const [activeTab, setActiveTab] = useState<'roster' | 'responses' | 'reminders' | 'seating' | 'gifts'>('roster');
     const displayedTab = isEventStaff ? 'seating' : activeTab;
     const [seatingTables, setSeatingTables] = useState<SeatingTable[]>([]);
-    const [seatingGroups, setSeatingGroups] = useState<SeatingGroup[]>([]);
     const [seatingAssignments, setSeatingAssignments] = useState<SeatingAssignment[]>([]);
     const [seatingAlerts, setSeatingAlerts] = useState<SeatingAlert[]>([]);
     const [seatingLayoutLocked, setSeatingLayoutLocked] = useState(false);
@@ -687,11 +680,10 @@ export function AdminDashboard() {
         // its own three collections so the seating tab can show a loading
         // state until all of them have returned at least once.
         let tablesLoaded = false;
-        let groupsLoaded = false;
         let assignmentsLoaded = false;
         let venueObjectsLoaded = false;
         const markSeatingLoadedIfReady = () => {
-            if (tablesLoaded && groupsLoaded && assignmentsLoaded && venueObjectsLoaded) {
+            if (tablesLoaded && assignmentsLoaded && venueObjectsLoaded) {
                 setIsLoadingSeating(false);
             }
         };
@@ -703,17 +695,6 @@ export function AdminDashboard() {
             },
             () => {
                 tablesLoaded = true;
-                markSeatingLoadedIfReady();
-            },
-        );
-        const unsubscribeSeatingGroups = subscribeToSeatingGroups(
-            (loaded) => {
-                setSeatingGroups(loaded);
-                groupsLoaded = true;
-                markSeatingLoadedIfReady();
-            },
-            () => {
-                groupsLoaded = true;
                 markSeatingLoadedIfReady();
             },
         );
@@ -751,7 +732,6 @@ export function AdminDashboard() {
             unsubscribeRsvps();
             unsubscribeRoster();
             unsubscribeSeatingTables();
-            unsubscribeSeatingGroups();
             unsubscribeSeatingAssignments();
             unsubscribeVenueObjects();
             unsubscribeSeatingAlerts();
@@ -1262,8 +1242,8 @@ export function AdminDashboard() {
 
     // Seating chart handlers - thin wrappers around services/seating.ts.
     // Local state isn't updated manually here because the onSnapshot
-    // listeners set up above already keep seatingTables/seatingGroups/
-    // seatingAssignments current on their own.
+    // listeners set up above already keep seatingTables/seatingAssignments
+    // current on their own.
     const handleCreateSeatingTable = async (name: string, seatCount: number, layout: SeatingTableLayout): Promise<void> => {
         await createSeatingTable(name, seatCount, layout);
     };
@@ -1280,43 +1260,12 @@ export function AdminDashboard() {
         await deleteSeatingTable(id, seatingAssignments);
     };
 
-    const handleCreateSeatingGroup = async (name: string, memberEntryIds: string[]): Promise<void> => {
-        await createSeatingGroup(name, memberEntryIds);
-    };
-
-    const handleUpdateSeatingGroup = async (id: string, name: string, memberEntryIds: string[]): Promise<void> => {
-        await updateSeatingGroup(id, name, memberEntryIds);
-    };
-
-    const handleDeleteSeatingGroup = async (id: string): Promise<void> => {
-        await deleteSeatingGroup(id);
-    };
-
     const handleSetSeatingAssignment = async (rosterEntryId: string, tableId: string, seatsCount: number): Promise<void> => {
         await setSeatingAssignment(rosterEntryId, tableId, seatsCount);
     };
 
     const handleRemoveSeatingAssignment = async (rosterEntryId: string, tableId: string): Promise<void> => {
         await removeSeatingAssignment(rosterEntryId, tableId);
-    };
-
-    const handleAssignSeatingGroupToTable = async (group: SeatingGroup, tableId: string): Promise<void> => {
-        const remainingByEntryId = new Map<string, number>();
-        guestRoster.forEach((entry) => {
-            if (entry.knownResponse !== 'yes') return;
-            const assigned = seatingAssignments
-                .filter((assignment) => assignment.rosterEntryId === entry.id)
-                .reduce((sum, assignment) => sum + assignment.seatsCount, 0);
-            remainingByEntryId.set(entry.id, entry.invitedCount - assigned);
-        });
-
-        const table = seatingTables.find((candidate) => candidate.id === tableId);
-        if (!table) return;
-        const used = seatingAssignments
-            .filter((assignment) => assignment.tableId === tableId)
-            .reduce((sum, assignment) => sum + assignment.seatsCount, 0);
-
-        await assignGroupToTable(group, tableId, remainingByEntryId, table.seatCount - used);
     };
 
     const handleCreateVenueObject = async (type: VenueObjectType, label: string, layout: SeatingTableLayout): Promise<void> => {
@@ -3123,7 +3072,6 @@ export function AdminDashboard() {
                         onSetArrivedCount={handleSetGuestArrivedCount}
                         tables={seatingTables}
                         venueObjects={venueObjects}
-                        groups={seatingGroups}
                         assignments={seatingAssignments}
                         alerts={seatingAlerts}
                         layoutLocked={seatingLayoutLocked}
@@ -3138,12 +3086,8 @@ export function AdminDashboard() {
                         onUpdateObject={handleUpdateVenueObject}
                         onUpdateObjectLayout={handleUpdateVenueObjectLayout}
                         onDeleteObject={handleDeleteVenueObject}
-                        onCreateGroup={handleCreateSeatingGroup}
-                        onUpdateGroup={handleUpdateSeatingGroup}
-                        onDeleteGroup={handleDeleteSeatingGroup}
                         onSetAssignment={handleSetSeatingAssignment}
                         onRemoveAssignment={handleRemoveSeatingAssignment}
-                        onAssignGroupToTable={handleAssignSeatingGroupToTable}
                         onDismissAlert={handleDismissSeatingAlert}
                         canEditLayout={!isEventStaff}
                         labels={{
@@ -3165,17 +3109,6 @@ export function AdminDashboard() {
                             chooseTable: t.adminSeatingChooseTable,
                             addButton: t.adminSeatingAddButton,
                             noTablesHint: t.adminSeatingNoTablesHint,
-                            groupsHeading: t.adminSeatingGroupsHeading,
-                            addGroupButton: t.adminSeatingAddGroupButton,
-                            groupNamePlaceholder: t.adminSeatingGroupNamePlaceholder,
-                            groupMembersHint: t.adminSeatingGroupMembersHint,
-                            saveGroup: t.adminSeatingSaveGroup,
-                            cancelAction: t.adminSeatingCancelAction,
-                            editAction: t.adminSeatingEditAction,
-                            deleteAction: t.adminSeatingDeleteAction,
-                            assignButton: t.adminSeatingAssignButton,
-                            noGroups: t.adminSeatingNoGroups,
-                            membersCountLabel: t.adminSeatingMembersCountLabel,
                             tablesHeading: t.adminSeatingTablesHeading,
                             addTableButton: t.adminSeatingAddTableButton,
                             tableNamePlaceholder: t.adminSeatingTableNamePlaceholder,
@@ -3191,7 +3124,6 @@ export function AdminDashboard() {
                             rotateTableButton: t.adminSeatingRotateTableButton,
                             tableDetailsHint: t.adminSeatingTableDetailsHint,
                             deleteTableConfirm: t.adminSeatingDeleteTableConfirm,
-                            deleteGroupConfirm: t.adminSeatingDeleteGroupConfirm,
                             updateError: t.adminSeatingUpdateError,
                             createError: t.adminSeatingCreateError,
                             deleteError: t.adminSeatingDeleteError,

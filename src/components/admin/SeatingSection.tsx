@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import type { GuestRosterEntry } from '../../services/guestRoster';
-import type { SeatingAlert, SeatingAssignment, SeatingGroup, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
+import type { SeatingAlert, SeatingAssignment, SeatingTable, SeatingTableLayout, SeatingTableShape } from '../../services/seating';
 import type { VenueObject, VenueObjectType } from '../../services/venueObjects';
 import { exportSeatingChart, type SeatingExportGuest, type SeatingExportListRow, type SeatingExportTable, type SeatingExportUnseatedGuest } from '../../admin/exportSeatingChart';
 import { transliterateHebrew } from '../../admin/hebrewTransliteration';
@@ -48,17 +48,6 @@ export interface SeatingLabels {
   chooseTable: string;
   addButton: string;
   noTablesHint: string;
-  groupsHeading: string;
-  addGroupButton: string;
-  groupNamePlaceholder: string;
-  groupMembersHint: string;
-  saveGroup: string;
-  cancelAction: string;
-  editAction: string;
-  deleteAction: string;
-  assignButton: string;
-  noGroups: string;
-  membersCountLabel: string;
   tablesHeading: string;
   addTableButton: string;
   tableNamePlaceholder: string;
@@ -74,7 +63,6 @@ export interface SeatingLabels {
   rotateTableButton: string;
   tableDetailsHint: string;
   deleteTableConfirm: string;
-  deleteGroupConfirm: string;
   updateError: string;
   createError: string;
   deleteError: string;
@@ -206,7 +194,6 @@ interface SeatingSectionProps {
   onSetArrivedCount: (id: string, arrivedCount: number, invitedCount: number) => Promise<void>;
   tables: SeatingTable[];
   venueObjects: VenueObject[];
-  groups: SeatingGroup[];
   assignments: SeatingAssignment[];
   alerts: SeatingAlert[];
   layoutLocked: boolean;
@@ -222,12 +209,8 @@ interface SeatingSectionProps {
   onUpdateObject: (id: string, type: VenueObjectType, label: string, layout: SeatingTableLayout) => Promise<void>;
   onUpdateObjectLayout: (id: string, layout: SeatingTableLayout) => Promise<void>;
   onDeleteObject: (id: string) => Promise<void>;
-  onCreateGroup: (name: string, memberEntryIds: string[]) => Promise<void>;
-  onUpdateGroup: (id: string, name: string, memberEntryIds: string[]) => Promise<void>;
-  onDeleteGroup: (id: string) => Promise<void>;
   onSetAssignment: (rosterEntryId: string, tableId: string, seatsCount: number) => Promise<void>;
   onRemoveAssignment: (rosterEntryId: string, tableId: string) => Promise<void>;
-  onAssignGroupToTable: (group: SeatingGroup, tableId: string) => Promise<void>;
   onDismissAlert: (id: string) => Promise<void>;
   // False for event-day staff - hides/disables every structural floor-plan
   // control (create/move/resize/delete a table, add/move/resize/delete a
@@ -255,7 +238,6 @@ function nextTablePosition(existingCount: number): { x: number; y: number } {
     y: 40 + Math.floor(existingCount / perRow) * spacing,
   };
 }
-const emptyGroupForm = { name: '', memberEntryIds: new Set<string>() };
 
 const emptyObjectForm = { type: 'stage' as VenueObjectType, label: '' };
 
@@ -281,7 +263,6 @@ export function SeatingSection({
   onSetArrivedCount,
   tables,
   venueObjects,
-  groups,
   assignments,
   alerts,
   layoutLocked,
@@ -297,12 +278,8 @@ export function SeatingSection({
   onUpdateObject,
   onUpdateObjectLayout,
   onDeleteObject,
-  onCreateGroup,
-  onUpdateGroup,
-  onDeleteGroup,
   onSetAssignment,
   onRemoveAssignment,
-  onAssignGroupToTable,
   onDismissAlert,
   canEditLayout,
 }: SeatingSectionProps) {
@@ -349,14 +326,6 @@ export function SeatingSection({
   const [objectDeleteSelection, setObjectDeleteSelection] = useState<Set<string>>(new Set());
   const [isBulkDeletingObjects, setIsBulkDeletingObjects] = useState(false);
   const [bulkDeleteObjectsError, setBulkDeleteObjectsError] = useState('');
-
-  const [isGroupFormOpen, setIsGroupFormOpen] = useState(false);
-  const [groupForm, setGroupForm] = useState(emptyGroupForm);
-  const [groupSearch, setGroupSearch] = useState('');
-  const [isSavingGroup, setIsSavingGroup] = useState(false);
-  const [groupFormError, setGroupFormError] = useState('');
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [groupAssignTableId, setGroupAssignTableId] = useState<Record<string, string>>({});
 
   const [isExportingList, setIsExportingList] = useState(false);
   const [isExportingImage, setIsExportingImage] = useState(false);
@@ -456,7 +425,6 @@ export function SeatingSection({
   const totalSeatsAvailable = Math.max(0, totalTableCapacity - totalSeatedPeople);
 
   const sortedTables = useMemo(() => [...tables].sort((a, b) => a.name.localeCompare(b.name, locale)), [tables, locale]);
-  const sortedGroups = useMemo(() => [...groups].sort((a, b) => a.name.localeCompare(b.name, locale)), [groups, locale]);
 
   const tablesById = useMemo(() => new Map(tables.map((table) => [table.id, table])), [tables]);
 
@@ -798,87 +766,6 @@ export function SeatingSection({
     } catch (error) {
       console.error('Failed to delete table', error);
       setErrorByKey((prev) => ({ ...prev, [key]: labels.deleteError }));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const filteredGroupCandidates = useMemo(() => {
-    const query = groupSearch.trim().toLowerCase();
-    return confirmedEntries
-      .filter((entry) => !query || entryName(entry).toLowerCase().includes(query) || entry.category.toLowerCase().includes(query))
-      .sort((a, b) => entryName(a).localeCompare(entryName(b), locale));
-  }, [confirmedEntries, groupSearch, locale]);
-
-  const toggleGroupMember = (entryId: string) => {
-    setGroupForm((prev) => {
-      const next = new Set(prev.memberEntryIds);
-      if (next.has(entryId)) {
-        next.delete(entryId);
-      } else {
-        next.add(entryId);
-      }
-      return { ...prev, memberEntryIds: next };
-    });
-  };
-
-  const handleSaveGroup = async () => {
-    setGroupFormError('');
-    if (!groupForm.name.trim() || groupForm.memberEntryIds.size === 0) {
-      setGroupFormError(labels.createError);
-      return;
-    }
-    setIsSavingGroup(true);
-    try {
-      const memberIds = Array.from(groupForm.memberEntryIds);
-      if (editingGroupId) {
-        await onUpdateGroup(editingGroupId, groupForm.name.trim(), memberIds);
-      } else {
-        await onCreateGroup(groupForm.name.trim(), memberIds);
-      }
-      setGroupForm(emptyGroupForm);
-      setIsGroupFormOpen(false);
-      setEditingGroupId(null);
-    } catch (error) {
-      console.error('Failed to save seating group', error);
-      setGroupFormError(labels.createError);
-    } finally {
-      setIsSavingGroup(false);
-    }
-  };
-
-  const startEditingGroup = (group: SeatingGroup) => {
-    setEditingGroupId(group.id);
-    setGroupForm({ name: group.name, memberEntryIds: new Set(group.memberEntryIds) });
-    setIsGroupFormOpen(true);
-  };
-
-  const handleDeleteGroup = async (group: SeatingGroup) => {
-    if (typeof window !== 'undefined' && !window.confirm(labels.deleteGroupConfirm)) return;
-    const key = `group-${group.id}`;
-    setBusyKey(key);
-    try {
-      await onDeleteGroup(group.id);
-    } catch (error) {
-      console.error('Failed to delete seating group', error);
-      setErrorByKey((prev) => ({ ...prev, [key]: labels.deleteError }));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const handleAssignGroup = async (group: SeatingGroup) => {
-    const tableId = groupAssignTableId[group.id];
-    const table = tables.find((candidate) => candidate.id === tableId);
-    if (!table) return;
-    const key = `group-assign-${group.id}`;
-    setBusyKey(key);
-    setErrorByKey((prev) => ({ ...prev, [key]: '' }));
-    try {
-      await onAssignGroupToTable(group, table.id);
-    } catch (error) {
-      console.error('Failed to assign seating group to table', error);
-      setErrorByKey((prev) => ({ ...prev, [key]: labels.updateError }));
     } finally {
       setBusyKey(null);
     }
@@ -1647,151 +1534,6 @@ export function SeatingSection({
                         </button>
                       </div>
                     )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Seating groups */}
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">{labels.groupsHeading} ({groups.length})</h3>
-            <button
-              type="button"
-              onClick={() => {
-                if (isGroupFormOpen && !editingGroupId) {
-                  setIsGroupFormOpen(false);
-                } else {
-                  setGroupForm(emptyGroupForm);
-                  setEditingGroupId(null);
-                  setIsGroupFormOpen(true);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            >
-              <Plus size={14} />
-              {labels.addGroupButton}
-            </button>
-          </div>
-
-          {isGroupFormOpen && (
-            <div className="mb-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/60">
-              <input
-                type="text"
-                value={groupForm.name}
-                onChange={(event) => setGroupForm((prev) => ({ ...prev, name: event.target.value }))}
-                placeholder={labels.groupNamePlaceholder}
-                className="mb-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
-              />
-              <p className="mb-1 text-xs text-gray-500 dark:text-slate-400">{labels.groupMembersHint}</p>
-              <input
-                type="text"
-                value={groupSearch}
-                onChange={(event) => setGroupSearch(event.target.value)}
-                placeholder={labels.searchPlaceholder}
-                className="mb-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
-              />
-              <div className="max-h-56 divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-200 bg-white dark:divide-slate-700 dark:border-slate-600 dark:bg-slate-800">
-                {filteredGroupCandidates.map((entry) => (
-                  <label key={entry.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={groupForm.memberEntryIds.has(entry.id)}
-                      onChange={() => toggleGroupMember(entry.id)}
-                      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-slate-700"
-                    />
-                    <span className="min-w-0 flex-1 truncate text-gray-900 dark:text-slate-100">{entryName(entry)}</span>
-                    <span className="shrink-0 text-xs text-gray-500 dark:text-slate-400">{entry.category}</span>
-                  </label>
-                ))}
-              </div>
-              {groupFormError && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{groupFormError}</p>}
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveGroup}
-                  disabled={isSavingGroup}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                >
-                  {isSavingGroup && <Loader2 size={16} className="animate-spin" />}
-                  {isSavingGroup ? labels.saving : labels.saveGroup}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsGroupFormOpen(false);
-                    setEditingGroupId(null);
-                    setGroupForm(emptyGroupForm);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-                >
-                  <X size={16} />
-                  {labels.cancelAction}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {groups.length === 0 && !isGroupFormOpen ? (
-            <p className="text-sm text-gray-500 dark:text-slate-400">{labels.noGroups}</p>
-          ) : (
-            <div className="space-y-2">
-              {sortedGroups.map((group) => {
-                const tablesWithRoom = sortedTables.filter((table) => tableRemaining(table) > 0);
-                const assignKey = `group-assign-${group.id}`;
-                const deleteKey = `group-${group.id}`;
-                return (
-                  <div key={group.id} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-3 dark:border-slate-700 dark:bg-slate-800/60">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">{group.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-slate-400">{group.memberEntryIds.length} {labels.membersCountLabel}</p>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => startEditingGroup(group)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                          <Pencil size={12} />
-                          {labels.editAction}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteGroup(group)}
-                          disabled={busyKey === deleteKey}
-                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/60"
-                        >
-                          {busyKey === deleteKey ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                        </button>
-                      </div>
-                    </div>
-                    {tablesWithRoom.length > 0 && (
-                      <div className="mt-2 flex items-center gap-1.5">
-                        <select
-                          value={groupAssignTableId[group.id] ?? ''}
-                          onChange={(event) => setGroupAssignTableId((prev) => ({ ...prev, [group.id]: event.target.value }))}
-                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-slate-700"
-                        >
-                          <option value="">{labels.chooseTable}</option>
-                          {tablesWithRoom.map((table) => (
-                            <option key={table.id} value={table.id}>{table.name} ({tableRemaining(table)} {labels.seatsWord})</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => handleAssignGroup(group)}
-                          disabled={busyKey === assignKey || !groupAssignTableId[group.id]}
-                          className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-gray-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                        >
-                          {busyKey === assignKey ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                          {labels.assignButton}
-                        </button>
-                      </div>
-                    )}
-                    {errorByKey[assignKey] && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errorByKey[assignKey]}</p>}
                   </div>
                 );
               })}

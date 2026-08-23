@@ -3,7 +3,6 @@ import { db } from '../firebase';
 import type { GuestRosterEntry } from './guestRoster';
 
 export const SEATING_TABLES_COLLECTION = 'seatingTables';
-export const SEATING_GROUPS_COLLECTION = 'seatingGroups';
 export const SEATING_ASSIGNMENTS_COLLECTION = 'seatingAssignments';
 export const SEATING_ALERTS_COLLECTION = 'seatingAlerts';
 export const SEATING_SETTINGS_COLLECTION = 'seatingSettings';
@@ -45,17 +44,6 @@ export interface SeatingTable extends SeatingTableLayout {
   // Gil orient a teardrop or curved booth to match which way it actually
   // faces in the hall, independent of x/y/width/height.
   rotation: number;
-}
-
-// An ad-hoc, named cluster of confirmed guestRoster entry IDs Gil creates on
-// the fly (e.g. "חברים של שלי מהצבא") purely to make seating a bunch of
-// otherwise-unrelated parties together a one-click action - distinct from the
-// side/category fields already on the roster, which are about the invite
-// list, not where people sit.
-export interface SeatingGroup {
-  id: string;
-  name: string;
-  memberEntryIds: string[];
 }
 
 // One row = "N seats belonging to this roster entry sit at this table". A
@@ -106,15 +94,6 @@ function normalizeTable(id: string, data: Record<string, unknown>): SeatingTable
     height: numberOr(data.height, DEFAULT_TABLE_LAYOUT.height),
     shape: normalizeShape(data.shape),
     rotation: numberOr(data.rotation, 0),
-  };
-}
-
-function normalizeGroup(id: string, data: Record<string, unknown>): SeatingGroup {
-  const members = data.memberEntryIds;
-  return {
-    id,
-    name: typeof data.name === 'string' ? data.name : '',
-    memberEntryIds: Array.isArray(members) ? members.filter((entryId): entryId is string => typeof entryId === 'string') : [],
   };
 }
 
@@ -172,17 +151,6 @@ export function subscribeToSeatingTables(onChange: (tables: SeatingTable[]) => v
     (snapshot) => onChange(snapshot.docs.map((docSnapshot) => normalizeTable(docSnapshot.id, docSnapshot.data() as Record<string, unknown>))),
     (error) => {
       console.error('Seating tables live listener failed', error);
-      onError?.(error);
-    },
-  );
-}
-
-export function subscribeToSeatingGroups(onChange: (groups: SeatingGroup[]) => void, onError?: (error: unknown) => void): () => void {
-  return onSnapshot(
-    collection(db, SEATING_GROUPS_COLLECTION),
-    (snapshot) => onChange(snapshot.docs.map((docSnapshot) => normalizeGroup(docSnapshot.id, docSnapshot.data() as Record<string, unknown>))),
-    (error) => {
-      console.error('Seating groups live listener failed', error);
       onError?.(error);
     },
   );
@@ -307,28 +275,6 @@ export async function deleteSeatingTable(id: string, assignments: SeatingAssignm
   await batch.commit();
 }
 
-export async function createSeatingGroup(name: string, memberEntryIds: string[]): Promise<string> {
-  const id = makeId();
-  await setDoc(doc(db, SEATING_GROUPS_COLLECTION, id), {
-    name: name.trim(),
-    memberEntryIds,
-    updatedAt: serverTimestamp(),
-  });
-  return id;
-}
-
-export async function updateSeatingGroup(id: string, name: string, memberEntryIds: string[]): Promise<void> {
-  await setDoc(doc(db, SEATING_GROUPS_COLLECTION, id), {
-    name: name.trim(),
-    memberEntryIds,
-    updatedAt: serverTimestamp(),
-  });
-}
-
-export async function deleteSeatingGroup(id: string): Promise<void> {
-  await deleteDoc(doc(db, SEATING_GROUPS_COLLECTION, id));
-}
-
 // Upserts how many of a roster entry's confirmed seats sit at a given table.
 // Setting seatsCount to 0 (or less) removes the assignment entirely instead
 // of writing a useless zero row.
@@ -348,35 +294,6 @@ export async function setSeatingAssignment(rosterEntryId: string, tableId: strin
 
 export async function removeSeatingAssignment(rosterEntryId: string, tableId: string): Promise<void> {
   await deleteDoc(doc(db, SEATING_ASSIGNMENTS_COLLECTION, assignmentId(rosterEntryId, tableId)));
-}
-
-// Assigns every member of a seating group to one table in a single batch,
-// each getting whatever seats they still have remaining (capped so the
-// table never goes over capacity) - the "add a whole group in one click"
-// action.
-export async function assignGroupToTable(
-  group: SeatingGroup,
-  tableId: string,
-  remainingByEntryId: Map<string, number>,
-  tableRemainingCapacity: number,
-): Promise<void> {
-  const batch = writeBatch(db);
-  let capacityLeft = tableRemainingCapacity;
-
-  for (const entryId of group.memberEntryIds) {
-    const remaining = remainingByEntryId.get(entryId) ?? 0;
-    if (remaining <= 0 || capacityLeft <= 0) continue;
-    const seatsToAssign = Math.min(remaining, capacityLeft);
-    capacityLeft -= seatsToAssign;
-    batch.set(doc(db, SEATING_ASSIGNMENTS_COLLECTION, assignmentId(entryId, tableId)), {
-      rosterEntryId: entryId,
-      tableId,
-      seatsCount: seatsToAssign,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
-  }
-
-  await batch.commit();
 }
 
 // Deterministic per-(entry, cause) id rather than a random one - critical
