@@ -3473,6 +3473,7 @@ export function AdminDashboard() {
                             sortByAmountDesc: t.adminGiftsSortByAmountDesc,
                             sortByAmountAsc: t.adminGiftsSortByAmountAsc,
                             sortCurrencyLabel: t.adminGiftsSortCurrencyLabel,
+                            currencyFilterAllLabel: t.adminGiftsCurrencyFilterAllLabel,
                             linkedWithLabel: t.adminGiftsLinkedWithLabel,
                             combinedTotalLabel: t.adminGiftsCombinedTotalLabel,
                             linkButton: t.adminGiftsLinkButton,

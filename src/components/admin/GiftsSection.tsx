@@ -94,6 +94,7 @@ interface GiftsSectionLabels {
   sortByAmountDesc: string;
   sortByAmountAsc: string;
   sortCurrencyLabel: string;
+  currencyFilterAllLabel: string;
   linkedWithLabel: string;
   combinedTotalLabel: string;
   linkButton: string;
@@ -489,9 +490,14 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
   // Sorting by amount is always scoped to ONE currency at a time - the three
   // currencies are never combined into a single number (no live exchange
   // rate, see utils/gifts.ts), so "highest first" means highest in ₪, or in
-  // $, or in €, picked via sortCurrency, not some blended figure.
+  // $, or in €. currencyFilter drives BOTH which currency that is AND which
+  // records are shown at all: picking a specific currency hides every
+  // record with no amount in it (so choosing ₪ actually shows only ₪
+  // records, instead of silently leaving every currency's records visible
+  // while just re-sorting them - that mismatch was confusing when a record
+  // with only a EUR amount still showed up while "sort by ₪" was selected).
   const [sortMode, setSortMode] = useState<'name' | 'amountDesc' | 'amountAsc'>('name');
-  const [sortCurrency, setSortCurrency] = useState<GiftCurrency>('ILS');
+  const [currencyFilter, setCurrencyFilter] = useState<'all' | GiftCurrency>('all');
 
   const sides = useMemo(
     () => Array.from(new Set(records.map((record) => record.side).filter(Boolean))).sort((first, second) => first.localeCompare(second)),
@@ -610,16 +616,20 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
         return record.attendanceStatus === attendanceFilter;
       })
       .filter((record) => (normalizedSearch ? record.fullName.toLowerCase().includes(normalizedSearch) : true))
+      // A specific currency actually hides everyone with no amount in it,
+      // rather than just being a sort hint - see currencyFilter's doc
+      // comment above.
+      .filter((record) => (currencyFilter === 'all' ? true : (record.combinedTotals[currencyFilter] ?? 0) > 0))
       .sort((first, second) => {
-        if (sortMode === 'name') return first.fullName.localeCompare(second.fullName, 'he');
-        const firstAmount = first.combinedTotals[sortCurrency] ?? 0;
-        const secondAmount = second.combinedTotals[sortCurrency] ?? 0;
+        if (sortMode === 'name' || currencyFilter === 'all') return first.fullName.localeCompare(second.fullName, 'he');
+        const firstAmount = first.combinedTotals[currencyFilter] ?? 0;
+        const secondAmount = second.combinedTotals[currencyFilter] ?? 0;
         if (firstAmount !== secondAmount) return sortMode === 'amountDesc' ? secondAmount - firstAmount : firstAmount - secondAmount;
         // Tie-break (including the common "both zero" case) by name, so the
         // order still reads sensibly instead of an arbitrary/unstable sort.
         return first.fullName.localeCompare(second.fullName, 'he');
       });
-  }, [records, filterMode, sideFilter, categoryFilter, attendanceFilter, searchTerm, sortMode, sortCurrency]);
+  }, [records, filterMode, sideFilter, categoryFilter, attendanceFilter, searchTerm, sortMode, currencyFilter]);
 
   // Actual guest count among the currently-visible (filtered) rows - shown
   // alongside the row count so "12 records shown" doesn't get misread as "12
@@ -812,26 +822,30 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
             </select>
 
             <select
-              aria-label={labels.sortLabel}
-              value={sortMode}
-              onChange={(event) => setSortMode(event.target.value as typeof sortMode)}
+              aria-label={labels.sortCurrencyLabel}
+              value={currencyFilter}
+              onChange={(event) => setCurrencyFilter(event.target.value as typeof currencyFilter)}
               className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:border-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
-              <option value="name">{labels.sortByName}</option>
-              <option value="amountDesc">{labels.sortByAmountDesc}</option>
-              <option value="amountAsc">{labels.sortByAmountAsc}</option>
+              <option value="all">{labels.currencyFilterAllLabel}</option>
+              {GIFT_CURRENCIES.map((currency) => (
+                <option key={currency} value={currency}>{CURRENCY_SYMBOLS[currency]}</option>
+              ))}
             </select>
 
-            {sortMode !== 'name' && (
+            {/* Sorting by amount only makes sense once a single currency is
+                picked above (currencies never combine into one number), so
+                this is hidden - not just ignored - while "all" is selected. */}
+            {currencyFilter !== 'all' && (
               <select
-                aria-label={labels.sortCurrencyLabel}
-                value={sortCurrency}
-                onChange={(event) => setSortCurrency(event.target.value as GiftCurrency)}
+                aria-label={labels.sortLabel}
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as typeof sortMode)}
                 className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:border-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
               >
-                {GIFT_CURRENCIES.map((currency) => (
-                  <option key={currency} value={currency}>{CURRENCY_SYMBOLS[currency]}</option>
-                ))}
+                <option value="name">{labels.sortByName}</option>
+                <option value="amountDesc">{labels.sortByAmountDesc}</option>
+                <option value="amountAsc">{labels.sortByAmountAsc}</option>
               </select>
             )}
 
