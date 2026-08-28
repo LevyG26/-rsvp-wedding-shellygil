@@ -101,6 +101,12 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
 
   const [fullName, setFullName] = useState('');
   const [hasFullNameError, setHasFullNameError] = useState(false);
+  // Live suggestions from the real guest roster (see api/guest-search.ts) as
+  // the name field is typed - purely assistive, never required: a guest can
+  // still submit any typed name exactly as before, this just makes it easier
+  // to spell it the same way it's recorded on the roster.
+  const [nameSuggestions, setNameSuggestions] = useState<{ id: string; fullName: string }[]>([]);
+  const [isNameFieldFocused, setIsNameFieldFocused] = useState(false);
   const [phone, setPhone] = useState('');
   const [hasPhoneError, setHasPhoneError] = useState(false);
   const [isAttending, setIsAttending] = useState<boolean | null>(null);
@@ -130,6 +136,46 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
     setSubmitted(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedPhone]);
+
+  // Debounced (400ms after typing stops) + a 2-character floor, matched by
+  // api/guest-search.ts's own floor - both exist so a guest pausing mid-word
+  // doesn't fire a request per keystroke. This project already had a real
+  // Firestore quota outage once; the search endpoint itself caches the
+  // roster for a minute so repeated calls across every guest stay cheap, and
+  // this debounce keeps the CALL volume itself low to begin with. Skipped
+  // entirely once submitted (the thank-you screen is showing, no name field
+  // visible to suggest anything for).
+  useEffect(() => {
+    if (submitted) {
+      setNameSuggestions([]);
+      return;
+    }
+
+    const trimmed = fullName.trim();
+    if (trimmed.length < 2) {
+      setNameSuggestions([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      fetch(`/api/guest-search?q=${encodeURIComponent(trimmed)}`, { signal: controller.signal })
+        .then((response) => (response.ok ? response.json() : { results: [] }))
+        .then((data) => {
+          setNameSuggestions(Array.isArray(data?.results) ? data.results : []);
+        })
+        .catch(() => {
+          // Silent - a failed lookup must never block or alarm someone just
+          // trying to submit their RSVP. Free typing still works exactly as
+          // before with no suggestions shown.
+        });
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [fullName, submitted]);
 
   const handleFullNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const nextFullName = event.target.value;
@@ -316,21 +362,52 @@ export function RSVPForm({ lang, linkedPhone, wazeUrl, calendarLink }: Props) {
         )}
 
         {/* Name */}
-        <div className="field">
+        <div className="field name-field">
           <label htmlFor="rsvp-full-name">{t.fullName}</label>
           <input
             id="rsvp-full-name"
             type="text"
+            autoComplete="off"
             value={fullName}
             onChange={handleFullNameChange}
+            onFocus={() => setIsNameFieldFocused(true)}
+            onBlur={() => setIsNameFieldFocused(false)}
             aria-invalid={hasFullNameError}
             aria-describedby={hasFullNameError ? 'full-name-error' : undefined}
+            aria-autocomplete="list"
+            aria-expanded={isNameFieldFocused && nameSuggestions.length > 0}
             className={hasFullNameError ? 'has-error' : ''}
           />
           {hasFullNameError && (
             <p id="full-name-error" className="error-text" role="alert">
               {t.fullNameLettersOnly}
             </p>
+          )}
+          {/* Purely assistive - picking one just fills in the exact roster
+              spelling, it never restricts what can be typed/submitted. Each
+              button's onMouseDown prevents the default focus change, so the
+              click registers before the input's onBlur closes this list. */}
+          {isNameFieldFocused && nameSuggestions.length > 0 && (
+            <div className="name-suggestions" role="listbox">
+              {nameSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.id}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  className="name-suggestion-btn"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setFullName(suggestion.fullName);
+                    setHasFullNameError(false);
+                    setNameSuggestions([]);
+                    setIsNameFieldFocused(false);
+                  }}
+                >
+                  {suggestion.fullName}
+                </button>
+              ))}
+            </div>
           )}
         </div>
 
