@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Banknote, Check, Download, Loader2, Search, Trash2, Wallet } from 'lucide-react';
+import { Banknote, Check, Download, Link2, Loader2, Search, Trash2, Unlink, Wallet } from 'lucide-react';
 import {
   addToTotals,
   CURRENCY_SYMBOLS,
@@ -17,6 +17,12 @@ import {
   type GiftMethod,
 } from '../../utils/gifts';
 
+export interface GiftGuestOption {
+  id: string;
+  fullName: string;
+  side: string;
+}
+
 export interface GiftRecordInput {
   id: string;
   fullName: string;
@@ -30,6 +36,20 @@ export interface GiftRecordInput {
   // since some guests send a gift despite not attending (or before
   // responding at all).
   attendanceStatus: 'yes' | 'no' | null;
+  // Sum of this record's OWN giftAmounts plus every linked household
+  // member's giftAmounts (see AdminDashboard.tsx's giftRecords) - used for
+  // display, sorting, filtering, and the export, so a couple/family linked
+  // together for gift-tracking reads as one combined figure everywhere,
+  // while giftAmounts above stays untouched as the one place edits actually
+  // land (always the household's primary member).
+  combinedTotals: GiftCurrencyTotals;
+  // Other roster entries folded into this row's household, by name only -
+  // their own giftAmounts/giftEntries docs are never read or written here,
+  // just reflected in combinedTotals above.
+  linkedMemberNames: string[];
+  // Present only when this record is part of a household - needed to
+  // unlink it. Absent for a plain, never-linked record.
+  householdId?: string;
 }
 
 interface GiftsSectionLabels {
@@ -69,14 +89,34 @@ interface GiftsSectionLabels {
   attendanceFilterAll: string;
   byAttendanceHeading: string;
   notAttendingPaidLabel: string;
+  sortLabel: string;
+  sortByName: string;
+  sortByAmountDesc: string;
+  sortByAmountAsc: string;
+  sortCurrencyLabel: string;
+  linkedWithLabel: string;
+  combinedTotalLabel: string;
+  linkButton: string;
+  linkPickerPlaceholder: string;
+  unlinkButton: string;
+  unlinkConfirm: string;
+  linkError: string;
 }
 
 interface GiftsSectionProps {
   records: GiftRecordInput[];
+  // Every roster entry (id/name/side), for the "link to another guest"
+  // picker on each row - deliberately not filtered down to "only unlinked"
+  // here, so linking someone who's already part of another household
+  // (folding two households together) stays possible; the picker itself
+  // just excludes the row's own current members.
+  allGuests: GiftGuestOption[];
   labels: GiftsSectionLabels;
   isLoading: boolean;
   isExporting: boolean;
   onUpdateGift: (recordId: string, giftAmounts: GiftAmounts) => Promise<void>;
+  onLinkGuest: (primaryRosterEntryId: string, otherRosterEntryId: string) => Promise<void>;
+  onUnlinkGuest: (householdId: string) => Promise<void>;
   onExport: () => void;
 }
 
@@ -191,15 +231,61 @@ function inputsToAmounts(inputs: MethodInputs): GiftAmounts {
 function GiftRow({
   record,
   labels,
+  allGuests,
   onUpdateGift,
+  onLinkGuest,
+  onUnlinkGuest,
 }: {
   record: GiftRecordInput;
   labels: GiftsSectionLabels;
+  allGuests: GiftGuestOption[];
   onUpdateGift: GiftsSectionProps['onUpdateGift'];
+  onLinkGuest: GiftsSectionProps['onLinkGuest'];
+  onUnlinkGuest: GiftsSectionProps['onUnlinkGuest'];
 }) {
   const [inputs, setInputs] = useState<MethodInputs>(() => amountsToInputs(record.giftAmounts));
   const [isSaving, setIsSaving] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [linkPickerValue, setLinkPickerValue] = useState('');
+  const [isLinking, setIsLinking] = useState(false);
+  const [isUnlinking, setIsUnlinking] = useState(false);
+  const [linkErrorShown, setLinkErrorShown] = useState(false);
+
+  // Excludes this row's own primary id - everyone else (including people
+  // already in some OTHER household) stays selectable, since picking one
+  // folds the two households together (see handleLinkGiftHousehold in
+  // AdminDashboard.tsx) rather than requiring them to be unlinked first.
+  const linkableGuests = allGuests.filter((guest) => guest.id !== record.id);
+
+  const handleLink = async () => {
+    if (!linkPickerValue || isLinking) return;
+    setIsLinking(true);
+    setLinkErrorShown(false);
+    try {
+      await onLinkGuest(record.id, linkPickerValue);
+      setLinkPickerValue('');
+    } catch (linkError) {
+      console.error('Failed to link gift household', linkError);
+      setLinkErrorShown(true);
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    if (!record.householdId || isUnlinking) return;
+    if (!window.confirm(labels.unlinkConfirm)) return;
+    setIsUnlinking(true);
+    setLinkErrorShown(false);
+    try {
+      await onUnlinkGuest(record.householdId);
+    } catch (unlinkError) {
+      console.error('Failed to unlink gift household', unlinkError);
+      setLinkErrorShown(true);
+    } finally {
+      setIsUnlinking(false);
+    }
+  };
 
   const parsedAmounts = inputsToAmounts(inputs);
   const hasChanged = GIFT_METHODS.some((method) => {
@@ -251,6 +337,50 @@ function GiftRow({
         <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-slate-400">
           {record.side}{record.side && record.category ? ' · ' : ''}{record.category} · {record.guestsCount} {labels.guestsWord}
         </p>
+
+        {record.linkedMemberNames.length > 0 ? (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-gray-500 dark:text-slate-400">{labels.linkedWithLabel}: {record.linkedMemberNames.join(', ')}</span>
+            <span className="text-gray-400 dark:text-slate-500">·</span>
+            <span className="font-medium text-gray-600 dark:text-slate-300">{labels.combinedTotalLabel}:</span>
+            <CurrencyAmounts totals={record.combinedTotals} direction="row" />
+            <button
+              type="button"
+              onClick={handleUnlink}
+              disabled={isUnlinking}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-gray-600 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
+            >
+              {isUnlinking ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
+              {labels.unlinkButton}
+            </button>
+          </div>
+        ) : (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <select
+              value={linkPickerValue}
+              onChange={(event) => setLinkPickerValue(event.target.value)}
+              disabled={isLinking}
+              className="rounded-full border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-600 outline-none focus:border-gray-400 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            >
+              <option value="">{labels.linkPickerPlaceholder}</option>
+              {linkableGuests.map((guest) => (
+                <option key={guest.id} value={guest.id}>{guest.fullName}{guest.side ? ` (${guest.side})` : ''}</option>
+              ))}
+            </select>
+            {linkPickerValue && (
+              <button
+                type="button"
+                onClick={handleLink}
+                disabled={isLinking}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-200 disabled:cursor-not-allowed dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                {isLinking ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
+                {labels.linkButton}
+              </button>
+            )}
+          </div>
+        )}
+        {linkErrorShown && <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{labels.linkError}</p>}
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
@@ -342,12 +472,18 @@ function GiftRow({
   );
 }
 
-export function GiftsSection({ records, labels, isLoading, isExporting, onUpdateGift, onExport }: GiftsSectionProps) {
+export function GiftsSection({ records, allGuests, labels, isLoading, isExporting, onUpdateGift, onLinkGuest, onUnlinkGuest, onExport }: GiftsSectionProps) {
   const [sideFilter, setSideFilter] = useState<'all' | string>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
   const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'yes' | 'no' | 'pending'>('all');
   const [filterMode, setFilterMode] = useState<'all' | 'missing' | 'has'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  // Sorting by amount is always scoped to ONE currency at a time - the three
+  // currencies are never combined into a single number (no live exchange
+  // rate, see utils/gifts.ts), so "highest first" means highest in ₪, or in
+  // $, or in €, picked via sortCurrency, not some blended figure.
+  const [sortMode, setSortMode] = useState<'name' | 'amountDesc' | 'amountAsc'>('name');
+  const [sortCurrency, setSortCurrency] = useState<GiftCurrency>('ILS');
 
   const sides = useMemo(
     () => Array.from(new Set(records.map((record) => record.side).filter(Boolean))).sort((first, second) => first.localeCompare(second)),
@@ -389,7 +525,11 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
     records.forEach((record) => {
       const attendanceKey = record.attendanceStatus === 'yes' ? 'yes' : record.attendanceStatus === 'no' ? 'no' : 'pending';
       byAttendanceGuestsCount[attendanceKey] += record.guestsCount;
-      const hasAmount = !isEmptyGiftAmounts(record.giftAmounts);
+      // combinedTotals (not just this row's own giftAmounts) - a linked
+      // household counts as "has an amount" the moment ANY member does, so
+      // a spouse/family member linked to someone who already gave a gift
+      // stops showing up as "missing" here too.
+      const hasAmount = Object.keys(record.combinedTotals).length > 0;
 
       if (attendanceKey === 'no' && hasAmount) {
         notAttendingPaidCount += 1;
@@ -409,8 +549,13 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
         }
         return;
       }
-      const recordTotals = sumGiftAmountsByCurrency(record.giftAmounts);
+      const recordTotals = record.combinedTotals;
       totalByCurrency = mergeCurrencyTotals(totalByCurrency, recordTotals);
+      // Method breakdown (cash/Bit-Paybox/check) intentionally reflects only
+      // this row's own giftAmounts, not combinedTotals - a linked member's
+      // own method choice isn't visible here, only their total (see
+      // combinedTotals above). The overall total by currency is always
+      // correct either way; only this one breakdown is primary-only.
       GIFT_METHODS.forEach((method) => {
         const entry = record.giftAmounts[method];
         if (entry.amount !== null) {
@@ -441,8 +586,12 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return records
       .filter((record) => {
-        if (filterMode === 'missing') return isEmptyGiftAmounts(record.giftAmounts);
-        if (filterMode === 'has') return !isEmptyGiftAmounts(record.giftAmounts);
+        // combinedTotals, not giftAmounts - see the summary computation
+        // above for why (a linked household member isn't "missing" once
+        // their partner's amount is recorded).
+        const hasAmount = Object.keys(record.combinedTotals).length > 0;
+        if (filterMode === 'missing') return !hasAmount;
+        if (filterMode === 'has') return hasAmount;
         return true;
       })
       .filter((record) => (sideFilter === 'all' ? true : record.side === sideFilter))
@@ -453,8 +602,16 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
         return record.attendanceStatus === attendanceFilter;
       })
       .filter((record) => (normalizedSearch ? record.fullName.toLowerCase().includes(normalizedSearch) : true))
-      .sort((first, second) => first.fullName.localeCompare(second.fullName, 'he'));
-  }, [records, filterMode, sideFilter, categoryFilter, attendanceFilter, searchTerm]);
+      .sort((first, second) => {
+        if (sortMode === 'name') return first.fullName.localeCompare(second.fullName, 'he');
+        const firstAmount = first.combinedTotals[sortCurrency] ?? 0;
+        const secondAmount = second.combinedTotals[sortCurrency] ?? 0;
+        if (firstAmount !== secondAmount) return sortMode === 'amountDesc' ? secondAmount - firstAmount : firstAmount - secondAmount;
+        // Tie-break (including the common "both zero" case) by name, so the
+        // order still reads sensibly instead of an arbitrary/unstable sort.
+        return first.fullName.localeCompare(second.fullName, 'he');
+      });
+  }, [records, filterMode, sideFilter, categoryFilter, attendanceFilter, searchTerm, sortMode, sortCurrency]);
 
   // Actual guest count among the currently-visible (filtered) rows - shown
   // alongside the row count so "12 records shown" doesn't get misread as "12
@@ -646,6 +803,30 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
               <option value="pending">{labels.attendancePending}</option>
             </select>
 
+            <select
+              aria-label={labels.sortLabel}
+              value={sortMode}
+              onChange={(event) => setSortMode(event.target.value as typeof sortMode)}
+              className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:border-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            >
+              <option value="name">{labels.sortByName}</option>
+              <option value="amountDesc">{labels.sortByAmountDesc}</option>
+              <option value="amountAsc">{labels.sortByAmountAsc}</option>
+            </select>
+
+            {sortMode !== 'name' && (
+              <select
+                aria-label={labels.sortCurrencyLabel}
+                value={sortCurrency}
+                onChange={(event) => setSortCurrency(event.target.value as GiftCurrency)}
+                className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:border-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              >
+                {GIFT_CURRENCIES.map((currency) => (
+                  <option key={currency} value={currency}>{CURRENCY_SYMBOLS[currency]}</option>
+                ))}
+              </select>
+            )}
+
             <div className="relative ms-auto min-w-[10rem] flex-1 sm:flex-none">
               <Search size={14} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
@@ -673,7 +854,7 @@ export function GiftsSection({ records, labels, isLoading, isExporting, onUpdate
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-slate-700">
             {visibleRecords.map((record) => (
-              <GiftRow key={record.id} record={record} labels={labels} onUpdateGift={onUpdateGift} />
+              <GiftRow key={record.id} record={record} labels={labels} allGuests={allGuests} onUpdateGift={onUpdateGift} onLinkGuest={onLinkGuest} onUnlinkGuest={onUnlinkGuest} />
             ))}
           </div>
         )}

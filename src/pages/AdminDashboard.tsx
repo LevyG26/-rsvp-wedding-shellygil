@@ -42,9 +42,10 @@ import { OldSiteRsvpImportPanel } from '../components/admin/OldSiteRsvpImportPan
 import { DuplicateFinderPanel } from '../components/admin/DuplicateFinderPanel';
 import { loadBaseList, syncBaseListFromSheet, updateBaseListEntry, type BaseListSyncResult } from '../services/baseList';
 import type { NormalizedBaseListEntry } from '../utils/baseList';
-import { EMPTY_GIFT_AMOUNTS, isEmptyGiftAmounts, type GiftAmounts } from '../utils/gifts';
+import { EMPTY_GIFT_AMOUNTS, isEmptyGiftAmounts, mergeCurrencyTotals, sumGiftAmountsByCurrency, type GiftAmounts } from '../utils/gifts';
 import { GiftsSection } from '../components/admin/GiftsSection';
 import { loadGiftEntries, saveGiftEntry, type GiftEntry } from '../services/giftEntries';
+import { deleteGiftHousehold, giftHouseholdId, loadGiftHouseholds, saveGiftHousehold, type GiftHousehold } from '../services/giftHouseholds';
 import { WhatsappReminders } from '../components/admin/WhatsappReminders';
 import { enableAdminPushNotifications } from '../utils/pushNotifications';
 import { firebaseVapidKey } from '../config/firebaseConfig';
@@ -448,6 +449,7 @@ export function AdminDashboard() {
     const [isLoadingBaseList, setIsLoadingBaseList] = useState(false);
     const [giftEntries, setGiftEntries] = useState<GiftEntry[]>([]);
     const [isLoadingGiftEntries, setIsLoadingGiftEntries] = useState(false);
+    const [giftHouseholds, setGiftHouseholds] = useState<GiftHousehold[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -685,6 +687,10 @@ export function AdminDashboard() {
             .then(setGiftEntries)
             .catch((loadError) => console.error('Failed to load gift entries', loadError))
             .finally(() => setIsLoadingGiftEntries(false));
+
+        loadGiftHouseholds()
+            .then(setGiftHouseholds)
+            .catch((loadError) => console.error('Failed to load gift households', loadError));
 
         // Seating chart data loads independently of the RSVP/roster gate
         // above (it doesn't block the rest of the dashboard) - just tracks
@@ -935,26 +941,88 @@ export function AdminDashboard() {
         [giftEntries],
     );
 
+    // Maps every member id in every household to that household - a couple
+    // or family entered as separate roster rows, linked together purely for
+    // gift-tracking (see services/giftHouseholds.ts; this NEVER changes
+    // guestRoster or giftEntries themselves). Built defensively: if the same
+    // roster entry somehow ended up in two households at once (shouldn't
+    // happen via the UI, but this is guest money data so it must not
+    // silently misattribute anything if it ever does), the first one found
+    // wins and the rest are ignored for that id, rather than picking
+    // unpredictably.
+    const giftHouseholdByMemberId = useMemo(() => {
+        const map = new Map<string, GiftHousehold>();
+        giftHouseholds.forEach((household) => {
+            household.memberRosterEntryIds.forEach((memberId) => {
+                if (!map.has(memberId)) map.set(memberId, household);
+            });
+        });
+        return map;
+    }, [giftHouseholds]);
+
     // Includes every roster entry, not just confirmed-attending ones - some
     // guests send a gift/money despite not attending (or before responding
     // at all), and Gil needs to be able to record that. attendanceStatus
     // lets the Gifts tab show who's who instead of implying everyone listed
     // is attending.
+    //
+    // Roster entries linked into a household (see giftHouseholdByMemberId
+    // above) are folded into ONE row here, shown under the household's
+    // primary member (memberRosterEntryIds[0]) - every other member is
+    // skipped entirely so they don't ALSO show up as their own separate
+    // "missing" row. combinedTotals sums every member's actual recorded
+    // amounts for display/sorting/export; giftAmounts stays the primary's
+    // own editable amounts specifically, since edits always write to the
+    // primary's giftEntries doc (see handleUpdateRosterGift) - nothing about
+    // a non-primary member's own giftEntries doc is ever read, written, or
+    // dropped by this grouping, it simply isn't surfaced as its own row
+    // while linked.
+    const giftRosterById = useMemo(() => new Map(guestRoster.map((entry) => [entry.id, entry])), [guestRoster]);
     const giftRecords = useMemo(
         () => guestRoster
+            .filter((entry) => {
+                const household = giftHouseholdByMemberId.get(entry.id);
+                return !household || household.memberRosterEntryIds[0] === entry.id;
+            })
             .map((entry) => {
                 const giftEntry = giftEntriesByRosterId.get(entry.id);
+                const giftAmounts = giftEntry?.amounts ?? EMPTY_GIFT_AMOUNTS;
+                const household = giftHouseholdByMemberId.get(entry.id);
+                const linkedMembers = (household?.memberRosterEntryIds ?? [])
+                    .slice(1)
+                    .map((memberId) => giftRosterById.get(memberId))
+                    .filter((member): member is GuestRosterEntry => Boolean(member));
+                const combinedTotals = mergeCurrencyTotals(
+                    sumGiftAmountsByCurrency(giftAmounts),
+                    ...linkedMembers.map((member) => sumGiftAmountsByCurrency(giftEntriesByRosterId.get(member.id)?.amounts ?? EMPTY_GIFT_AMOUNTS)),
+                );
                 return {
                     id: entry.id,
                     fullName: `${entry.firstName} ${entry.lastName}`.trim(),
                     side: entry.side,
                     category: entry.category,
-                    guestsCount: entry.invitedCount,
-                    giftAmounts: giftEntry?.amounts ?? EMPTY_GIFT_AMOUNTS,
+                    guestsCount: entry.invitedCount + linkedMembers.reduce((sum, member) => sum + member.invitedCount, 0),
+                    giftAmounts,
                     attendanceStatus: entry.knownResponse,
+                    combinedTotals,
+                    linkedMemberNames: linkedMembers.map((member) => `${member.firstName} ${member.lastName}`.trim()),
+                    householdId: household?.id,
                 };
             }),
-        [guestRoster, giftEntriesByRosterId],
+        [guestRoster, giftEntriesByRosterId, giftHouseholdByMemberId, giftRosterById],
+    );
+
+    // Every roster entry, for the gifts tab's "link to another guest" picker
+    // - deliberately the FULL roster, not just giftRecords' primary rows, so
+    // Gil can also pick a member who's currently a non-primary part of some
+    // other household (the picker itself decides what's sensible to offer).
+    const giftRosterOptions = useMemo(
+        () => guestRoster.map((entry) => ({
+            id: entry.id,
+            fullName: `${entry.firstName} ${entry.lastName}`.trim(),
+            side: entry.side,
+        })),
+        [guestRoster],
     );
 
     // baseList phone numbers (digits-only) whose guest has already submitted
@@ -1182,18 +1250,20 @@ export function AdminDashboard() {
         setIsLoading(true);
         setError('');
         try {
-            const [loadedRecords, loadedInviteLinkVisits, loadedGuestRoster, loadedBaseList, loadedGiftEntries] = await Promise.all([
+            const [loadedRecords, loadedInviteLinkVisits, loadedGuestRoster, loadedBaseList, loadedGiftEntries, loadedGiftHouseholds] = await Promise.all([
                 loadRsvpRecords(),
                 loadInviteLinkVisits(),
                 loadGuestRoster(),
                 loadBaseList(),
                 loadGiftEntries(),
+                loadGiftHouseholds(),
             ]);
             setRecords(loadedRecords);
             setInviteLinkVisits(loadedInviteLinkVisits);
             setGuestRoster(loadedGuestRoster);
             setBaseList(loadedBaseList);
             setGiftEntries(loadedGiftEntries);
+            setGiftHouseholds(loadedGiftHouseholds);
             setSelectedIds((prevSelected) => prevSelected.filter((id) => loadedRecords.some((record) => record.id === id)));
         } catch (loadError) {
             console.error('Failed to refresh RSVP data', loadError);
@@ -1962,6 +2032,58 @@ export function AdminDashboard() {
         }
     };
 
+    // Links a roster entry into another entry's gift-tracking household (see
+    // services/giftHouseholds.ts) - e.g. a spouse or family member who's a
+    // separate roster row but shouldn't show up as "missing" once their
+    // partner's gift is recorded. primaryRosterEntryId keeps its own
+    // giftEntries doc as the one place amounts are actually edited; this
+    // NEVER writes to guestRoster or giftEntries, only to the new household
+    // grouping doc, so no existing recorded amount is ever touched.
+    const handleLinkGiftHousehold = async (primaryRosterEntryId: string, otherRosterEntryId: string) => {
+        setError('');
+        try {
+            // If either side is already part of a household, fold everyone
+            // from both groupings together rather than silently dropping the
+            // existing linkage - re-linking should only ever grow a group,
+            // never quietly shrink one that was already there.
+            const existingForPrimary = giftHouseholdByMemberId.get(primaryRosterEntryId)?.memberRosterEntryIds ?? [primaryRosterEntryId];
+            const existingForOther = giftHouseholdByMemberId.get(otherRosterEntryId)?.memberRosterEntryIds ?? [otherRosterEntryId];
+            const combinedMembers = Array.from(new Set([...existingForPrimary, ...existingForOther]));
+            const oldHouseholdIds = new Set([
+                giftHouseholdByMemberId.get(primaryRosterEntryId)?.id,
+                giftHouseholdByMemberId.get(otherRosterEntryId)?.id,
+            ].filter((id): id is string => Boolean(id)));
+
+            await saveGiftHousehold(combinedMembers);
+            // Clean up any old household doc(s) that just got folded into the
+            // new combined one, so the same people aren't tracked under two
+            // overlapping groupings at once.
+            const newId = giftHouseholdId(combinedMembers);
+            await Promise.all(Array.from(oldHouseholdIds).filter((id) => id !== newId).map((id) => deleteGiftHousehold(id)));
+
+            setGiftHouseholds((previous) => [
+                ...previous.filter((household) => !oldHouseholdIds.has(household.id) && household.id !== newId),
+                { id: newId, memberRosterEntryIds: combinedMembers },
+            ]);
+        } catch (linkError) {
+            console.error('Failed to link gift household', linkError);
+            setError(t.adminGiftLinkError);
+            throw linkError;
+        }
+    };
+
+    const handleUnlinkGiftHousehold = async (householdId: string) => {
+        setError('');
+        try {
+            await deleteGiftHousehold(householdId);
+            setGiftHouseholds((previous) => previous.filter((household) => household.id !== householdId));
+        } catch (unlinkError) {
+            console.error('Failed to unlink gift household', unlinkError);
+            setError(t.adminGiftLinkError);
+            throw unlinkError;
+        }
+    };
+
     const handleExportGifts = async () => {
         if (giftRecords.length === 0 || isExportingGifts) {
             return;
@@ -1996,6 +2118,9 @@ export function AdminDashboard() {
                     attendanceAttending: t.adminStatusAttending,
                     attendanceNotAttending: t.adminStatusNotAttending,
                     attendancePending: t.adminRosterPending,
+                    linkedWith: t.adminGiftsExportLinkedWith,
+                    topGiftsSheetPrefix: t.adminGiftsExportTopGiftsSheetPrefix,
+                    rank: t.adminGiftsExportRank,
                 },
             });
         } catch (exportError) {
@@ -3299,9 +3424,12 @@ export function AdminDashboard() {
                 >
                     <GiftsSection
                         records={giftRecords}
+                        allGuests={giftRosterOptions}
                         isLoading={isLoading || isLoadingGiftEntries}
                         isExporting={isExportingGifts}
                         onUpdateGift={handleUpdateRosterGift}
+                        onLinkGuest={handleLinkGiftHousehold}
+                        onUnlinkGuest={handleUnlinkGiftHousehold}
                         onExport={handleExportGifts}
                         labels={{
                             title: t.adminGiftsTitle,
@@ -3340,6 +3468,18 @@ export function AdminDashboard() {
                             attendanceFilterAll: t.adminGiftsAttendanceFilterAll,
                             byAttendanceHeading: t.adminGiftsByAttendanceHeading,
                             notAttendingPaidLabel: t.adminGiftsNotAttendingPaidLabel,
+                            sortLabel: t.adminGiftsSortLabel,
+                            sortByName: t.adminGiftsSortByName,
+                            sortByAmountDesc: t.adminGiftsSortByAmountDesc,
+                            sortByAmountAsc: t.adminGiftsSortByAmountAsc,
+                            sortCurrencyLabel: t.adminGiftsSortCurrencyLabel,
+                            linkedWithLabel: t.adminGiftsLinkedWithLabel,
+                            combinedTotalLabel: t.adminGiftsCombinedTotalLabel,
+                            linkButton: t.adminGiftsLinkButton,
+                            linkPickerPlaceholder: t.adminGiftsLinkPickerPlaceholder,
+                            unlinkButton: t.adminGiftsUnlinkButton,
+                            unlinkConfirm: t.adminGiftsUnlinkConfirm,
+                            linkError: t.adminGiftLinkError,
                         }}
                     />
                 </motion.section>

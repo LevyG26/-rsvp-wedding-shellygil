@@ -2,11 +2,11 @@ import type { Cell, SheetData } from 'write-excel-file/browser';
 import {
   addToTotals,
   formatCurrencyTotals,
+  GIFT_CURRENCIES,
   GIFT_METHODS,
-  isEmptyGiftAmounts,
   mergeCurrencyTotals,
-  sumGiftAmountsByCurrency,
   type GiftAmounts,
+  type GiftCurrency,
   type GiftCurrencyTotals,
   type GiftMethod,
 } from '../utils/gifts';
@@ -19,6 +19,14 @@ export interface GiftExportRecord {
     guestsCount: number;
     giftAmounts: GiftAmounts;
     attendanceStatus: 'yes' | 'no' | null;
+    // Sum of this record's own giftAmounts plus every gift-tracking
+    // household member linked to it (see AdminDashboard.tsx's giftRecords
+    // and services/giftHouseholds.ts) - this is what the summary, details,
+    // and per-side sheets below all actually total/sort/filter by, so a
+    // couple/family linked together reads as one combined figure here too,
+    // matching what the dashboard itself shows.
+    combinedTotals: GiftCurrencyTotals;
+    linkedMemberNames: string[];
 }
 
 export interface GiftExportLabels {
@@ -44,6 +52,12 @@ export interface GiftExportLabels {
     attendanceAttending: string;
     attendanceNotAttending: string;
     attendancePending: string;
+    linkedWith: string;
+    // Sheet name prefix for the per-side "top gifts" sheets - kept short,
+    // since one side's name gets appended and Excel caps sheet names at 31
+    // characters total.
+    topGiftsSheetPrefix: string;
+    rank: string;
 }
 
 interface ExportGiftsWorkbookOptions {
@@ -86,7 +100,10 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
     let missingCount = 0;
 
     records.forEach((record) => {
-        if (isEmptyGiftAmounts(record.giftAmounts)) {
+        // combinedTotals (own amount + any linked household members'), not
+        // just this record's own giftAmounts - see the field's doc comment
+        // on GiftExportRecord above.
+        if (Object.keys(record.combinedTotals).length === 0) {
             // Scoped to attending guests only, same as the dashboard stat -
             // counting every invited guest with no amount (including anyone
             // who hasn't responded yet, or declined) isn't a meaningful
@@ -94,7 +111,7 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
             if (record.attendanceStatus === 'yes') missingCount += 1;
             return;
         }
-        const recordTotals = sumGiftAmountsByCurrency(record.giftAmounts);
+        const recordTotals = record.combinedTotals;
         totalTotals = mergeCurrencyTotals(totalTotals, recordTotals);
         GIFT_METHODS.forEach((method) => {
             const entry = record.giftAmounts[method];
@@ -134,11 +151,15 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
         status === 'yes' ? labels.attendanceAttending : status === 'no' ? labels.attendanceNotAttending : labels.attendancePending;
 
     const detailsData: SheetData = [
-        [labels.name, labels.side, labels.category, labels.guests, labels.attendance, labels.methodCash, labels.methodBitPaybox, labels.methodCheck, labels.total, labels.status]
+        [labels.name, labels.side, labels.category, labels.guests, labels.attendance, labels.methodCash, labels.methodBitPaybox, labels.methodCheck, labels.total, labels.linkedWith, labels.status]
             .map((value) => ({ value, type: String, ...headerStyle })),
         ...sortedRecords.map((record) => {
-            const recordTotals = sumGiftAmountsByCurrency(record.giftAmounts);
-            const recorded = !isEmptyGiftAmounts(record.giftAmounts);
+            // combinedTotals/recorded reflect this record PLUS any linked
+            // gift household members (see GiftExportRecord doc comment) - a
+            // couple linked together shows as one "recorded" row with the
+            // combined figure, matching the dashboard.
+            const recordTotals = record.combinedTotals;
+            const recorded = Object.keys(recordTotals).length > 0;
             const cashEntry = record.giftAmounts.cash;
             const bitPayboxEntry = record.giftAmounts.bit_paybox;
             const checkEntry = record.giftAmounts.check;
@@ -152,6 +173,7 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
                 bitPayboxEntry.amount !== null ? amountTextCell(methodTotals(record.giftAmounts, 'bit_paybox')) : null,
                 checkEntry.amount !== null ? amountTextCell(methodTotals(record.giftAmounts, 'check')) : null,
                 amountTextCell(recordTotals),
+                textCell(record.linkedMemberNames.length > 0 ? record.linkedMemberNames.join(', ') : '-'),
                 {
                     value: recorded ? labels.statusRecorded : labels.statusMissing,
                     type: String,
@@ -162,6 +184,74 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
             ];
         }),
     ];
+
+    // Per-side "top gifts" sheets: within each side, one sorted-descending
+    // block per currency (never combined - see GiftCurrencyTotals doc
+    // comment), so Gil can see at a glance who gave the most on each side,
+    // in each currency, with the top few highlighted. Records with no
+    // combinedTotals amount in a given currency simply don't appear in that
+    // currency's block. Purely a read/reformat of combinedTotals - no writes
+    // anywhere, so this can never affect the underlying recorded amounts.
+    const sides = Array.from(new Set(records.map((record) => record.side || '-'))).sort((first, second) =>
+        first.localeCompare(second, 'he'),
+    );
+
+    const rankHighlight = (rank: number) => {
+        if (rank === 1) return { backgroundColor: '#FEF3C7', textColor: '#92400E' };
+        if (rank === 2) return { backgroundColor: '#F3F4F6', textColor: '#374151' };
+        if (rank === 3) return { backgroundColor: '#FFEDD5', textColor: '#9A3412' };
+        return {};
+    };
+
+    const topGiftsSheets = sides.map((side) => {
+        const sideRecords = records.filter((record) => (record.side || '-') === side);
+        const rows: SheetData = [
+            [{ value: `${labels.topGiftsSheetPrefix} - ${side}`, type: String, fontWeight: 'bold', fontSize: 16, textColor: '#1F2937' }],
+        ];
+
+        GIFT_CURRENCIES.forEach((currency: GiftCurrency) => {
+            const withAmount = sideRecords
+                .map((record) => ({ record, amount: record.combinedTotals[currency] }))
+                .filter((entry): entry is { record: GiftExportRecord; amount: number } => !!entry.amount)
+                .sort((first, second) => second.amount - first.amount);
+
+            if (withAmount.length === 0) return;
+
+            rows.push([]);
+            rows.push([{ value: currency, type: String, fontWeight: 'bold', fontSize: 13, textColor: '#1F2937' }]);
+            rows.push(
+                [labels.rank, labels.name, labels.total, labels.linkedWith].map((value) => ({
+                    value,
+                    type: String,
+                    ...headerStyle,
+                })),
+            );
+            withAmount.forEach(({ record, amount }, index) => {
+                const rank = index + 1;
+                const highlight = rankHighlight(rank);
+                rows.push([
+                    { value: rank, type: Number, align: 'center' as const, ...highlight },
+                    { ...textCell(record.fullName), ...highlight },
+                    {
+                        value: `${formatCurrencyTotals({ [currency]: amount })}`,
+                        type: String,
+                        align: 'center' as const,
+                        ...highlight,
+                    },
+                    { ...textCell(record.linkedMemberNames.length > 0 ? record.linkedMemberNames.join(', ') : '-'), ...highlight },
+                ]);
+            });
+        });
+
+        return {
+            data: rows,
+            // Excel sheet names are capped at 31 characters.
+            sheet: `${labels.topGiftsSheetPrefix} - ${side}`.slice(0, 31),
+            columns: [{ width: 8 }, { width: 26 }, { width: 16 }, { width: 26 }],
+            rightToLeft: isRtl,
+            showGridLines: false,
+        };
+    });
 
     const { default: writeXlsxFile } = await import('write-excel-file/browser');
     const date = new Date().toISOString().slice(0, 10);
@@ -187,11 +277,13 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
                 { width: 16 },
                 { width: 12 },
                 { width: 16 },
+                { width: 26 },
                 { width: 14 },
             ],
             stickyRowsCount: 1,
             rightToLeft: isRtl,
             orientation: 'landscape',
         },
+        ...topGiftsSheets,
     ]).toFile(`gifts-${date}.xlsx`);
 }

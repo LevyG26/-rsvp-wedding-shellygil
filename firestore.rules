@@ -365,6 +365,28 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Purely additive "these guestRoster entries are one gift-giving unit"
+    // grouping - e.g. a couple/family entered as two separate roster rows,
+    // where only one of them has a giftEntries doc, so the other looks like
+    // they never gave anything. NEVER touches guestRoster or giftEntries
+    // themselves (see GiftsSection.tsx/AdminDashboard.tsx's household
+    // grouping) - this collection only tells the dashboard which rows to
+    // display/sum together. Deterministic id (sorted member ids joined with
+    // "__") so linking the same people twice is idempotent instead of
+    // creating a duplicate grouping.
+    function isValidGiftHousehold(data) {
+      return data.keys().hasAll(['memberRosterEntryIds', 'updatedAt']) &&
+             data.keys().hasOnly(['memberRosterEntryIds', 'updatedAt']) &&
+             data.memberRosterEntryIds is list &&
+             data.memberRosterEntryIds.size() >= 2 && data.memberRosterEntryIds.size() <= 6 &&
+             data.updatedAt == request.time;
+    }
+    match /giftHouseholds/{householdId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isValidId(householdId) && isValidGiftHousehold(incoming());
+      allow delete: if isAdmin();
+    }
+
     // Seating chart: tables Gil defines himself (name + seat count), admin-only
     // like everything else guest-related.
     function isValidSeatingTable(data) {
