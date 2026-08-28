@@ -72,45 +72,69 @@ export async function exportGiftsMobilePdf({ records, labels, isRtl }: ExportGif
 
   let hasAnySection = false;
 
-  GIFT_CURRENCIES.forEach((currency) => {
-    const withAmount = records
-      .map((record) => ({ record, amount: record.combinedTotals[currency] }))
-      .filter((entry): entry is { record: GiftMobilePdfRecord; amount: number } => !!entry.amount)
-      .sort((first, second) => second.amount - first.amount);
+  // Mirrors exportGiftsWorkbook.ts's per-side "top gifts" sheets exactly:
+  // grouped by side first, then by currency within each side (currencies
+  // never combine into one number), sorted highest-first, top 3 per
+  // side+currency group highlighted. Same grouping Gil already has in the
+  // Excel export, just laid out as a single scrollable phone-friendly list
+  // instead of separate spreadsheet tabs.
+  const sides = Array.from(new Set(records.map((record) => record.side || '-'))).sort((first, second) =>
+    first.localeCompare(second, 'he'),
+  );
 
-    if (withAmount.length === 0) return;
-    hasAnySection = true;
+  sides.forEach((side) => {
+    const sideRecords = records.filter((record) => (record.side || '-') === side);
+    let sideHtml = '';
+    let sideHasContent = false;
 
-    const rowsHtml = withAmount
-      .map(({ record, amount }, index) => {
-        const rank = index + 1;
-        const background = rank === 1 ? '#fef3c7' : rank === 2 ? '#f3f4f6' : rank === 3 ? '#ffedd5' : index % 2 === 0 ? '#ffffff' : '#f9fafb';
-        const sideAndLinked = [
-          record.side || '',
-          record.linkedMemberNames.length > 0 ? `${labels.linkedWith}: ${record.linkedMemberNames.join(', ')}` : '',
-        ]
-          .filter(Boolean)
-          .map(escapeHtml)
-          .join(' · ');
+    GIFT_CURRENCIES.forEach((currency) => {
+      const withAmount = sideRecords
+        .map((record) => ({ record, amount: record.combinedTotals[currency] }))
+        .filter((entry): entry is { record: GiftMobilePdfRecord; amount: number } => !!entry.amount)
+        .sort((first, second) => second.amount - first.amount);
 
-        return `
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:${background}; margin-bottom:6px;">
-            <div style="min-width:0;">
-              <div style="font-size:16px; font-weight:600; color:#111827;">${escapeHtml(record.fullName)}</div>
-              ${sideAndLinked ? `<div style="font-size:12px; color:#6b7280; margin-top:2px;">${sideAndLinked}</div>` : ''}
+      if (withAmount.length === 0) return;
+      sideHasContent = true;
+      hasAnySection = true;
+
+      const rowsHtml = withAmount
+        .map(({ record, amount }, index) => {
+          const rank = index + 1;
+          const background = rank === 1 ? '#fef3c7' : rank === 2 ? '#f3f4f6' : rank === 3 ? '#ffedd5' : index % 2 === 0 ? '#ffffff' : '#f9fafb';
+          const linkedText = record.linkedMemberNames.length > 0
+            ? `${labels.linkedWith}: ${record.linkedMemberNames.join(', ')}`
+            : '';
+
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:${background}; margin-bottom:6px;">
+              <div style="min-width:0;">
+                <div style="font-size:16px; font-weight:600; color:#111827;">${escapeHtml(record.fullName)}</div>
+                ${linkedText ? `<div style="font-size:12px; color:#6b7280; margin-top:2px;">${escapeHtml(linkedText)}</div>` : ''}
+              </div>
+              <div dir="ltr" style="font-size:17px; font-weight:700; color:#111827; white-space:nowrap; flex-shrink:0;">${CURRENCY_SYMBOLS[currency]}${formatCurrencyAmount(amount)}</div>
             </div>
-            <div dir="ltr" style="font-size:17px; font-weight:700; color:#111827; white-space:nowrap; flex-shrink:0;">${CURRENCY_SYMBOLS[currency]}${formatCurrencyAmount(amount)}</div>
+          `;
+        })
+        .join('');
+
+      sideHtml += `
+        <div style="margin-bottom:18px;">
+          <div style="font-size:15px; font-weight:700; color:#6b7280; margin-bottom:8px;" dir="ltr">
+            ${CURRENCY_SYMBOLS[currency]} ${currency}
           </div>
-        `;
-      })
-      .join('');
+          ${rowsHtml}
+        </div>
+      `;
+    });
+
+    if (!sideHasContent) return;
 
     bodyHtml += `
-      <div style="margin-bottom:30px;">
-        <div style="font-size:19px; font-weight:700; color:#1f2937; border-bottom:2px solid #e5e7eb; padding-bottom:8px; margin-bottom:12px;" dir="ltr">
-          ${CURRENCY_SYMBOLS[currency]} ${currency}
+      <div style="margin-bottom:32px;">
+        <div style="font-size:20px; font-weight:700; color:#ffffff; background:#7c2d42; border-radius:10px; padding:10px 16px; margin-bottom:14px;">
+          ${escapeHtml(side)}
         </div>
-        ${rowsHtml}
+        ${sideHtml}
       </div>
     `;
   });
