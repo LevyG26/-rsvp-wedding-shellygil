@@ -33,6 +33,7 @@ import { logoutAdmin, onAdminAuthStateChanged } from '../admin/auth';
 import { isEventStaffUid } from '../admin/roles';
 import { exportRsvpWorkbook } from '../admin/exportRsvpWorkbook';
 import { exportGiftsWorkbook } from '../admin/exportGiftsWorkbook';
+import { exportGiftsMobilePdf } from '../admin/exportGiftsMobilePdf';
 import { GuestCountInput } from '../components/admin/GuestCountInput';
 import { EditableTextField } from '../components/admin/EditableTextField';
 import { GuestGroupSelect } from '../components/admin/GuestGroupSelect';
@@ -479,6 +480,7 @@ export function AdminDashboard() {
     };
     const [isExporting, setIsExporting] = useState(false);
     const [isExportingGifts, setIsExportingGifts] = useState(false);
+    const [isExportingGiftsMobilePdf, setIsExportingGiftsMobilePdf] = useState(false);
     // The four header actions (theme/refresh/export/logout) used to be four
     // bare icon buttons crammed into a corner - clear enough with a mouse
     // hovering for the title tooltip, but meaningless at a glance and
@@ -2131,6 +2133,38 @@ export function AdminDashboard() {
         }
     };
 
+    // Same records as the Excel export above, laid out instead as a simple
+    // name/side/amount list for glancing at on a phone - see
+    // admin/exportGiftsMobilePdf.ts for why this renders real HTML/CSS to an
+    // image rather than drawing PDF text directly (Hebrew + jsPDF's built-in
+    // fonts don't mix). Purely a different READ-ONLY view of the exact same
+    // giftRecords used everywhere else in this tab - never writes anything.
+    const handleExportGiftsMobilePdf = async () => {
+        if (giftRecords.length === 0 || isExportingGiftsMobilePdf) {
+            return;
+        }
+
+        setIsExportingGiftsMobilePdf(true);
+        setError('');
+        try {
+            await exportGiftsMobilePdf({
+                records: giftRecords,
+                isRtl,
+                labels: {
+                    title: t.adminGiftsMobilePdfTitle,
+                    generatedOn: `${t.adminGiftsMobilePdfGeneratedOn} ${new Date().toLocaleDateString(currentLang === 'he' ? 'he-IL' : currentLang === 'fr' ? 'fr-FR' : 'en-US')}`,
+                    linkedWith: t.adminGiftsExportLinkedWith,
+                    emptyState: t.adminGiftsMobilePdfEmptyState,
+                },
+            });
+        } catch (exportError) {
+            console.error('Failed to export gifts mobile PDF', exportError);
+            setError(t.adminGiftsExportError);
+        } finally {
+            setIsExportingGiftsMobilePdf(false);
+        }
+    };
+
     // All hooks above must run on every render (Rules of Hooks). Only the
     // JSX we return depends on language/auth state, decided here at the end.
     if (!isValidLang) {
@@ -3427,10 +3461,12 @@ export function AdminDashboard() {
                         allGuests={giftRosterOptions}
                         isLoading={isLoading || isLoadingGiftEntries}
                         isExporting={isExportingGifts}
+                        isExportingMobilePdf={isExportingGiftsMobilePdf}
                         onUpdateGift={handleUpdateRosterGift}
                         onLinkGuest={handleLinkGiftHousehold}
                         onUnlinkGuest={handleUnlinkGiftHousehold}
                         onExport={handleExportGifts}
+                        onExportMobilePdf={handleExportGiftsMobilePdf}
                         labels={{
                             title: t.adminGiftsTitle,
                             subtitle: t.adminGiftsSubtitle,
@@ -3462,6 +3498,8 @@ export function AdminDashboard() {
                             loading: t.adminLoading,
                             exportButton: t.adminGiftsExportButton,
                             exportingButton: t.adminGiftsExportingButton,
+                            exportMobileButton: t.adminGiftsExportMobileButton,
+                            exportingMobileButton: t.adminGiftsExportingMobileButton,
                             attendanceAttending: t.adminStatusAttending,
                             attendanceNotAttending: t.adminStatusNotAttending,
                             attendancePending: t.adminRosterPending,

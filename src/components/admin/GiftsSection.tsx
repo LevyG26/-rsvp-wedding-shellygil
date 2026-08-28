@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Banknote, Check, Download, Link2, Loader2, Search, Trash2, Unlink, Wallet } from 'lucide-react';
+import { Banknote, Check, Download, Link2, Loader2, Search, Smartphone, Trash2, Unlink, Wallet } from 'lucide-react';
 import {
   addToTotals,
   CURRENCY_SYMBOLS,
@@ -83,6 +83,8 @@ interface GiftsSectionLabels {
   loading: string;
   exportButton: string;
   exportingButton: string;
+  exportMobileButton: string;
+  exportingMobileButton: string;
   attendanceAttending: string;
   attendanceNotAttending: string;
   attendancePending: string;
@@ -115,10 +117,12 @@ interface GiftsSectionProps {
   labels: GiftsSectionLabels;
   isLoading: boolean;
   isExporting: boolean;
+  isExportingMobilePdf: boolean;
   onUpdateGift: (recordId: string, giftAmounts: GiftAmounts) => Promise<void>;
   onLinkGuest: (primaryRosterEntryId: string, otherRosterEntryId: string) => Promise<void>;
   onUnlinkGuest: (householdId: string) => Promise<void>;
   onExport: () => void;
+  onExportMobilePdf: () => void;
 }
 
 const METHOD_ICONS: Record<GiftMethod, typeof Banknote> = {
@@ -481,7 +485,7 @@ function GiftRow({
   );
 }
 
-export function GiftsSection({ records, allGuests, labels, isLoading, isExporting, onUpdateGift, onLinkGuest, onUnlinkGuest, onExport }: GiftsSectionProps) {
+export function GiftsSection({ records, allGuests, labels, isLoading, isExporting, isExportingMobilePdf, onUpdateGift, onLinkGuest, onUnlinkGuest, onExport, onExportMobilePdf }: GiftsSectionProps) {
   const [sideFilter, setSideFilter] = useState<'all' | string>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
   const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'yes' | 'no' | 'pending'>('all');
@@ -750,19 +754,39 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
               <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{labels.title}</h2>
               <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
             </div>
-            <button
-              type="button"
-              onClick={onExport}
-              disabled={isExporting || records.length === 0}
-              className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
-                isExporting || records.length === 0
-                  ? 'cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-slate-800 dark:text-slate-600'
-                  : 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
-              }`}
-            >
-              {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-              {isExporting ? labels.exportingButton : labels.exportButton}
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={onExport}
+                disabled={isExporting || records.length === 0}
+                className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+                  isExporting || records.length === 0
+                    ? 'cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-slate-800 dark:text-slate-600'
+                    : 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
+                }`}
+              >
+                {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {isExporting ? labels.exportingButton : labels.exportButton}
+              </button>
+              {/* Same data as the Excel export above, laid out instead as a
+                  simple name/side/amount list grouped by currency and
+                  sorted highest-first, rendered to a portrait PDF - meant
+                  for glancing at on a phone (Files/Preview) rather than
+                  editing in a spreadsheet app. */}
+              <button
+                type="button"
+                onClick={onExportMobilePdf}
+                disabled={isExportingMobilePdf || records.length === 0}
+                className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+                  isExportingMobilePdf || records.length === 0
+                    ? 'cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-slate-800 dark:text-slate-600'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {isExportingMobilePdf ? <Loader2 size={14} className="animate-spin" /> : <Smartphone size={14} />}
+                {isExportingMobilePdf ? labels.exportingMobileButton : labels.exportMobileButton}
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
