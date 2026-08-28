@@ -250,12 +250,19 @@ function GiftRow({
   const [isLinking, setIsLinking] = useState(false);
   const [isUnlinking, setIsUnlinking] = useState(false);
   const [linkErrorShown, setLinkErrorShown] = useState(false);
+  // With a few hundred guests, rendering every row's full <option> list
+  // up front (N rows x N options) creates tens of thousands of DOM nodes
+  // just for pickers nobody has opened yet, which is what made the whole
+  // gifts tab sluggish. The list is only actually built once this row's
+  // picker has been focused at least once (and stays built after that, so
+  // an in-progress selection never disappears from under the user).
+  const [hasFocusedPicker, setHasFocusedPicker] = useState(false);
 
   // Excludes this row's own primary id - everyone else (including people
   // already in some OTHER household) stays selectable, since picking one
   // folds the two households together (see handleLinkGiftHousehold in
   // AdminDashboard.tsx) rather than requiring them to be unlinked first.
-  const linkableGuests = allGuests.filter((guest) => guest.id !== record.id);
+  const linkableGuests = hasFocusedPicker ? allGuests.filter((guest) => guest.id !== record.id) : [];
 
   const handleLink = async () => {
     if (!linkPickerValue || isLinking) return;
@@ -359,6 +366,7 @@ function GiftRow({
             <select
               value={linkPickerValue}
               onChange={(event) => setLinkPickerValue(event.target.value)}
+              onFocus={() => setHasFocusedPicker(true)}
               disabled={isLinking}
               className="rounded-full border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-600 outline-none focus:border-gray-400 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
             >
