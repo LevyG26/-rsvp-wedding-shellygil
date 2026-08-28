@@ -106,7 +106,7 @@ export async function exportGiftsMobilePdf({ records, labels, isRtl }: ExportGif
             : '';
 
           return `
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:${background}; margin-bottom:6px;">
+            <div data-page-block="1" style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:${background}; margin-bottom:6px;">
               <div style="min-width:0;">
                 <div style="font-size:16px; font-weight:600; color:#111827;">${escapeHtml(record.fullName)}</div>
                 ${linkedText ? `<div style="font-size:12px; color:#6b7280; margin-top:2px;">${escapeHtml(linkedText)}</div>` : ''}
@@ -119,7 +119,7 @@ export async function exportGiftsMobilePdf({ records, labels, isRtl }: ExportGif
 
       sideHtml += `
         <div style="margin-bottom:18px;">
-          <div style="font-size:15px; font-weight:700; color:#6b7280; margin-bottom:8px;" dir="ltr">
+          <div data-page-block="1" style="font-size:15px; font-weight:700; color:#6b7280; margin-bottom:8px;" dir="ltr">
             ${CURRENCY_SYMBOLS[currency]} ${currency}
           </div>
           ${rowsHtml}
@@ -131,7 +131,7 @@ export async function exportGiftsMobilePdf({ records, labels, isRtl }: ExportGif
 
     bodyHtml += `
       <div style="margin-bottom:32px;">
-        <div style="font-size:20px; font-weight:700; color:#ffffff; background:#7c2d42; border-radius:10px; padding:10px 16px; margin-bottom:14px;">
+        <div data-page-block="1" style="font-size:20px; font-weight:700; color:#ffffff; background:#7c2d42; border-radius:10px; padding:10px 16px; margin-bottom:14px;">
           ${escapeHtml(side)}
         </div>
         ${sideHtml}
@@ -152,12 +152,54 @@ export async function exportGiftsMobilePdf({ records, labels, isRtl }: ExportGif
       import('jspdf'),
     ]);
 
-    const canvas = await html2canvas(container, { backgroundColor: '#ffffff', scale: 2 });
-    const imgData = canvas.toDataURL('image/png');
-
+    // Page geometry, needed BEFORE capturing so we can push any row/header
+    // that would straddle a page boundary down to start on the next page
+    // instead - without this, a naive pixel-height slice of one tall image
+    // (see the pagination loop below) cuts straight through whatever
+    // happens to sit at that height, literally slicing a guest's row (and
+    // its amount) in half between two pages.
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
+    // CONTENT_WIDTH CSS px maps to imgWidth (= pageWidth) pt once captured
+    // and placed on the page, so this converts one page's height from pt
+    // back into the same CSS px units the DOM is laid out in.
+    const pageHeightPx = (pageHeight * CONTENT_WIDTH) / pageWidth;
+
+    const containerTop = container.getBoundingClientRect().top;
+    let nextPageBoundary = pageHeightPx;
+    container.querySelectorAll<HTMLElement>('[data-page-block]').forEach((block) => {
+      const rect = block.getBoundingClientRect();
+      const top = rect.top - containerTop;
+      const bottom = top + rect.height;
+      if (top < nextPageBoundary && bottom > nextPageBoundary) {
+        // Straddles the boundary - push it down to start exactly at the
+        // next page instead of being cut mid-way through.
+        const currentMarginTop = parseFloat(block.style.marginTop || '0') || 0;
+        block.style.marginTop = `${currentMarginTop + (nextPageBoundary - top)}px`;
+      }
+      const updatedRect = block.getBoundingClientRect();
+      const updatedBottom = updatedRect.top - containerTop + updatedRect.height;
+      while (updatedBottom > nextPageBoundary) {
+        nextPageBoundary += pageHeightPx;
+      }
+    });
+
+    // The page-break math above assumes the captured canvas is exactly
+    // CONTENT_WIDTH * scale px wide - without pinning `width`/`windowWidth`
+    // explicitly, html2canvas can size its internal clone from the real
+    // browser window instead of this off-screen container's own width,
+    // silently invalidating every offset computed above (the earlier
+    // version of this fix had exactly that bug: the spacer math ran, but
+    // against a canvas whose actual pixel width didn't match what the math
+    // assumed, so the page break landed in the same spot as before).
+    const canvas = await html2canvas(container, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      width: CONTENT_WIDTH,
+      windowWidth: CONTENT_WIDTH,
+    });
+    const imgData = canvas.toDataURL('image/png');
     const imgWidth = pageWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
