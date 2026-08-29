@@ -1068,6 +1068,43 @@ export function AdminDashboard() {
         [guestRoster, giftEntriesByRosterId, giftHouseholdByMemberId, giftRosterById],
     );
 
+    // A diagnostic export, completely independent of the household-linking
+    // logic above: every roster entry that has its OWN recorded giftEntries
+    // doc, listed exactly as stored, with no folding/combining of any kind.
+    // giftRecords above trusts giftHouseholds documents to decide who's a
+    // "primary" vs a hidden linked member - if that trust is ever misplaced
+    // (a bad household doc, a bug in the folding logic itself), giftRecords
+    // could show a wrong total without anything here looking wrong. This
+    // list can't have that problem, since it never reads giftHouseholds for
+    // its numbers at all - only for the household member names shown
+    // alongside, purely for cross-reference while reading the export by eye.
+    // Exists so Gil can total the raw numbers by hand (or so this total can
+    // be compared against giftRecords' combined total) whenever the two
+    // need to be checked against each other, e.g. against a physical cash
+    // count.
+    const rawGiftEntryRecords = useMemo(
+        () => guestRoster
+            .map((entry) => {
+                const giftEntry = giftEntriesByRosterId.get(entry.id);
+                if (!giftEntry) return null;
+                const household = giftHouseholdByMemberId.get(entry.id);
+                const householdMemberNames = (household?.memberRosterEntryIds ?? [])
+                    .filter((memberId) => memberId !== entry.id)
+                    .map((memberId) => giftRosterById.get(memberId))
+                    .filter((member): member is GuestRosterEntry => Boolean(member))
+                    .map((member) => `${member.firstName} ${member.lastName}`.trim());
+                return {
+                    id: entry.id,
+                    fullName: `${entry.firstName} ${entry.lastName}`.trim(),
+                    side: entry.side,
+                    amounts: giftEntry.amounts,
+                    householdMemberNames,
+                };
+            })
+            .filter((record): record is NonNullable<typeof record> => Boolean(record)),
+        [guestRoster, giftEntriesByRosterId, giftHouseholdByMemberId, giftRosterById],
+    );
+
     // Every roster entry, for the gifts tab's "link to another guest" picker
     // - deliberately the FULL roster, not just giftRecords' primary rows, so
     // Gil can also pick a member who's currently a non-primary part of some
@@ -2298,6 +2335,7 @@ export function AdminDashboard() {
         try {
             await exportGiftsWorkbook({
                 records: giftRecords,
+                rawEntries: rawGiftEntryRecords,
                 isRtl,
                 labels: {
                     summarySheet: t.adminGiftsExportSummarySheet,
@@ -2325,6 +2363,9 @@ export function AdminDashboard() {
                     linkedWith: t.adminGiftsExportLinkedWith,
                     topGiftsSheetPrefix: t.adminGiftsExportTopGiftsSheetPrefix,
                     rank: t.adminGiftsExportRank,
+                    rawSheet: t.adminGiftsExportRawSheet,
+                    rawTotalLabel: t.adminGiftsExportRawTotalLabel,
+                    householdWith: t.adminGiftsExportLinkedWith,
                 },
             });
         } catch (exportError) {

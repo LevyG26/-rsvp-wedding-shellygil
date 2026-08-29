@@ -36,6 +36,19 @@ export interface GiftExportRecord {
     linkedMemberNames: string[];
 }
 
+// Every roster entry with its OWN recorded giftEntries doc, exactly as
+// stored, with no household folding/combining at all - see AdminDashboard's
+// rawGiftEntryRecords doc comment for why this needs to exist as its own,
+// independently-computed sheet rather than trusting the (already
+// household-aware) records above.
+export interface GiftRawEntryExport {
+    id: string;
+    fullName: string;
+    side: string;
+    amounts: GiftAmounts;
+    householdMemberNames: string[];
+}
+
 export interface GiftExportLabels {
     summarySheet: string;
     detailsSheet: string;
@@ -65,10 +78,15 @@ export interface GiftExportLabels {
     // characters total.
     topGiftsSheetPrefix: string;
     rank: string;
+    // Labels for the raw/unfolded diagnostic sheet.
+    rawSheet: string;
+    rawTotalLabel: string;
+    householdWith: string;
 }
 
 interface ExportGiftsWorkbookOptions {
     records: GiftExportRecord[];
+    rawEntries: GiftRawEntryExport[];
     labels: GiftExportLabels;
     isRtl: boolean;
 }
@@ -99,7 +117,7 @@ function methodTotals(amounts: GiftAmounts, method: GiftMethod): GiftCurrencyTot
     return entry.amount !== null ? { [entry.currency]: entry.amount } : {};
 }
 
-export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGiftsWorkbookOptions) {
+export async function exportGiftsWorkbook({ records, rawEntries, labels, isRtl }: ExportGiftsWorkbookOptions) {
     let byMethod: Record<GiftMethod, GiftCurrencyTotals> = { cash: {}, bit_paybox: {}, check: {} };
     const bySide = new Map<string, GiftCurrencyTotals>();
     const byCategory = new Map<string, GiftCurrencyTotals>();
@@ -262,6 +280,44 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
         };
     });
 
+    // Raw/unfolded diagnostic sheet - totals computed directly from
+    // rawEntries, completely bypassing combinedTotals/combinedGiftAmounts
+    // above, so this can be compared against the summary sheet's by-method
+    // figures as an independent check.
+    let rawByMethod: Record<GiftMethod, GiftCurrencyTotals> = { cash: {}, bit_paybox: {}, check: {} };
+    rawEntries.forEach((entry) => {
+        GIFT_METHODS.forEach((method) => {
+            const methodEntry = entry.amounts[method];
+            if (methodEntry.amount !== null) {
+                rawByMethod[method] = addToTotals(rawByMethod[method], methodEntry.currency, methodEntry.amount);
+            }
+        });
+    });
+    const sortedRawEntries = [...rawEntries].sort((first, second) => first.fullName.localeCompare(second.fullName, 'he'));
+    const rawData: SheetData = [
+        [{ value: labels.rawSheet, type: String, fontWeight: 'bold', fontSize: 16, textColor: '#1F2937' }],
+        [textCell(`${labels.rawTotalLabel} - ${labels.methodCash}`), amountTextCell(rawByMethod.cash)],
+        [textCell(`${labels.rawTotalLabel} - ${labels.methodBitPaybox}`), amountTextCell(rawByMethod.bit_paybox)],
+        [textCell(`${labels.rawTotalLabel} - ${labels.methodCheck}`), amountTextCell(rawByMethod.check)],
+        [],
+        [labels.name, labels.side, labels.methodCash, labels.methodBitPaybox, labels.methodCheck, labels.householdWith].map(
+            (value) => ({ value, type: String, ...headerStyle }),
+        ),
+        ...sortedRawEntries.map((entry) => {
+            const cashEntry = entry.amounts.cash;
+            const bitPayboxEntry = entry.amounts.bit_paybox;
+            const checkEntry = entry.amounts.check;
+            return [
+                textCell(entry.fullName),
+                textCell(entry.side),
+                cashEntry.amount !== null ? amountTextCell(methodTotals(entry.amounts, 'cash')) : null,
+                bitPayboxEntry.amount !== null ? amountTextCell(methodTotals(entry.amounts, 'bit_paybox')) : null,
+                checkEntry.amount !== null ? amountTextCell(methodTotals(entry.amounts, 'check')) : null,
+                textCell(entry.householdMemberNames.length > 0 ? entry.householdMemberNames.join(', ') : '-'),
+            ];
+        }),
+    ];
+
     const { default: writeXlsxFile } = await import('write-excel-file/browser');
     const date = new Date().toISOString().slice(0, 10);
 
@@ -294,5 +350,12 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
             orientation: 'landscape',
         },
         ...topGiftsSheets,
+        {
+            data: rawData,
+            sheet: labels.rawSheet.slice(0, 31),
+            columns: [{ width: 26 }, { width: 16 }, { width: 14 }, { width: 16 }, { width: 12 }, { width: 26 }],
+            rightToLeft: isRtl,
+            showGridLines: false,
+        },
     ]).toFile(`gifts-${date}.xlsx`);
 }
