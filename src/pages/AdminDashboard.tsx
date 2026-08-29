@@ -1137,6 +1137,21 @@ export function AdminDashboard() {
     // וזיוה חודרה" who needed a manual match. All three signals only ever
     // ADD matches, never remove one, so this can only reduce false "pending"
     // guests - it can never wrongly mark someone as responded who isn't.
+    // guestRoster has no phone field of its own (see GuestRosterEntry) - the
+    // only place a phone number lives is baseList, matched here by name
+    // using the same "exactly one unambiguous match, otherwise leave it
+    // blank" rule already used above (respondedPhones) and in the roster
+    // rename cascade, so the Excel export below never shows a guest with
+    // someone else's phone number just because two names look similar.
+    const guestRosterForExport = useMemo(
+        () => guestRoster.map((entry) => {
+            const fullName = `${entry.firstName} ${entry.lastName}`.trim();
+            const matches = baseList.filter((baseEntry) => fullNamesMatch(fullName, baseEntry.name));
+            return { ...entry, phone: matches.length === 1 ? matches[0].phone : '' };
+        }),
+        [guestRoster, baseList],
+    );
+
     const respondedPhones = useMemo(() => {
         const respondedPhoneDigits = new Set(records.map((record) => record.phone.replace(/\D/g, '')).filter(Boolean));
         const respondedFullNames = records.map((record) => record.fullName.trim()).filter(Boolean);
@@ -1819,7 +1834,7 @@ export function AdminDashboard() {
         try {
             await exportRsvpWorkbook({
                 records: sortedRecords,
-                guestRoster,
+                guestRoster: guestRosterForExport,
                 plannedGuests,
                 isRtl,
                 labels: {
@@ -1854,6 +1869,8 @@ export function AdminDashboard() {
                     rosterCategory: t.adminRosterCategory,
                     rosterInvitedCount: t.adminRosterInvitedCount,
                     rosterStatus: t.adminTableStatus,
+                    rosterPhone: t.adminTablePhone,
+                    rosterName: t.adminTableName,
                 },
             });
         } catch (exportError) {

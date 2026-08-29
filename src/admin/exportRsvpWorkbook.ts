@@ -22,6 +22,13 @@ export interface RosterExportEntry {
     lastName: string;
     invitedCount: number;
     knownResponse: 'yes' | 'no' | null;
+    // Best-effort match against the baseList phone sheet by name (see
+    // AdminDashboard.tsx's guestRosterForExport) - empty string when no
+    // single unambiguous baseList entry matches this guest's name, same
+    // "exactly one match or leave it blank" rule already used elsewhere in
+    // the dashboard for cascading a roster name edit to baseList, so a
+    // guest never gets shown with someone else's phone number.
+    phone: string;
 }
 
 export interface RSVPExportLabels {
@@ -56,6 +63,8 @@ export interface RSVPExportLabels {
     rosterCategory: string;
     rosterInvitedCount: string;
     rosterStatus: string;
+    rosterPhone: string;
+    rosterName: string;
 }
 
 interface ExportRsvpWorkbookOptions {
@@ -174,17 +183,65 @@ export async function exportRsvpWorkbook({ records, guestRoster, plannedGuests, 
         }),
     ];
 
-    const rosterData: SheetData = [
-        [labels.rosterSide, labels.rosterCategory, labels.name, labels.rosterInvitedCount, labels.rosterStatus]
-            .map((value) => ({ value, type: String, ...headerStyle })),
-        ...guestRoster.map((entry) => [
-            textCell(entry.side),
-            textCell(entry.category),
-            textCell(`${entry.firstName} ${entry.lastName}`.trim()),
-            entry.invitedCount,
-            textCell(rosterStatusLabel(entry, labels)),
-        ]),
-    ];
+    // One sheet per side (e.g. "רשימת מוזמנים - גיל" / "רשימת מוזמנים -
+    // שלי") rather than one combined sheet - within each, grouped by
+    // category/group with a small heading + subtotal row per group, then
+    // guests sorted by name, so the sheet reads like an actual organized
+    // guest list rather than a flat table Gil has to filter himself.
+    const rosterSheets = sortedSides.map((side) => {
+        const sideEntries = guestRoster.filter((entry) => entry.side === side);
+        const sideTotals = rosterBySide.get(side) ?? emptyRosterTotals();
+        const categoriesInSide = Array.from(new Set(sideEntries.map((entry) => entry.category || '-'))).sort(
+            (first, second) => first.localeCompare(second, 'he'),
+        );
+
+        const rows: SheetData = [
+            [{ value: `${labels.rosterSheet} - ${side}`, type: String, fontWeight: 'bold', fontSize: 16, textColor: '#1F2937' }],
+            [],
+            [{ value: labels.rosterTotalInvited, type: String, fontWeight: 'bold' }, sideTotals.invited],
+            [{ value: labels.rosterConfirmed, type: String, fontWeight: 'bold' }, sideTotals.confirmed],
+            [{ value: labels.rosterDeclined, type: String, fontWeight: 'bold' }, sideTotals.declined],
+            [{ value: labels.rosterPending, type: String, fontWeight: 'bold' }, sideTotals.pending],
+        ];
+
+        categoriesInSide.forEach((category) => {
+            const categoryEntries = [...sideEntries]
+                .filter((entry) => (entry.category || '-') === category)
+                .sort((first, second) => `${first.firstName} ${first.lastName}`.localeCompare(`${second.firstName} ${second.lastName}`, 'he'));
+            const categoryInvitedCount = categoryEntries.reduce((sum, entry) => sum + entry.invitedCount, 0);
+
+            rows.push([]);
+            rows.push([
+                { value: category, type: String, fontWeight: 'bold', fontSize: 13, textColor: '#1F2937' },
+                null,
+                { value: categoryInvitedCount, type: Number, fontWeight: 'bold' },
+                null,
+            ]);
+            rows.push(
+                [labels.rosterName, labels.rosterPhone, labels.rosterInvitedCount, labels.rosterStatus].map((value) => ({
+                    value,
+                    type: String,
+                    ...headerStyle,
+                })),
+            );
+            categoryEntries.forEach((entry) => {
+                rows.push([
+                    textCell(`${entry.firstName} ${entry.lastName}`.trim()),
+                    { value: entry.phone || '-', type: String, align: 'center' as const },
+                    entry.invitedCount,
+                    textCell(rosterStatusLabel(entry, labels)),
+                ]);
+            });
+        });
+
+        return {
+            data: rows,
+            sheet: `${labels.rosterSheet} - ${side}`.slice(0, 31),
+            columns: [{ width: 26 }, { width: 16 }, { width: 12 }, { width: 20 }],
+            rightToLeft: isRtl,
+            showGridLines: false,
+        };
+    });
 
     const recordsData: SheetData = [
         [labels.index, labels.id, labels.name, labels.phone, labels.guests, labels.group, labels.note, labels.status, labels.language, labels.submittedAt]
@@ -216,20 +273,7 @@ export async function exportRsvpWorkbook({ records, guestRoster, plannedGuests, 
             rightToLeft: isRtl,
             showGridLines: false,
         },
-        {
-            data: rosterData,
-            sheet: labels.rosterSheet,
-            columns: [
-                { width: 14 },
-                { width: 20 },
-                { width: 28 },
-                { width: 16 },
-                { width: 18 },
-            ],
-            stickyRowsCount: 1,
-            rightToLeft: isRtl,
-            orientation: 'landscape',
-        },
+        ...rosterSheets,
         {
             data: recordsData,
             sheet: labels.recordsSheet,
