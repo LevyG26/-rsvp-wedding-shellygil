@@ -101,15 +101,17 @@ export async function exportGiftsMobilePdf({ records, labels, isRtl }: ExportGif
         .map(({ record, amount }, index) => {
           const rank = index + 1;
           const background = rank === 1 ? '#fef3c7' : rank === 2 ? '#f3f4f6' : rank === 3 ? '#ffedd5' : index % 2 === 0 ? '#ffffff' : '#f9fafb';
-          const linkedText = record.linkedMemberNames.length > 0
-            ? `${labels.linkedWith}: ${record.linkedMemberNames.join(', ')}`
-            : '';
+          // One combined name line (primary + every linked member together)
+          // rather than a name line plus a separate gray "linked with" line
+          // underneath - matches the Excel export's combined-name column.
+          const displayName = record.linkedMemberNames.length > 0
+            ? [record.fullName, ...record.linkedMemberNames].join(', ')
+            : record.fullName;
 
           return `
             <div data-page-block="1" style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:${background}; margin-bottom:6px;">
               <div style="min-width:0;">
-                <div style="font-size:16px; font-weight:600; color:#111827;">${escapeHtml(record.fullName)}</div>
-                ${linkedText ? `<div style="font-size:12px; color:#6b7280; margin-top:2px;">${escapeHtml(linkedText)}</div>` : ''}
+                <div style="font-size:16px; font-weight:600; color:#111827;">${escapeHtml(displayName)}</div>
               </div>
               <div dir="ltr" style="font-size:17px; font-weight:700; color:#111827; white-space:nowrap; flex-shrink:0;">${CURRENCY_SYMBOLS[currency]}${formatCurrencyAmount(amount)}</div>
             </div>
@@ -199,7 +201,12 @@ export async function exportGiftsMobilePdf({ records, labels, isRtl }: ExportGif
       width: CONTENT_WIDTH,
       windowWidth: CONTENT_WIDTH,
     });
-    const imgData = canvas.toDataURL('image/png');
+    // JPEG instead of PNG: this is a flat-color list, not a photo, but PNG
+    // still stores it losslessly at full resolution - for ~200+ guests that
+    // was producing a many-page, many-megapixel image and a huge PDF. JPEG
+    // at 0.85 quality is visually indistinguishable here (solid backgrounds,
+    // crisp text) and is a fraction of the size.
+    const imgData = canvas.toDataURL('image/jpeg', 0.85);
     const imgWidth = pageWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
@@ -208,15 +215,19 @@ export async function exportGiftsMobilePdf({ records, labels, isRtl }: ExportGif
     // negative y-offset, which - since addImage clips to the page bounds -
     // has the effect of "scrolling" the tall image up by one page height
     // each time, without needing to manually crop the canvas into per-page
-    // slices.
+    // slices. Passing the same `alias` on every call is what actually makes
+    // this cheap: without it, jsPDF has no way to know it's the same image
+    // and embeds a full separate copy of it per page, which was the other
+    // big contributor to file size on multi-page exports.
+    const imageAlias = 'gifts-mobile-pdf-page-image';
     let heightLeft = imgHeight;
     let position = 0;
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, imageAlias);
     heightLeft -= pageHeight;
     while (heightLeft > 0) {
       position = heightLeft - imgHeight;
       pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, imageAlias);
       heightLeft -= pageHeight;
     }
 

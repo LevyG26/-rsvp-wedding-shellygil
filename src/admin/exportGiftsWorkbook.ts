@@ -255,7 +255,7 @@ export async function exportGiftsWorkbook({ records, rawEntries, labels, isRtl }
             rows.push([]);
             rows.push([{ value: currency, type: String, fontWeight: 'bold', fontSize: 13, textColor: '#1F2937' }]);
             rows.push(
-                [labels.rank, labels.name, labels.total, labels.linkedWith].map((value) => ({
+                [labels.rank, labels.name, labels.total].map((value) => ({
                     value,
                     type: String,
                     ...headerStyle,
@@ -267,19 +267,21 @@ export async function exportGiftsWorkbook({ records, rawEntries, labels, isRtl }
                 // other row alternates white/light-gray so long lists still
                 // read as a clear grid instead of a wall of text.
                 const highlight = rank <= 3 ? rankHighlight(rank) : zebraFill(rank);
+                // One combined name column (primary + every linked member
+                // together, e.g. "Ghislaine Pariente, Gerrard Pariente")
+                // rather than a separate "linked with" column - a household
+                // giving one combined gift reads as one group of names, not
+                // a name split across two columns.
+                const displayName = record.linkedMemberNames.length > 0
+                    ? [record.fullName, ...record.linkedMemberNames].join(', ')
+                    : record.fullName;
                 rows.push([
                     { value: rank, type: Number, align: 'center' as const, alignVertical: 'center' as const, ...gridBorder, ...highlight },
-                    { ...textCell(record.fullName), alignVertical: 'center' as const, ...gridBorder, ...highlight },
+                    { ...textCell(displayName), alignVertical: 'center' as const, ...gridBorder, ...highlight },
                     {
                         value: `${formatCurrencyTotals({ [currency]: amount })}`,
                         type: String,
                         align: 'center' as const,
-                        alignVertical: 'center' as const,
-                        ...gridBorder,
-                        ...highlight,
-                    },
-                    {
-                        ...textCell(record.linkedMemberNames.length > 0 ? record.linkedMemberNames.join(', ') : '-'),
                         alignVertical: 'center' as const,
                         ...gridBorder,
                         ...highlight,
@@ -292,7 +294,7 @@ export async function exportGiftsWorkbook({ records, rawEntries, labels, isRtl }
             data: rows,
             // Excel sheet names are capped at 31 characters.
             sheet: `${labels.topGiftsSheetPrefix} - ${side}`.slice(0, 31),
-            columns: [{ width: 8 }, { width: 28 }, { width: 16 }, { width: 36 }],
+            columns: [{ width: 8 }, { width: 46 }, { width: 16 }],
             rightToLeft: isRtl,
             showGridLines: false,
         };
