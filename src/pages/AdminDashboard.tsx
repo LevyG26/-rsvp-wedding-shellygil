@@ -458,6 +458,10 @@ export function AdminDashboard() {
     // silently make one guest's already-entered amount stop counting
     // anywhere until the bad grouping was unlinked).
     const [isGiftHouseholdOperationInFlight, setIsGiftHouseholdOperationInFlight] = useState(false);
+    // Result text shown after running the one-click repair below - cleared
+    // whenever a fresh repair run starts, so a stale result from a previous
+    // click never lingers next to a new one.
+    const [giftHouseholdRepairMessage, setGiftHouseholdRepairMessage] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -2164,6 +2168,110 @@ export function AdminDashboard() {
         }
     };
 
+    // One-click fix for the conflict conflictedGiftHouseholdNames warns
+    // about: rather than making Gil manually unlink and re-link every
+    // affected guest by hand, this reads the CURRENT households fresh,
+    // finds every group of documents that overlap (share at least one
+    // member - possibly chained, e.g. household {A,B} overlapping {B,C}
+    // means A, B, and C are really all one group), and merges each such
+    // group into a single correct household containing every member from
+    // every document in it. This can only ever ADD members back together -
+    // it never drops anyone, so no amount already entered can be lost by
+    // running it, and it never touches guestRoster or giftEntries. A group
+    // that would end up larger than 6 members (the cap the security rules
+    // enforce) is left alone rather than guessed at - that's an extreme
+    // edge case worth a human's eyes rather than an automatic merge.
+    const handleRepairGiftHouseholds = async () => {
+        if (isGiftHouseholdOperationInFlight) return;
+        setError('');
+        setGiftHouseholdRepairMessage('');
+        setIsGiftHouseholdOperationInFlight(true);
+        try {
+            const freshHouseholds = await loadGiftHouseholds();
+
+            const parent = new Map<string, string>();
+            freshHouseholds.forEach((household) => parent.set(household.id, household.id));
+            const find = (id: string): string => {
+                let current = id;
+                while (parent.get(current) !== current) {
+                    current = parent.get(current) as string;
+                }
+                return current;
+            };
+            const union = (a: string, b: string) => {
+                const rootA = find(a);
+                const rootB = find(b);
+                if (rootA !== rootB) parent.set(rootA, rootB);
+            };
+
+            const householdIdsByMember = new Map<string, string[]>();
+            freshHouseholds.forEach((household) => {
+                household.memberRosterEntryIds.forEach((memberId) => {
+                    const list = householdIdsByMember.get(memberId) ?? [];
+                    list.push(household.id);
+                    householdIdsByMember.set(memberId, list);
+                });
+            });
+            householdIdsByMember.forEach((householdIds) => {
+                for (let i = 1; i < householdIds.length; i += 1) {
+                    union(householdIds[0], householdIds[i]);
+                }
+            });
+
+            const groupsByRoot = new Map<string, GiftHousehold[]>();
+            freshHouseholds.forEach((household) => {
+                const root = find(household.id);
+                const group = groupsByRoot.get(root) ?? [];
+                group.push(household);
+                groupsByRoot.set(root, group);
+            });
+
+            const finalHouseholds: GiftHousehold[] = [];
+            let mergedGroupCount = 0;
+            let skippedTooLargeCount = 0;
+
+            for (const group of groupsByRoot.values()) {
+                if (group.length <= 1) {
+                    finalHouseholds.push(group[0]);
+                    continue;
+                }
+
+                const allMembers = Array.from(new Set(group.flatMap((household) => household.memberRosterEntryIds)));
+                if (allMembers.length > 6) {
+                    skippedTooLargeCount += 1;
+                    group.forEach((household) => finalHouseholds.push(household));
+                    continue;
+                }
+
+                const newId = giftHouseholdId(allMembers);
+                await saveGiftHousehold(allMembers);
+                await Promise.all(
+                    group.filter((household) => household.id !== newId).map((household) => deleteGiftHousehold(household.id)),
+                );
+                finalHouseholds.push({ id: newId, memberRosterEntryIds: allMembers });
+                mergedGroupCount += 1;
+            }
+
+            setGiftHouseholds(finalHouseholds);
+
+            if (mergedGroupCount === 0) {
+                setGiftHouseholdRepairMessage(t.adminGiftsRepairNoneFound);
+            } else {
+                const fixedMessage = `${t.adminGiftsRepairFixedLabel} ${mergedGroupCount}`;
+                setGiftHouseholdRepairMessage(
+                    skippedTooLargeCount > 0
+                        ? `${fixedMessage}. ${t.adminGiftsRepairSkippedTooLargeLabel} ${skippedTooLargeCount}`
+                        : fixedMessage,
+                );
+            }
+        } catch (repairError) {
+            console.error('Failed to repair gift households', repairError);
+            setError(t.adminGiftLinkError);
+        } finally {
+            setIsGiftHouseholdOperationInFlight(false);
+        }
+    };
+
     const handleExportGifts = async () => {
         if (giftRecords.length === 0 || isExportingGifts) {
             return;
@@ -3539,6 +3647,20 @@ export function AdminDashboard() {
                             <p className="font-semibold">{t.adminGiftsConflictWarningTitle}</p>
                             <p className="mt-1">{t.adminGiftsConflictWarningBody}</p>
                             <p className="mt-2 font-medium">{conflictedGiftHouseholdNames.join(', ')}</p>
+                            <button
+                                type="button"
+                                onClick={handleRepairGiftHouseholds}
+                                disabled={isGiftHouseholdOperationInFlight}
+                                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {isGiftHouseholdOperationInFlight ? <Loader2 size={13} className="animate-spin" /> : null}
+                                {t.adminGiftsRepairButton}
+                            </button>
+                        </div>
+                    )}
+                    {giftHouseholdRepairMessage && (
+                        <div className="mb-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-700/60 dark:bg-emerald-950/40 dark:text-emerald-200">
+                            {giftHouseholdRepairMessage}
                         </div>
                     )}
                     <GiftsSection
@@ -3598,6 +3720,7 @@ export function AdminDashboard() {
                             sortByAmountAsc: t.adminGiftsSortByAmountAsc,
                             sortCurrencyLabel: t.adminGiftsSortCurrencyLabel,
                             currencyFilterAllLabel: t.adminGiftsCurrencyFilterAllLabel,
+                            linkedOnlyFilterLabel: t.adminGiftsLinkedOnlyFilterLabel,
                             linkedWithLabel: t.adminGiftsLinkedWithLabel,
                             combinedTotalLabel: t.adminGiftsCombinedTotalLabel,
                             linkButton: t.adminGiftsLinkButton,

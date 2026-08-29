@@ -97,6 +97,7 @@ interface GiftsSectionLabels {
   sortByAmountAsc: string;
   sortCurrencyLabel: string;
   currencyFilterAllLabel: string;
+  linkedOnlyFilterLabel: string;
   linkedWithLabel: string;
   combinedTotalLabel: string;
   linkButton: string;
@@ -565,6 +566,11 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
   // with only a EUR amount still showed up while "sort by ₪" was selected).
   const [sortMode, setSortMode] = useState<'name' | 'amountDesc' | 'amountAsc'>('name');
   const [currencyFilter, setCurrencyFilter] = useState<'all' | GiftCurrency>('all');
+  // Lets Gil pull up just the guests currently folded into a household (see
+  // linkedMemberNames), independent of every other filter - useful for
+  // reviewing every existing link after the household-conflict bug, without
+  // scrolling through everyone who was never linked at all.
+  const [showLinkedOnly, setShowLinkedOnly] = useState(false);
 
   const sides = useMemo(
     () => Array.from(new Set(records.map((record) => record.side).filter(Boolean))).sort((first, second) => first.localeCompare(second)),
@@ -697,6 +703,7 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
       // rather than just being a sort hint - see currencyFilter's doc
       // comment above.
       .filter((record) => (currencyFilter === 'all' ? true : (record.combinedTotals[currencyFilter] ?? 0) > 0))
+      .filter((record) => (showLinkedOnly ? record.linkedMemberNames.length > 0 : true))
       .sort((first, second) => {
         if (sortMode === 'name' || currencyFilter === 'all') return first.fullName.localeCompare(second.fullName, 'he');
         const firstAmount = first.combinedTotals[currencyFilter] ?? 0;
@@ -706,7 +713,7 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
         // order still reads sensibly instead of an arbitrary/unstable sort.
         return first.fullName.localeCompare(second.fullName, 'he');
       });
-  }, [records, filterMode, sideFilter, categoryFilter, attendanceFilter, searchTerm, sortMode, currencyFilter]);
+  }, [records, filterMode, sideFilter, categoryFilter, attendanceFilter, searchTerm, sortMode, currencyFilter, showLinkedOnly]);
 
   // Actual guest count among the currently-visible (filtered) rows - shown
   // alongside the row count so "12 records shown" doesn't get misread as "12
@@ -883,6 +890,15 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${filterMode === 'missing' ? 'bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
             >
               {labels.filterMissing}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowLinkedOnly((previous) => !previous)}
+              aria-pressed={showLinkedOnly}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${showLinkedOnly ? 'bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+            >
+              {labels.linkedOnlyFilterLabel}
             </button>
 
             <select
