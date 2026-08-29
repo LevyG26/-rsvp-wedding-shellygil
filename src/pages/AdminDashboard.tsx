@@ -451,6 +451,13 @@ export function AdminDashboard() {
     const [giftEntries, setGiftEntries] = useState<GiftEntry[]>([]);
     const [isLoadingGiftEntries, setIsLoadingGiftEntries] = useState(false);
     const [giftHouseholds, setGiftHouseholds] = useState<GiftHousehold[]>([]);
+    // Blocks a second link/unlink from starting anywhere in the gifts tab
+    // while one is still in flight - see handleLinkGiftHousehold's own
+    // comment for the real bug this closes (linking several pairs back to
+    // back, faster than each one's own state update could land, could
+    // silently make one guest's already-entered amount stop counting
+    // anywhere until the bad grouping was unlinked).
+    const [isGiftHouseholdOperationInFlight, setIsGiftHouseholdOperationInFlight] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -980,6 +987,33 @@ export function AdminDashboard() {
     // dropped by this grouping, it simply isn't surfaced as its own row
     // while linked.
     const giftRosterById = useMemo(() => new Map(guestRoster.map((entry) => [entry.id, entry])), [guestRoster]);
+
+    // Surfaces exactly the corruption pattern handleLinkGiftHousehold's own
+    // comment describes: the same roster entry listed in more than one
+    // giftHouseholds document at once (only possible from the stale-read
+    // race that fix closes). giftHouseholdByMemberId above always silently
+    // resolves such an id to just one of them, so without this check
+    // there'd be no visible sign anything was ever wrong - this exists
+    // purely so Gil can actually go check (and fix, by unlinking) any
+    // grouping this happened to before the fix, instead of having to
+    // wonder whether the totals are trustworthy.
+    const conflictedGiftHouseholdNames = useMemo(() => {
+        const countByMemberId = new Map<string, number>();
+        giftHouseholds.forEach((household) => {
+            household.memberRosterEntryIds.forEach((memberId) => {
+                countByMemberId.set(memberId, (countByMemberId.get(memberId) ?? 0) + 1);
+            });
+        });
+        const conflictedIds = Array.from(countByMemberId.entries())
+            .filter(([, count]) => count > 1)
+            .map(([memberId]) => memberId);
+        return conflictedIds
+            .map((memberId) => {
+                const entry = giftRosterById.get(memberId);
+                return entry ? `${entry.firstName} ${entry.lastName}`.trim() : memberId;
+            })
+            .filter((name, index, all) => all.indexOf(name) === index);
+    }, [giftHouseholds, giftRosterById]);
     const giftRecords = useMemo(
         () => guestRoster
             .filter((entry) => {
@@ -2041,19 +2075,47 @@ export function AdminDashboard() {
     // giftEntries doc as the one place amounts are actually edited; this
     // NEVER writes to guestRoster or giftEntries, only to the new household
     // grouping doc, so no existing recorded amount is ever touched.
+    //
+    // isGiftHouseholdOperationInFlight (below) blocks starting a second
+    // link/unlink anywhere in this tab while one is still running, and this
+    // function re-reads the CURRENT households from Firestore itself rather
+    // than trusting giftHouseholdByMemberId (a snapshot of local React
+    // state) - together these close a real bug where linking several pairs
+    // back-to-back, before each one's own state update had landed, computed
+    // "who's already grouped with whom" from stale information. That could
+    // create two different household documents that both listed the same
+    // guest, and giftHouseholdByMemberId always resolves such an id to only
+    // one of them (deliberately deterministic - see its own comment) - so
+    // the OTHER document's members quietly stopped counting toward the
+    // total anywhere, exactly what was reported: a guest's already-entered
+    // amount seemingly vanishing from the total after several links, and
+    // reappearing the moment the bad grouping was unlinked. Nothing was ever
+    // lost from giftEntries in that scenario - only the grouping doc was
+    // wrong - which is exactly why unlinking always fully restores the
+    // right number immediately.
     const handleLinkGiftHousehold = async (primaryRosterEntryId: string, otherRosterEntryId: string) => {
+        if (isGiftHouseholdOperationInFlight) return;
         setError('');
+        setIsGiftHouseholdOperationInFlight(true);
         try {
+            const freshHouseholds = await loadGiftHouseholds();
+            const freshByMemberId = new Map<string, GiftHousehold>();
+            freshHouseholds.forEach((household) => {
+                household.memberRosterEntryIds.forEach((memberId) => {
+                    if (!freshByMemberId.has(memberId)) freshByMemberId.set(memberId, household);
+                });
+            });
+
             // If either side is already part of a household, fold everyone
             // from both groupings together rather than silently dropping the
             // existing linkage - re-linking should only ever grow a group,
             // never quietly shrink one that was already there.
-            const existingForPrimary = giftHouseholdByMemberId.get(primaryRosterEntryId)?.memberRosterEntryIds ?? [primaryRosterEntryId];
-            const existingForOther = giftHouseholdByMemberId.get(otherRosterEntryId)?.memberRosterEntryIds ?? [otherRosterEntryId];
+            const existingForPrimary = freshByMemberId.get(primaryRosterEntryId)?.memberRosterEntryIds ?? [primaryRosterEntryId];
+            const existingForOther = freshByMemberId.get(otherRosterEntryId)?.memberRosterEntryIds ?? [otherRosterEntryId];
             const combinedMembers = Array.from(new Set([...existingForPrimary, ...existingForOther]));
             const oldHouseholdIds = new Set([
-                giftHouseholdByMemberId.get(primaryRosterEntryId)?.id,
-                giftHouseholdByMemberId.get(otherRosterEntryId)?.id,
+                freshByMemberId.get(primaryRosterEntryId)?.id,
+                freshByMemberId.get(otherRosterEntryId)?.id,
             ].filter((id): id is string => Boolean(id)));
 
             await saveGiftHousehold(combinedMembers);
@@ -2063,26 +2125,42 @@ export function AdminDashboard() {
             const newId = giftHouseholdId(combinedMembers);
             await Promise.all(Array.from(oldHouseholdIds).filter((id) => id !== newId).map((id) => deleteGiftHousehold(id)));
 
-            setGiftHouseholds((previous) => [
-                ...previous.filter((household) => !oldHouseholdIds.has(household.id) && household.id !== newId),
+            // Re-derived from the same fresh read rather than patched onto
+            // freshHouseholds by hand, so any pre-existing bad grouping this
+            // very operation just folded together and cleaned up is fully
+            // reflected - not just the two ids this click directly touched.
+            setGiftHouseholds([
+                ...freshHouseholds.filter((household) => !oldHouseholdIds.has(household.id) && household.id !== newId),
                 { id: newId, memberRosterEntryIds: combinedMembers },
             ]);
         } catch (linkError) {
             console.error('Failed to link gift household', linkError);
             setError(t.adminGiftLinkError);
             throw linkError;
+        } finally {
+            setIsGiftHouseholdOperationInFlight(false);
         }
     };
 
     const handleUnlinkGiftHousehold = async (householdId: string) => {
+        if (isGiftHouseholdOperationInFlight) return;
         setError('');
+        setIsGiftHouseholdOperationInFlight(true);
         try {
             await deleteGiftHousehold(householdId);
-            setGiftHouseholds((previous) => previous.filter((household) => household.id !== householdId));
+            // Full re-sync (not just filtering the one id out of local
+            // state) for the same reason as handleLinkGiftHousehold above -
+            // if an earlier race left any other stray grouping behind, this
+            // is a free chance to self-heal the whole list back to what
+            // Firestore actually has, not just this one action's own effect.
+            const freshHouseholds = await loadGiftHouseholds();
+            setGiftHouseholds(freshHouseholds);
         } catch (unlinkError) {
             console.error('Failed to unlink gift household', unlinkError);
             setError(t.adminGiftLinkError);
             throw unlinkError;
+        } finally {
+            setIsGiftHouseholdOperationInFlight(false);
         }
     };
 
@@ -3456,12 +3534,20 @@ export function AdminDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     className="mb-6"
                 >
+                    {conflictedGiftHouseholdNames.length > 0 && (
+                        <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
+                            <p className="font-semibold">{t.adminGiftsConflictWarningTitle}</p>
+                            <p className="mt-1">{t.adminGiftsConflictWarningBody}</p>
+                            <p className="mt-2 font-medium">{conflictedGiftHouseholdNames.join(', ')}</p>
+                        </div>
+                    )}
                     <GiftsSection
                         records={giftRecords}
                         allGuests={giftRosterOptions}
                         isLoading={isLoading || isLoadingGiftEntries}
                         isExporting={isExportingGifts}
                         isExportingMobilePdf={isExportingGiftsMobilePdf}
+                        isLinkOperationInFlight={isGiftHouseholdOperationInFlight}
                         onUpdateGift={handleUpdateRosterGift}
                         onLinkGuest={handleLinkGiftHousehold}
                         onUnlinkGuest={handleUnlinkGiftHousehold}

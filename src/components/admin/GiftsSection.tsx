@@ -118,6 +118,13 @@ interface GiftsSectionProps {
   isLoading: boolean;
   isExporting: boolean;
   isExportingMobilePdf: boolean;
+  // True while ANY link/unlink is in flight anywhere in this tab, not just
+  // this row's own - see AdminDashboard.tsx's handleLinkGiftHousehold for
+  // why starting a second one before the first finishes is exactly what
+  // let two guests' linking silently corrupt which household a shared
+  // member ended up counted under. Disables every row's link/unlink
+  // controls until it clears, so actions are always done one at a time.
+  isLinkOperationInFlight: boolean;
   onUpdateGift: (recordId: string, giftAmounts: GiftAmounts) => Promise<void>;
   onLinkGuest: (primaryRosterEntryId: string, otherRosterEntryId: string) => Promise<void>;
   onUnlinkGuest: (householdId: string) => Promise<void>;
@@ -237,6 +244,7 @@ function GiftRow({
   record,
   labels,
   allGuests,
+  isLinkOperationInFlight,
   onUpdateGift,
   onLinkGuest,
   onUnlinkGuest,
@@ -244,6 +252,7 @@ function GiftRow({
   record: GiftRecordInput;
   labels: GiftsSectionLabels;
   allGuests: GiftGuestOption[];
+  isLinkOperationInFlight: boolean;
   onUpdateGift: GiftsSectionProps['onUpdateGift'];
   onLinkGuest: GiftsSectionProps['onLinkGuest'];
   onUnlinkGuest: GiftsSectionProps['onUnlinkGuest'];
@@ -377,7 +386,7 @@ function GiftRow({
             <button
               type="button"
               onClick={handleUnlink}
-              disabled={isUnlinking}
+              disabled={isUnlinking || isLinkOperationInFlight}
               className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-gray-600 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
             >
               {isUnlinking ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
@@ -391,7 +400,7 @@ function GiftRow({
                 type="text"
                 value={linkSearchTerm}
                 placeholder={labels.linkPickerPlaceholder}
-                disabled={isLinking}
+                disabled={isLinking || isLinkOperationInFlight}
                 onFocus={() => {
                   setHasOpenedPicker(true);
                   setIsLinkDropdownOpen(true);
@@ -438,7 +447,7 @@ function GiftRow({
               <button
                 type="button"
                 onClick={handleLink}
-                disabled={isLinking}
+                disabled={isLinking || isLinkOperationInFlight}
                 className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-200 disabled:cursor-not-allowed dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
                 {isLinking ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
@@ -539,7 +548,7 @@ function GiftRow({
   );
 }
 
-export function GiftsSection({ records, allGuests, labels, isLoading, isExporting, isExportingMobilePdf, onUpdateGift, onLinkGuest, onUnlinkGuest, onExport, onExportMobilePdf }: GiftsSectionProps) {
+export function GiftsSection({ records, allGuests, labels, isLoading, isExporting, isExportingMobilePdf, isLinkOperationInFlight, onUpdateGift, onLinkGuest, onUnlinkGuest, onExport, onExportMobilePdf }: GiftsSectionProps) {
   const [sideFilter, setSideFilter] = useState<'all' | string>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
   const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'yes' | 'no' | 'pending'>('all');
@@ -964,7 +973,7 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-slate-700">
             {visibleRecords.map((record) => (
-              <GiftRow key={record.id} record={record} labels={labels} allGuests={allGuests} onUpdateGift={onUpdateGift} onLinkGuest={onLinkGuest} onUnlinkGuest={onUnlinkGuest} />
+              <GiftRow key={record.id} record={record} labels={labels} allGuests={allGuests} isLinkOperationInFlight={isLinkOperationInFlight} onUpdateGift={onUpdateGift} onLinkGuest={onLinkGuest} onUnlinkGuest={onUnlinkGuest} />
             ))}
           </div>
         )}
