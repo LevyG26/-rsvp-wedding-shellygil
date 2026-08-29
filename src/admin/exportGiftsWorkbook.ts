@@ -230,6 +230,14 @@ export async function exportGiftsWorkbook({ records, rawEntries, labels, isRtl }
         return {};
     };
 
+    // A light grid border on every data cell plus alternating row shading
+    // (below the top-3 highlight colors) - without either, Gil found the
+    // sheet unreadable: with no borders/shading at all, a name that wraps to
+    // two lines in the "linked with" column reads as bleeding into the row
+    // below it, since nothing marks where one row ends and the next begins.
+    const gridBorder = { borderStyle: 'thin' as const, borderColor: '#E5E7EB' };
+    const zebraFill = (rank: number) => (rank % 2 === 0 ? { backgroundColor: '#F9FAFB' } : {});
+
     const topGiftsSheets = sides.map((side) => {
         const sideRecords = records.filter((record) => (record.side || '-') === side);
         const rows: SheetData = [
@@ -255,17 +263,27 @@ export async function exportGiftsWorkbook({ records, rawEntries, labels, isRtl }
             );
             withAmount.forEach(({ record, amount }, index) => {
                 const rank = index + 1;
-                const highlight = rankHighlight(rank);
+                // rank 1-3 keep their gold/silver/bronze highlight; every
+                // other row alternates white/light-gray so long lists still
+                // read as a clear grid instead of a wall of text.
+                const highlight = rank <= 3 ? rankHighlight(rank) : zebraFill(rank);
                 rows.push([
-                    { value: rank, type: Number, align: 'center' as const, ...highlight },
-                    { ...textCell(record.fullName), ...highlight },
+                    { value: rank, type: Number, align: 'center' as const, alignVertical: 'center' as const, ...gridBorder, ...highlight },
+                    { ...textCell(record.fullName), alignVertical: 'center' as const, ...gridBorder, ...highlight },
                     {
                         value: `${formatCurrencyTotals({ [currency]: amount })}`,
                         type: String,
                         align: 'center' as const,
+                        alignVertical: 'center' as const,
+                        ...gridBorder,
                         ...highlight,
                     },
-                    { ...textCell(record.linkedMemberNames.length > 0 ? record.linkedMemberNames.join(', ') : '-'), ...highlight },
+                    {
+                        ...textCell(record.linkedMemberNames.length > 0 ? record.linkedMemberNames.join(', ') : '-'),
+                        alignVertical: 'center' as const,
+                        ...gridBorder,
+                        ...highlight,
+                    },
                 ]);
             });
         });
@@ -274,7 +292,7 @@ export async function exportGiftsWorkbook({ records, rawEntries, labels, isRtl }
             data: rows,
             // Excel sheet names are capped at 31 characters.
             sheet: `${labels.topGiftsSheetPrefix} - ${side}`.slice(0, 31),
-            columns: [{ width: 8 }, { width: 26 }, { width: 16 }, { width: 26 }],
+            columns: [{ width: 8 }, { width: 28 }, { width: 16 }, { width: 36 }],
             rightToLeft: isRtl,
             showGridLines: false,
         };
