@@ -26,6 +26,13 @@ export interface GiftExportRecord {
     // couple/family linked together reads as one combined figure here too,
     // matching what the dashboard itself shows.
     combinedTotals: GiftCurrencyTotals;
+    // Every household member's OWN giftAmounts, primary first - needed so
+    // the by-method breakdown below sums cash/Bit-Paybox/check across the
+    // whole household, not just the primary (see the byMethod loop's own
+    // comment - using giftAmounts alone there silently excluded a linked
+    // member's already-recorded amount from this one sheet, even though
+    // combinedTotals and everything else were always correct).
+    combinedGiftAmounts: GiftAmounts[];
     linkedMemberNames: string[];
 }
 
@@ -113,11 +120,13 @@ export async function exportGiftsWorkbook({ records, labels, isRtl }: ExportGift
         }
         const recordTotals = record.combinedTotals;
         totalTotals = mergeCurrencyTotals(totalTotals, recordTotals);
-        GIFT_METHODS.forEach((method) => {
-            const entry = record.giftAmounts[method];
-            if (entry.amount !== null) {
-                byMethod = { ...byMethod, [method]: addToTotals(byMethod[method], entry.currency, entry.amount) };
-            }
+        record.combinedGiftAmounts.forEach((amounts) => {
+            GIFT_METHODS.forEach((method) => {
+                const entry = amounts[method];
+                if (entry.amount !== null) {
+                    byMethod = { ...byMethod, [method]: addToTotals(byMethod[method], entry.currency, entry.amount) };
+                }
+            });
         });
         const sideKey = record.side || '-';
         const categoryKey = record.category || '-';

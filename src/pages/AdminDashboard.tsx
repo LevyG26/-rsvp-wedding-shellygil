@@ -1032,9 +1032,12 @@ export function AdminDashboard() {
                     .slice(1)
                     .map((memberId) => giftRosterById.get(memberId))
                     .filter((member): member is GuestRosterEntry => Boolean(member));
+                const linkedMemberGiftAmounts = linkedMembers.map(
+                    (member) => giftEntriesByRosterId.get(member.id)?.amounts ?? EMPTY_GIFT_AMOUNTS,
+                );
                 const combinedTotals = mergeCurrencyTotals(
                     sumGiftAmountsByCurrency(giftAmounts),
-                    ...linkedMembers.map((member) => sumGiftAmountsByCurrency(giftEntriesByRosterId.get(member.id)?.amounts ?? EMPTY_GIFT_AMOUNTS)),
+                    ...linkedMemberGiftAmounts.map((amounts) => sumGiftAmountsByCurrency(amounts)),
                 );
                 return {
                     id: entry.id,
@@ -1043,6 +1046,19 @@ export function AdminDashboard() {
                     category: entry.category,
                     guestsCount: entry.invitedCount + linkedMembers.reduce((sum, member) => sum + member.invitedCount, 0),
                     giftAmounts,
+                    // Every household member's OWN giftAmounts (this record's
+                    // primary first, then each linked member) - needed so a
+                    // by-PAYMENT-METHOD breakdown (cash/Bit-Paybox/check) can
+                    // actually include a linked member's own contribution.
+                    // combinedTotals above already summed everyone correctly
+                    // by CURRENCY, but the by-method summary card and the
+                    // Excel export's by-method sheet were built from
+                    // giftAmounts alone (the primary only) - that's what
+                    // made a linked guest's already-recorded amount look
+                    // like it "disappeared" from the cash/Bit/check totals
+                    // even though the overall total and their own row's
+                    // combined figure were always correct.
+                    combinedGiftAmounts: [giftAmounts, ...linkedMemberGiftAmounts],
                     attendanceStatus: entry.knownResponse,
                     combinedTotals,
                     linkedMemberNames: linkedMembers.map((member) => `${member.firstName} ${member.lastName}`.trim()),

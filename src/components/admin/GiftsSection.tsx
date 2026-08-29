@@ -43,9 +43,17 @@ export interface GiftRecordInput {
   // while giftAmounts above stays untouched as the one place edits actually
   // land (always the household's primary member).
   combinedTotals: GiftCurrencyTotals;
+  // Every household member's OWN giftAmounts, primary first - needed so the
+  // by-payment-method summary below can total cash/Bit-Paybox/check across
+  // the WHOLE household, not just the primary (see the summary useMemo's
+  // own comment for why using giftAmounts alone there made a linked
+  // member's already-recorded amount look like it vanished from the
+  // cash/Bit/check totals, even though combinedTotals and the row's own
+  // figure were always correct).
+  combinedGiftAmounts: GiftAmounts[];
   // Other roster entries folded into this row's household, by name only -
   // their own giftAmounts/giftEntries docs are never read or written here,
-  // just reflected in combinedTotals above.
+  // just reflected in combinedTotals/combinedGiftAmounts above.
   linkedMemberNames: string[];
   // Present only when this record is part of a household - needed to
   // unlink it. Absent for a plain, never-linked record.
@@ -638,16 +646,19 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
       }
       const recordTotals = record.combinedTotals;
       totalByCurrency = mergeCurrencyTotals(totalByCurrency, recordTotals);
-      // Method breakdown (cash/Bit-Paybox/check) intentionally reflects only
-      // this row's own giftAmounts, not combinedTotals - a linked member's
-      // own method choice isn't visible here, only their total (see
-      // combinedTotals above). The overall total by currency is always
-      // correct either way; only this one breakdown is primary-only.
-      GIFT_METHODS.forEach((method) => {
-        const entry = record.giftAmounts[method];
-        if (entry.amount !== null) {
-          byMethod[method] = addToTotals(byMethod[method], entry.currency, entry.amount);
-        }
+      // Method breakdown (cash/Bit-Paybox/check) sums every household
+      // member's OWN method choice (combinedGiftAmounts), not just the
+      // primary's - summing giftAmounts alone here used to silently leave
+      // out a linked member's already-recorded amount from this card,
+      // while the total-received card above stayed correct, which looked
+      // exactly like money disappearing the moment two guests were linked.
+      record.combinedGiftAmounts.forEach((amounts) => {
+        GIFT_METHODS.forEach((method) => {
+          const entry = amounts[method];
+          if (entry.amount !== null) {
+            byMethod[method] = addToTotals(byMethod[method], entry.currency, entry.amount);
+          }
+        });
       });
       const sideKey = record.side || '-';
       const categoryKey = record.category || '-';
