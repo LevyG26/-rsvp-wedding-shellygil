@@ -252,22 +252,39 @@ function GiftRow({
   const [isSaving, setIsSaving] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [linkPickerValue, setLinkPickerValue] = useState('');
+  // What's actually typed into the link picker's search box - a native
+  // <select> only supported browsers' built-in "jump to the option starting
+  // with the letter I just pressed" behavior, which resets on every
+  // keystroke and can't filter by anything typed after the first letter -
+  // effectively "blind typing" with a list of hundreds of names in
+  // alphabetical order. This drives a real filtered, clickable list instead.
+  const [linkSearchTerm, setLinkSearchTerm] = useState('');
+  const [isLinkDropdownOpen, setIsLinkDropdownOpen] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [isUnlinking, setIsUnlinking] = useState(false);
   const [linkErrorShown, setLinkErrorShown] = useState(false);
-  // With a few hundred guests, rendering every row's full <option> list
-  // up front (N rows x N options) creates tens of thousands of DOM nodes
-  // just for pickers nobody has opened yet, which is what made the whole
-  // gifts tab sluggish. The list is only actually built once this row's
-  // picker has been focused at least once (and stays built after that, so
-  // an in-progress selection never disappears from under the user).
-  const [hasFocusedPicker, setHasFocusedPicker] = useState(false);
+  // With a few hundred guests, rendering every row's full option list up
+  // front (N rows x N options) creates tens of thousands of DOM nodes just
+  // for pickers nobody has opened - the list is only actually built once
+  // this row's picker has been opened at least once (and stays built after
+  // that, so an in-progress search never disappears from under the user).
+  const [hasOpenedPicker, setHasOpenedPicker] = useState(false);
 
   // Excludes this row's own primary id - everyone else (including people
   // already in some OTHER household) stays selectable, since picking one
   // folds the two households together (see handleLinkGiftHousehold in
   // AdminDashboard.tsx) rather than requiring them to be unlinked first.
-  const linkableGuests = hasFocusedPicker ? allGuests.filter((guest) => guest.id !== record.id) : [];
+  const linkableGuests = hasOpenedPicker ? allGuests.filter((guest) => guest.id !== record.id) : [];
+  const normalizedLinkSearch = linkSearchTerm.trim().toLowerCase();
+  const filteredLinkableGuests = normalizedLinkSearch
+    ? linkableGuests.filter(
+        (guest) => guest.fullName.toLowerCase().includes(normalizedLinkSearch) || guest.side.toLowerCase().includes(normalizedLinkSearch),
+      )
+    : linkableGuests;
+  // Capped regardless of how many match, so opening the picker and typing
+  // one common letter can never render hundreds of rows at once.
+  const linkSearchResults = filteredLinkableGuests.slice(0, 30);
+  const selectedLinkGuest = linkPickerValue ? allGuests.find((guest) => guest.id === linkPickerValue) : undefined;
 
   const handleLink = async () => {
     if (!linkPickerValue || isLinking) return;
@@ -276,6 +293,7 @@ function GiftRow({
     try {
       await onLinkGuest(record.id, linkPickerValue);
       setLinkPickerValue('');
+      setLinkSearchTerm('');
     } catch (linkError) {
       console.error('Failed to link gift household', linkError);
       setLinkErrorShown(true);
@@ -367,20 +385,56 @@ function GiftRow({
             </button>
           </div>
         ) : (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <select
-              value={linkPickerValue}
-              onChange={(event) => setLinkPickerValue(event.target.value)}
-              onFocus={() => setHasFocusedPicker(true)}
-              disabled={isLinking}
-              className="rounded-full border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-600 outline-none focus:border-gray-400 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
-            >
-              <option value="">{labels.linkPickerPlaceholder}</option>
-              {linkableGuests.map((guest) => (
-                <option key={guest.id} value={guest.id}>{guest.fullName}{guest.side ? ` (${guest.side})` : ''}</option>
-              ))}
-            </select>
-            {linkPickerValue && (
+          <div className="relative mt-1.5 flex flex-wrap items-center gap-1.5">
+            <div className="relative">
+              <input
+                type="text"
+                value={linkSearchTerm}
+                placeholder={labels.linkPickerPlaceholder}
+                disabled={isLinking}
+                onFocus={() => {
+                  setHasOpenedPicker(true);
+                  setIsLinkDropdownOpen(true);
+                }}
+                onBlur={() => setIsLinkDropdownOpen(false)}
+                onChange={(event) => {
+                  setLinkSearchTerm(event.target.value);
+                  // Typing again after a selection means they're changing
+                  // their mind - the old selection shouldn't silently stay
+                  // active behind the scenes while the box shows new text.
+                  setLinkPickerValue('');
+                  setIsLinkDropdownOpen(true);
+                }}
+                className="w-40 rounded-full border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-600 outline-none focus:border-gray-400 disabled:cursor-not-allowed dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              />
+              {isLinkDropdownOpen && linkSearchResults.length > 0 && (
+                <div
+                  role="listbox"
+                  className="absolute start-0 top-full z-10 mt-1 max-h-48 w-56 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                >
+                  {linkSearchResults.map((guest) => (
+                    <button
+                      key={guest.id}
+                      type="button"
+                      role="option"
+                      aria-selected={linkPickerValue === guest.id}
+                      // Fires before the input's onBlur so the click is
+                      // registered instead of the dropdown closing first.
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setLinkPickerValue(guest.id);
+                        setLinkSearchTerm(guest.fullName);
+                        setIsLinkDropdownOpen(false);
+                      }}
+                      className="block w-full truncate px-3 py-1.5 text-start text-[12px] text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      {guest.fullName}{guest.side ? ` (${guest.side})` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {linkPickerValue && selectedLinkGuest && (
               <button
                 type="button"
                 onClick={handleLink}
