@@ -374,6 +374,20 @@ service cloud.firestore {
     // display/sum together. Deterministic id (sorted member ids joined with
     // "__") so linking the same people twice is idempotent instead of
     // creating a duplicate grouping.
+    // Roster entry ids are SHA-256 hex digests (64 characters each - see
+    // makeGuestRosterId in services/guestRoster.ts), and a household's doc id
+    // is several of those joined with "__" (see giftHouseholdId in
+    // services/giftHouseholds.ts) - even the smallest possible household (2
+    // members) already produces a 130-character id, past isValidId()'s
+    // 128-character cap used everywhere else. That mismatch is exactly what
+    // was silently rejecting every single link attempt with "Missing or
+    // insufficient permissions", from the very first try, regardless of
+    // which two guests were picked - so this collection gets its own,
+    // wider check instead of reusing isValidId(). Sized for the largest
+    // allowed household (6 members): 6*64 + 5*2 = 394, rounded up.
+    function isValidGiftHouseholdId(id) {
+      return id is string && id.size() <= 400 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
     function isValidGiftHousehold(data) {
       return data.keys().hasAll(['memberRosterEntryIds', 'updatedAt']) &&
              data.keys().hasOnly(['memberRosterEntryIds', 'updatedAt']) &&
@@ -383,7 +397,7 @@ service cloud.firestore {
     }
     match /giftHouseholds/{householdId} {
       allow read: if isAdmin();
-      allow create, update: if isAdmin() && isValidId(householdId) && isValidGiftHousehold(incoming());
+      allow create, update: if isAdmin() && isValidGiftHouseholdId(householdId) && isValidGiftHousehold(incoming());
       allow delete: if isAdmin();
     }
 

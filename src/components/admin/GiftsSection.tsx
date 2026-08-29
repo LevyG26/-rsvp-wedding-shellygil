@@ -619,7 +619,17 @@ export function GiftsSection({ records, allGuests, labels, isLoading, isExportin
         if (attendanceFilter === 'pending') return record.attendanceStatus === null;
         return record.attendanceStatus === attendanceFilter;
       })
-      .filter((record) => (normalizedSearch ? record.fullName.toLowerCase().includes(normalizedSearch) : true))
+      .filter((record) => {
+        if (!normalizedSearch) return true;
+        // A linked household member (e.g. a spouse folded into this row -
+        // see linkedMemberNames' doc comment) doesn't get a row of their
+        // own, so searching only record.fullName would make them
+        // effectively unfindable by name even though their gift is right
+        // there in this row's combined total - that looked exactly like a
+        // guest gone missing, when nothing was actually lost.
+        if (record.fullName.toLowerCase().includes(normalizedSearch)) return true;
+        return record.linkedMemberNames.some((name) => name.toLowerCase().includes(normalizedSearch));
+      })
       // A specific currency actually hides everyone with no amount in it,
       // rather than just being a sort hint - see currencyFilter's doc
       // comment above.
